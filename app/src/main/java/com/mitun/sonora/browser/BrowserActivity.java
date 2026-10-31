@@ -318,6 +318,11 @@ public final class BrowserActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (web != null) {
+            // A destroyed WebView that is still in the tree keeps the
+            // activity alive with it.
+            if (web.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) web.getParent()).removeView(web);
+            }
             web.destroy();
         }
         super.onDestroy();

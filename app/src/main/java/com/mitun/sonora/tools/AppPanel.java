@@ -41,9 +41,20 @@ public final class AppPanel {
     }
 
     public static void show(ToolActivity host) {
+        LinearLayout content = new LinearLayout(host);
+        content.setOrientation(LinearLayout.VERTICAL);
+
         ListView list = new ListView(host);
         AppAdapter adapter = new AppAdapter(host);
-        adapter.filterBar(list);
+        // The filters sit above the list instead of inside it: a header is
+        // part of the list, and the D-pad cannot leave the list for a header
+        // the way it can for a row above it.
+        content.addView(adapter.filterBar(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        content.addView(list, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        list.setSelector(Ui.listSelector(host));
         list.setAdapter(adapter);
         list.setOnItemClickListener((parent, view, position, id) -> {
             AppManager.Item item = (AppManager.Item) list.getItemAtPosition(position);
@@ -51,11 +62,16 @@ public final class AppPanel {
                 showDetail(host, adapter, item);
             }
         });
-        host.stack().pushContent("Apps", "Everything installed on this TV", list);
+        host.stack().pushContent("Apps", "Everything installed on this TV", content);
         adapter.load();
     }
 
     private static void showDetail(ToolActivity host, AppAdapter adapter, AppManager.Item item) {
+        host.stack().push("App", item.label, detailRows(host, adapter, item));
+    }
+
+    private static List<SettingRow> detailRows(ToolActivity host, AppAdapter adapter,
+                                               AppManager.Item item) {
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.header(item.label));
         rows.add(SettingRow.value("Package", item.packageName));
@@ -78,12 +94,23 @@ public final class AppPanel {
                 Ui.toast(host, result.message);
             }
         }));
-        rows.add(SettingRow.toggle("Enabled", !item.hidden, () -> {
-            PackageActions.Result result =
-                    PackageActions.setHidden(host, item.packageName, !item.hidden);
-            Ui.toast(host, result.message);
-            adapter.reload();
-        }));
+        if (item.hasLauncherEntry) {
+            rows.add(SettingRow.toggle("Hidden from home screen", item.hidden, () -> {
+                PackageActions.Result result =
+                        PackageActions.setHidden(host, item.packageName, !item.hidden);
+                Ui.toast(host, result.message);
+                if (result.ok) {
+                    item.hidden = !item.hidden;
+                    adapter.reload();
+                }
+                // The screen is rebuilt, or the row would keep showing the
+                // value it had before the tap.
+                host.stack().refresh("App", item.label,
+                        detailRows(host, adapter, item));
+            }));
+        } else {
+            rows.add(SettingRow.value("Home screen", "No launcher entry, so nothing to hide"));
+        }
         rows.add(SettingRow.action("Force stop", () -> {
             PackageActions.Result result = PackageActions.forceStop(host, item.packageName);
             Ui.toast(host, result.message);
@@ -102,7 +129,7 @@ public final class AppPanel {
             PackageActions.Result result = PackageActions.requestUninstall(host, item.packageName, item.label);
             Ui.toast(host, result.message);
         }));
-        host.stack().push("App", item.label, rows);
+        return rows;
     }
 
     /** The rows of the app list: an icon, the name and the package. */
@@ -111,8 +138,10 @@ public final class AppPanel {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(Ui.dp(context, 14), Ui.dp(context, 8), Ui.dp(context, 22), Ui.dp(context, 8));
-        row.setFocusable(true);
-        row.setFocusableInTouchMode(false);
+        // The row is not focusable: the list holds the focus and reports the
+        // click itself. A focusable row stops the list from ever doing that,
+        // and OK would do nothing at all.
+        row.setFocusable(false);
 
         ImageView icon = new ImageView(context);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -153,7 +182,7 @@ public final class AppPanel {
             this.host = host;
         }
 
-        void filterBar(ListView list) {
+        View filterBar() {
             LinearLayout bar = new LinearLayout(host);
             bar.setOrientation(LinearLayout.HORIZONTAL);
             bar.setPadding(Ui.dp(host, 14), Ui.dp(host, 8), Ui.dp(host, 14), Ui.dp(host, 4));
@@ -180,7 +209,7 @@ public final class AppPanel {
                 bar.addView(tab, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             }
-            list.addHeaderView(bar, null, false);
+            return bar;
         }
 
         void load() {
@@ -243,8 +272,6 @@ public final class AppPanel {
             View view = convertView;
             if (view == null) {
                 view = buildRow(host);
-                view.setOnClickListener(v -> {
-                });
             }
             Object[] parts = (Object[]) view.getTag();
             ImageView icon = (ImageView) parts[0];

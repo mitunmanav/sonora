@@ -64,7 +64,10 @@ public class HomeActivity extends Activity {
 
     /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
     private Bitmap wallpaperBitmap;
+    /** The key of the wallpaper that is on screen. */
     private String wallpaperKey;
+    /** The key of the newest request, so a decode that is overtaken can be dropped. */
+    private String wallpaperRequest = "";
     private Bitmap settingsIcon;
     private TextView emptyState;
 
@@ -105,6 +108,22 @@ public class HomeActivity extends Activity {
         // and rebuild it a second time.
         gridKey = prefs.gridKey();
         loadApps();
+        if (!prefs.welcomeSeen()) {
+            // The setup runs once, on the first launch. It is marked as seen
+            // before it opens, so a restart in the middle of it does not bring
+            // it back, and BACK walks out of it at any point.
+            prefs.setWelcomeSeen(true);
+            openSetup();
+        }
+    }
+
+    private void openSetup() {
+        try {
+            startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "wizard"));
+        } catch (RuntimeException e) {
+            Ui.toast(this, "Could not open the setup");
+        }
     }
 
     private void buildLayout() {
@@ -514,6 +533,7 @@ public class HomeActivity extends Activity {
         // Decoding a full-screen JPEG takes long enough to drop frames, so it
         // happens off the main thread and the result is applied back on it.
         final String wanted = key;
+        wallpaperRequest = wanted;
         new Thread(() -> {
             Bitmap bitmap = null;
             try {
@@ -534,7 +554,7 @@ public class HomeActivity extends Activity {
             runOnUiThread(() -> {
                 // A newer wallpaper was asked for while this one was decoding:
                 // this one is stale and its memory is better given back.
-                if (!wanted.equals(wallpaperKey)) {
+                if (!wanted.equals(wallpaperRequest)) {
                     if (decoded != null) {
                         decoded.recycle();
                     }

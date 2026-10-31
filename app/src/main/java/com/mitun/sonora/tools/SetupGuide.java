@@ -61,8 +61,22 @@ public final class SetupGuide {
 
         rows.add(SettingRow.header("Connect"));
         rows.add(SettingRow.value("This TV's IP address", ip.length() == 0 ? "Not connected" : ip));
-        rows.add(SettingRow.action("Copy the adb connect command",
-                () -> copy(host, "adb connect " + (ip.length() == 0 ? "<this TV's IP>" : ip) + ":5555")));
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Wireless debugging listens on a port of its own and has to be
+            // paired first. The number is on the wireless debugging screen.
+            rows.add(SettingRow.note("Wireless debugging uses the port and the code shown "
+                    + "on the TV's wireless debugging screen."));
+            rows.add(SettingRow.action("Copy the adb pair command",
+                    () -> copy(host, "adb pair " + (ip.length() == 0 ? "<this TV's IP>" : ip)
+                            + ":<port shown on the TV>")));
+            rows.add(SettingRow.action("Copy the adb connect command",
+                    () -> copy(host, "adb connect " + (ip.length() == 0 ? "<this TV's IP>" : ip)
+                            + ":<port shown on the TV>")));
+        } else {
+            rows.add(SettingRow.action("Copy the adb connect command",
+                    () -> copy(host, "adb connect "
+                            + (ip.length() == 0 ? "<this TV's IP>" : ip) + ":5555")));
+        }
         rows.add(SettingRow.action("Copy the adb devices command",
                 () -> copy(host, "adb devices -l")));
         rows.add(SettingRow.action("Copy this TV's details", () -> copy(host, details(host))));

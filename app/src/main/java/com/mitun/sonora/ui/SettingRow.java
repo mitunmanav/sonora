@@ -25,6 +25,8 @@ public final class SettingRow {
     public static final int DANGER = 5;
     /** A value that opens a picker when OK is pressed. */
     public static final int CHOICE = 6;
+    /** A line of explanation. It is never focused and never takes an action. */
+    public static final int NOTE = 7;
 
     private final String title;
     private final int type;
@@ -74,6 +76,13 @@ public final class SettingRow {
         return new SettingRow(title, DANGER, action);
     }
 
+    /** A line of prose under a row. */
+    public static SettingRow note(String text) {
+        SettingRow row = new SettingRow(text, NOTE, null);
+        row.value = text;
+        return row;
+    }
+
     public String title() {
         return title;
     }
@@ -97,14 +106,26 @@ public final class SettingRow {
             return view;
         }
 
+        if (type == NOTE) {
+            TextView view = new TextView(context);
+            view.setText(title);
+            view.setTextColor(0x8CFFFFFF);
+            Type.apply(view, Type.CAPTION);
+            view.setPadding(Ui.dp(context, 22), Ui.dp(context, 2), Ui.dp(context, 22), Ui.dp(context, 10));
+            view.setFocusable(false);
+            return view;
+        }
+
         LinearLayout line = new LinearLayout(context);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
         line.setPadding(Ui.dp(context, 22), Ui.dp(context, 12), Ui.dp(context, 22), Ui.dp(context, 12));
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(Ui.dpf(context, 12));
-        background.setColor(0x00FFFFFF);
-        line.setBackground(background);
+        // The row carries the same material as the rest of the app: a
+        // translucent surface with a light top edge. It is invisible until
+        // the row has the focus, then it dims what is behind it.
+        GlassDrawable material = new GlassDrawable(context, 12f, 1f);
+        material.setAlpha(0);
+        line.setBackground(material);
         line.setFocusable(true);
         line.setFocusableInTouchMode(false);
         line.setContentDescription(title);
@@ -132,18 +153,22 @@ public final class SettingRow {
             chevron.setTextColor(0x80FFFFFF);
             chevron.setTextSize(22);
             chevron.setGravity(Gravity.CENTER_VERTICAL);
-            line.addView(chevron, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            // The chevron needs air, or it reads as part of the text beside it.
+            chevronParams.leftMargin = Ui.dp(context, 14);
+            line.addView(chevron, chevronParams);
         }
 
         final TextView valueText = valueView;
         final TextView labelText = label;
         line.setOnFocusChangeListener((v, focused) -> {
-            GradientDrawable bg = (GradientDrawable) v.getBackground();
-            bg.setColor(focused ? 0x33FFFFFF : 0x00FFFFFF);
+            GlassDrawable bg = (GlassDrawable) v.getBackground();
+            bg.setAlpha(focused ? 255 : 0);
             if (type != DANGER) {
                 labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
             }
+            valueText.setTextColor(focused ? 0xE6FFFFFF : 0xB3FFFFFF);
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());
