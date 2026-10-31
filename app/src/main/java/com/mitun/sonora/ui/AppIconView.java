@@ -1,6 +1,5 @@
 package com.mitun.sonora.ui;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -13,7 +12,6 @@ import android.graphics.Shader;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.View;
-import android.view.animation.OvershootInterpolator;
 
 import com.mitun.sonora.AppEntry;
 
@@ -38,7 +36,6 @@ public final class AppIconView extends View {
     private float sheen;
     private float parallaxX;
     private float parallaxY;
-    private ValueAnimator sheenAnimator;
     private LinearGradient backgroundGradient;
 
     public AppIconView(Context context) {
@@ -68,31 +65,80 @@ public final class AppIconView extends View {
         invalidate();
     }
 
-    public void setParallax(float xPx, float yPx) {
-        parallaxX = xPx;
-        parallaxY = yPx;
-        invalidate();
+    /**
+     * Slides the artwork inside the card without moving the card itself.
+     *
+     * The shift is a kick: the artwork jumps towards the new position and
+     * springs back to rest, so the card looks like it has depth while it is
+     * being pushed.
+     */
+    public void nudgeParallax(float xPx, float yPx) {
+        Motion.FloatProperty x = parallaxX();
+        Motion.FloatProperty y = parallaxY();
+        Motion.nudgeCustom(this, 0, xPx, x);
+        Motion.nudgeCustom(this, 1, yPx, y);
+        Motion.springCustom(this, 0, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS, x);
+        Motion.springCustom(this, 1, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS, y);
+    }
+
+    private Motion.FloatProperty parallaxX() {
+        return new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return parallaxX;
+            }
+
+            @Override
+            public void set(float value) {
+                parallaxX = value;
+                invalidate();
+            }
+        };
+    }
+
+    private Motion.FloatProperty parallaxY() {
+        return new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return parallaxY;
+            }
+
+            @Override
+            public void set(float value) {
+                parallaxY = value;
+                invalidate();
+            }
+        };
+    }
+
+    private Motion.FloatProperty sheenValue() {
+        return new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return sheen;
+            }
+
+            @Override
+            public void set(float value) {
+                sheen = value;
+                invalidate();
+            }
+        };
     }
 
     public void setFocused(boolean focused) {
-        if (sheenAnimator != null) {
-            sheenAnimator.cancel();
-        }
         if (focused) {
-            sheen = 0f;
-            sheenAnimator = ValueAnimator.ofFloat(0f, 1f);
-            sheenAnimator.setDuration(950);
-            sheenAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
-            sheenAnimator.addUpdateListener(a -> {
-                sheen = (float) a.getAnimatedValue();
-                invalidate();
-            });
+            // The sheen is a spring too, so a focus that lands on a card
+            // which is already lit carries on from where the light is.
+            Motion.springCustom(this, 2, 1f, Motion.DAMPING_CRITICAL, 0.55f,
+                    sheenValue());
             setElevation(Ui.dpf(getContext(), 22f));
-            sheenAnimator.start();
         } else {
-            sheen = 0f;
+            Motion.springCustom(this, 2, 0f, Motion.DAMPING_CRITICAL, 0.35f,
+                    sheenValue());
             setElevation(Ui.dpf(getContext(), 4f));
-            invalidate();
         }
     }
 
@@ -102,9 +148,8 @@ public final class AppIconView extends View {
         rect.set(0, 0, w, h);
         clipPath.reset();
         clipPath.addRoundRect(rect, h * 0.185f, h * 0.185f, Path.Direction.CW);
-        float radius = h * 0.185f;
         highlightPaint.setShader(new LinearGradient(0, 0, 0, h,
-                new int[]{0x22FFFFFF, 0x00FFFFFF, 0x05000000, 0x22000000},
+                new int[]{0x22FFFFFF, 0x00FFFFFF, 0x05000000, 0x22FFFFFF},
                 new float[]{0f, 0.28f, 0.82f, 1f}, Shader.TileMode.CLAMP));
         sheenPaint.setShader(new LinearGradient(0, 0, w * 0.55f, h,
                 new int[]{0x00FFFFFF, 0x16FFFFFF, 0x00FFFFFF},
@@ -208,10 +253,7 @@ public final class AppIconView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
-        if (sheenAnimator != null) {
-            sheenAnimator.cancel();
-            sheenAnimator = null;
-        }
+        Motion.cancel(this);
         super.onDetachedFromWindow();
     }
 }

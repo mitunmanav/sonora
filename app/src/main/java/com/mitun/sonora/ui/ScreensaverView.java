@@ -4,17 +4,14 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.Typeface;
+import android.graphics.Shader;
 import android.view.View;
 
 import com.mitun.sonora.Scenes;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 /**
  * The screen saver: full-bleed aerial stills with a very slow drift, crossfaded
@@ -32,7 +29,8 @@ public final class ScreensaverView extends View {
 
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix matrix = new Matrix();
     private final RectF dest = new RectF();
 
@@ -48,11 +46,15 @@ public final class ScreensaverView extends View {
     private int sceneDurationMs = 60000;
     private float panDirection = 1f;
     private Listener listener;
+    private final boolean reduced;
 
     public ScreensaverView(Context context) {
         super(context);
-        textPaint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        textPaint.setColor(Color.WHITE);
+        // A full-screen drifting background is exactly what reduced motion is
+        // meant to stop, so the stills hold still and only cross-fade.
+        reduced = Motion.isReduced(context);
+        Type.apply(titlePaint, Type.DISPLAY, context);
+        Type.apply(creditPaint, Type.BODY, context);
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -169,7 +171,7 @@ public final class ScreensaverView extends View {
     }
 
     private void drawScene(Canvas canvas, Bitmap bitmap, float t) {
-        float scale = 1.04f + 0.06f * t;
+        float scale = reduced ? 1.04f : 1.04f + 0.06f * t;
         float dx = (bitmap.getWidth() - getWidth() * scale) * (0.5f + 0.5f * panDirection * t);
         float dy = (bitmap.getHeight() - getHeight() * scale) * 0.5f;
         matrix.reset();
@@ -179,21 +181,20 @@ public final class ScreensaverView extends View {
     }
 
     private void drawOverlay(Canvas canvas, int w, int h) {
-        scrimPaint.setShader(Ui.verticalScrim(0x00000000, 0x00000000, 0x8C000000));
+        if (scrimPaint.getShader() == null) {
+            // Built once: a new gradient every frame is garbage every frame.
+            scrimPaint.setShader(new LinearGradient(0, h * 0.72f, 0, h,
+                    new int[]{0x00000000, 0x8C000000},
+                    new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+        }
         canvas.drawRect(0, h * 0.72f, w, h, scrimPaint);
         if (!showOverlay) {
             return;
         }
         Scenes.Scene scene = Scenes.ALL.get(Math.max(0, currentIndex));
         float density = getResources().getDisplayMetrics().density;
-        textPaint.setTextSize(30 * density);
-        textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        canvas.drawText(scene.name, 48 * density, h - 56 * density, textPaint);
-        textPaint.setTextSize(22 * density);
-        textPaint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        textPaint.setColor(0xCCFFFFFF);
-        canvas.drawText(scene.credit, 48 * density, h - 26 * density, textPaint);
-        textPaint.setColor(Color.WHITE);
+        canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
+        canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
     }
 
     public void showInfoOverlay() {

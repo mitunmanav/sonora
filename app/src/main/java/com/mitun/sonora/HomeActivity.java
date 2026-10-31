@@ -2,12 +2,10 @@ package com.mitun.sonora;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -23,16 +21,17 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.mitun.sonora.ui.AppTileView;
-import com.mitun.sonora.ui.ScreensaverView;
 import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.GlassDrawable;
 import com.mitun.sonora.ui.GlassPillView;
 import com.mitun.sonora.ui.HeroBackgroundView;
+import com.mitun.sonora.ui.Motion;
+import com.mitun.sonora.ui.ScreensaverView;
+import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -47,7 +46,6 @@ public class HomeActivity extends Activity {
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
     private final List<AppTileView> tiles = new ArrayList<>();
-    private final List<LinearLayout> rows = new ArrayList<>();
 
     private FrameLayout root;
     private HeroBackgroundView hero;
@@ -56,7 +54,6 @@ public class HomeActivity extends Activity {
     private TextView shelfSubtitle;
     private LinearLayout grid;
     private ScrollView scroller;
-    private View topShelf;
     private FrameLayout overlayHost;
     private View choiceOverlay;
     private ScreensaverView screensaver;
@@ -70,19 +67,30 @@ public class HomeActivity extends Activity {
     private String wallpaperKey;
     private Bitmap settingsIcon;
     private TextView emptyState;
-    /** Every launchable app, before the hidden ones are filtered out. */
-    private List<AppEntry> allApps = new ArrayList<>();
+
+    /** The app that had the focus, so a rebuild can put the focus back on it. */
+    private String focusedPackage;
+    /** A fingerprint of the settings the grid was built from. */
+    private String gridKey = "";
 
     private final Runnable idleWatcher = new Runnable() {
         @Override
         public void run() {
             int delay = prefs.screensaverDelaySec();
-            if (delay > 0 && !suppressIdle && screensaver == null
+            if (delay <= 0) {
+                // The screen saver is off, so there is nothing to watch for.
+                return;
+            }
+            if (!suppressIdle && screensaver == null
                     && System.currentTimeMillis() - lastInteraction > delay * 1000L) {
                 showScreensaver();
                 return;
             }
-            handler.postDelayed(this, 1000);
+            // Sleep until it is actually due. Waking up every second to find
+            // out that it is not is exactly the kind of thing a launcher on a
+            // TV must not do.
+            long due = lastInteraction + delay * 1000L;
+            handler.postDelayed(this, Math.max(1000L, due - System.currentTimeMillis()));
         }
     };
 
@@ -93,6 +101,9 @@ public class HomeActivity extends Activity {
         Ui.immersive(this);
         buildLayout();
         handler.post(idleWatcher);
+        // Seeded here so the first resume does not read the grid as changed
+        // and rebuild it a second time.
+        gridKey = prefs.gridKey();
         loadApps();
     }
 
@@ -118,13 +129,11 @@ public class HomeActivity extends Activity {
         titles.setOrientation(LinearLayout.VERTICAL);
         shelfTitle = new TextView(this);
         shelfTitle.setTextColor(Color.WHITE);
-        shelfTitle.setTextSize(30);
-        shelfTitle.setTypeface(Ui.light());
-        shelfTitle.setLetterSpacing(-0.01f);
+        Type.apply(shelfTitle, Type.TITLE);
         titles.addView(shelfTitle);
         shelfSubtitle = new TextView(this);
         shelfSubtitle.setTextColor(0xB3FFFFFF);
-        shelfSubtitle.setTextSize(14);
+        Type.apply(shelfSubtitle, Type.CAPTION);
         shelfSubtitle.setPadding(0, Ui.dp(this, 6), 0, 0);
         titles.addView(shelfSubtitle);
         shelf.addView(titles, new FrameLayout.LayoutParams(
@@ -138,7 +147,6 @@ public class HomeActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.END);
         shelf.addView(clockPill, pillParams);
-        topShelf = shelf;
 
         // The icon grid is anchored to the bottom of the screen, the way tvOS
         // floats it over the artwork. It only scrolls when the list outgrows
@@ -183,7 +191,6 @@ public class HomeActivity extends Activity {
             final List<AppEntry> loaded = result;
             final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(), prefs.hidden());
             runOnUiThread(() -> {
-                allApps = loaded;
                 appEntries = ordered.toArray(new AppEntry[0]);
                 buildGrid();
             });
@@ -193,7 +200,6 @@ public class HomeActivity extends Activity {
     private void buildGrid() {
         grid.removeAllViews();
         tiles.clear();
-        rows.clear();
 
         Grid.Metrics metrics = gridMetrics();
         int columns = metrics.columns;
@@ -259,16 +265,50 @@ public class HomeActivity extends Activity {
             } else {
                 grid.addView(row, rowParams);
             }
-            rows.add(row);
         }
         if (!tiles.isEmpty()) {
             // The grid is not laid out yet, so the focus has to wait for it.
             // Asking now leaves the focus on whichever tile the framework
             // picks instead of the first one.
-            final AppTileView first = tiles.get(0);
-            first.post(() -> focusFirstTile());
+            restoreFocus();
         }
+        // The grid now matches these settings, so a later resume that finds
+        // the same key knows there is nothing to rebuild.
+        gridKey = prefs.gridKey();
         updateShelf(appEntries.length > 0 ? appEntries[0] : null);
+    }
+
+    /**
+     * Puts the focus back where it was.
+     *
+     * A rebuilt grid is a new set of views, so the old focus is gone. The app
+     * that had it gets it again; if it is no longer there, the first tile does.
+     */
+    private void restoreFocus() {
+        if (tiles.isEmpty()) {
+            return;
+        }
+        AppTileView target = null;
+        if (focusedPackage != null) {
+            for (AppTileView tile : tiles) {
+                AppEntry entry = tile.entry();
+                if (entry != null && focusedPackage.equals(entry.packageName)) {
+                    target = tile;
+                    break;
+                }
+            }
+        }
+        if (target == null) {
+            target = tiles.get(0);
+        }
+        final AppTileView focus = target;
+        focus.post(() -> {
+            // isFocused, not hasWindowFocus: the window having focus says
+            // nothing about which tile in it is focused.
+            if (!isFinishing() && !focus.isFocused()) {
+                focus.requestFocus();
+            }
+        });
     }
 
     /** The gear for the Settings tile, drawn once and reused. */
@@ -284,10 +324,8 @@ public class HomeActivity extends Activity {
         if (emptyState == null) {
             emptyState = new TextView(this);
             emptyState.setTextColor(Color.WHITE);
-            emptyState.setTextSize(20);
-            emptyState.setTypeface(Ui.light());
+            Type.apply(emptyState, Type.BODY);
             emptyState.setGravity(Gravity.CENTER);
-            emptyState.setLineSpacing(Ui.dpf(this, 6), 1f);
             emptyState.setPadding(Ui.dp(this, 30), Ui.dp(this, 24), Ui.dp(this, 30), Ui.dp(this, 24));
         }
         emptyState.setText(getString(R.string.no_apps));
@@ -307,6 +345,7 @@ public class HomeActivity extends Activity {
         }
         hero.setEntry(entry);
         updateShelf(entry);
+        focusedPackage = entry.packageName;
         View focused = getCurrentFocus();
         View previous = lastFocused;
         if (previous != null && previous != focused) {
@@ -320,8 +359,10 @@ public class HomeActivity extends Activity {
                 dx = Math.signum(b[0] - a[0]);
                 dy = Math.signum(b[1] - a[1]);
             }
-            if (previous instanceof AppTileView) {
-                ((AppTileView) previous).sway(dx, dy);
+            // The card that just took the focus leans into the direction of
+            // travel and settles back, the way a tvOS card does.
+            if (focused instanceof AppTileView) {
+                ((AppTileView) focused).lean(dx, dy);
             }
         }
         lastFocused = focused;
@@ -453,6 +494,9 @@ public class HomeActivity extends Activity {
         if (choiceOverlay != null) {
             overlayHost.removeView(choiceOverlay);
             choiceOverlay = null;
+            // The overlay had the focus, and removing it leaves nothing
+            // focused, so the tile the user came from gets it back.
+            restoreFocus();
         }
         suppressIdle = false;
     }
@@ -467,20 +511,46 @@ public class HomeActivity extends Activity {
             hero.setWallpaper(wallpaperBitmap);
             return;
         }
-        Bitmap bitmap = null;
-        if (index < 0 && uri != null) {
-            // A photo the user picked; fall back to a bundled scene if the
-            // permission was refused or the file has gone.
-            bitmap = Ui.decodeUri(getResources(), getContentResolver(),
-                    Uri.parse(uri), width);
-        }
-        if (bitmap == null) {
-            bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
-                    Scenes.safeIndex(index)).res, width, height);
-        }
-        wallpaperBitmap = bitmap;
-        wallpaperKey = key;
-        hero.setWallpaper(bitmap);
+        // Decoding a full-screen JPEG takes long enough to drop frames, so it
+        // happens off the main thread and the result is applied back on it.
+        final String wanted = key;
+        new Thread(() -> {
+            Bitmap bitmap = null;
+            try {
+                if (index < 0 && uri != null) {
+                    // A photo the user picked; fall back to a bundled scene if
+                    // the permission was refused or the file has gone.
+                    bitmap = Ui.decodeUri(getResources(), getContentResolver(),
+                            Uri.parse(uri), width);
+                }
+                if (bitmap == null) {
+                    bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
+                            Scenes.safeIndex(index)).res, width, height);
+                }
+            } catch (RuntimeException | OutOfMemoryError ignored) {
+                bitmap = null;
+            }
+            final Bitmap decoded = bitmap;
+            runOnUiThread(() -> {
+                // A newer wallpaper was asked for while this one was decoding:
+                // this one is stale and its memory is better given back.
+                if (!wanted.equals(wallpaperKey)) {
+                    if (decoded != null) {
+                        decoded.recycle();
+                    }
+                    return;
+                }
+                if (isFinishing() || isDestroyed()) {
+                    if (decoded != null) {
+                        decoded.recycle();
+                    }
+                    return;
+                }
+                wallpaperBitmap = decoded;
+                wallpaperKey = wanted;
+                hero.setWallpaper(wallpaperBitmap);
+            });
+        }, "sonora-wallpaper").start();
     }
 
     private void showScreensaver() {
@@ -524,9 +594,11 @@ public class HomeActivity extends Activity {
         root.removeView(screensaver);
         screensaver = null;
         lastInteraction = System.currentTimeMillis();
-        if (!tiles.isEmpty()) {
-            tiles.get(0).requestFocus();
-        }
+        restoreFocus();
+        // The watcher stops when the screen saver comes up, so it has to
+        // start again now that it is gone.
+        handler.removeCallbacks(idleWatcher);
+        handler.post(idleWatcher);
     }
 
     @Override
@@ -550,8 +622,13 @@ public class HomeActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    moveFocus(event.getKeyCode());
-                    return true;
+                    // Only the grid is driven from here. An overlay or the
+                    // screen saver moves its own focus, and it can only do
+                    // that if the key reaches it.
+                    if (moveFocus(event.getKeyCode())) {
+                        return true;
+                    }
+                    break;
                 default:
                     break;
             }
@@ -564,44 +641,49 @@ public class HomeActivity extends Activity {
     /**
      * Moves the focus the way tvOS does: along the row, then between the
      * rows, with the clock above the first one.
+     *
+     * @return true when the grid handled the key. False means something else
+     *         has the focus and the key belongs to it.
      */
-    private void moveFocus(int key) {
-        if (tiles.isEmpty()) {
-            return;
-        }
-        int columns = gridMetrics().columns;
+    private boolean moveFocus(int key) {
         View focused = getCurrentFocus();
-        int index = focused instanceof AppTileView ? tiles.indexOf(focused) : -1;
-
-        if (index < 0) {
-            if (key == KeyEvent.KEYCODE_DPAD_DOWN && focused == clockPill) {
+        if (focused instanceof AppTileView) {
+            int index = tiles.indexOf(focused);
+            if (index < 0) {
+                return false;
+            }
+            int columns = gridMetrics().columns;
+            int row = index / columns;
+            int column = index % columns;
+            int target = -1;
+            switch (key) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    target = column > 0 ? index - 1 : -1;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    target = (column + 1 < columns && index + 1 < tiles.size()) ? index + 1 : -1;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    target = row > 0 ? index - columns : -1;
+                    break;
+                default:
+                    target = (index + columns < tiles.size()) ? index + columns : -1;
+                    break;
+            }
+            if (target >= 0) {
+                tiles.get(target).requestFocus();
+            } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
+                clockPill.requestFocus();
+            }
+            return true;
+        }
+        if (focused == clockPill) {
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
                 tiles.get(0).requestFocus();
             }
-            return;
+            return true;
         }
-
-        int row = index / columns;
-        int column = index % columns;
-        int target = -1;
-        switch (key) {
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-                target = column > 0 ? index - 1 : -1;
-                break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                target = (column + 1 < columns && index + 1 < tiles.size()) ? index + 1 : -1;
-                break;
-            case KeyEvent.KEYCODE_DPAD_UP:
-                target = row > 0 ? index - columns : -1;
-                break;
-            default:
-                target = (index + columns < tiles.size()) ? index + columns : -1;
-                break;
-        }
-        if (target >= 0) {
-            tiles.get(target).requestFocus();
-        } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
-            clockPill.requestFocus();
-        }
+        return false;
     }
 
     /** Handles BACK. Returns true when something consumed it. */
@@ -626,8 +708,26 @@ public class HomeActivity extends Activity {
         }
         // Nothing left to go back to, and Sonora is not the home screen, so
         // hand the user back to the home screen the TV really uses.
-        finish();
+        goHome();
         return true;
+    }
+
+    /**
+     * Leaves for the TV's own home screen.
+     *
+     * Finishing would drop the user back into whatever they were using before
+     * they opened Sonora, which on a TV is the last app they watched. The
+     * documented rule is that BACK always ends at the home screen.
+     */
+    private void goHome() {
+        Intent home = new Intent(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        try {
+            startActivity(home);
+        } catch (RuntimeException ignored) {
+            finish();
+        }
     }
 
     /**
@@ -646,19 +746,52 @@ public class HomeActivity extends Activity {
         super.onResume();
         Ui.immersive(this);
         lastInteraction = System.currentTimeMillis();
+        // The settings live in another activity, so a change made there is
+        // only seen when the launcher comes back. The grid is rebuilt when
+        // something that changes it has changed; the wallpaper has its own
+        // key, so it is checked every time.
+        if (gridChanged()) {
+            loadApps();
+        }
         applyWallpaper();
         clockPill.refresh();
+        Motion.refresh(this);
         if (screensaver != null) {
             hideScreensaver();
+        } else {
+            handler.removeCallbacks(idleWatcher);
+            handler.post(idleWatcher);
         }
+    }
+
+    /**
+     * True when a setting that changes the app grid has changed.
+     *
+     * The columns, the labels, the order and the hidden apps are all read
+     * when the grid is built, so a change to any of them means the grid has
+     * to be built again.
+     */
+    private boolean gridChanged() {
+        String key = prefs.gridKey();
+        if (key.equals(gridKey)) {
+            return false;
+        }
+        gridKey = key;
+        return true;
     }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         // The grid is sized from the live screen, so a resize or a density
-        // change has to rebuild it.
-        buildGrid();
+        // change has to rebuild it. The artwork is cached at the size of the
+        // old tile, so the cache goes too.
+        AppRepository.invalidate();
+        loadApps();
+        // The wallpaper is sized for the screen, so it goes as well.
+        wallpaperBitmap = null;
+        wallpaperKey = null;
+        hero.release();
         applyWallpaper();
     }
 
@@ -680,6 +813,8 @@ public class HomeActivity extends Activity {
         if (screensaver != null) {
             hideScreensaver();
         }
+        // Nothing runs while the launcher is in the background.
+        handler.removeCallbacks(idleWatcher);
     }
 
     @Override

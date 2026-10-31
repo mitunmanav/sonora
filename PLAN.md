@@ -153,7 +153,7 @@ com.mitun.sonora
 - [x] App manager, debug panel, guided setup guide
 - [x] File manager, LAN share, optional browser with a local ad blocker
 - [x] Design foundations: `Motion` (hand-written spring), `Type` (type scale)
-- [ ] Design pass: springs in the launcher, materials, reduced motion
+- [x] Design pass: springs in the launcher, materials, reduced motion
 - [ ] First-run setup wizard
 - [ ] Verify the tools end to end on the TV
 
@@ -223,7 +223,7 @@ com.mitun.sonora
 
 ## 6. Next session
 
-**P1 - Finish the design pass.**
+**P1 - Finish the design pass.** *(done - see section 7)*
 - Springs for the launcher's focus scale and parallax sway.
 - The type scale across the remaining screens.
 - Materials: a bright top edge, weight encoding hierarchy.
@@ -241,3 +241,85 @@ device yet.
 TV, it's going to set it up": wallpaper -> grid -> clock -> screen saver ->
 offer to become the default launcher. Runs once, skippable, never blocks.
 `Prefs.welcomeSeen()` is already there for it.
+
+## 7. Session: launcher only (no TV connected)
+
+Scope: the launcher and the shared `ui` package. The tools, the wizard and
+the APK/REA study are deliberately untouched this session.
+
+### F1. The spring foundation was broken
+`Spring` started every animation at `value = 0` and wrote that value to the
+view on the first frame. Every spring therefore snapped to its target
+instantly instead of animating: the panel slide-in never slid, and the
+focus scale never sprang. The spring also never read the view's current
+value, so a re-targeted animation could not continue from what was on
+screen.
+
+Fix: `Spring` becomes pure physics (no Android types) and `Motion` drives it
+from a `Choreographer`, reading the presentation value off the view before
+it starts and keeping value + velocity when it is re-targeted. Unit-tested.
+
+### F2. The lean and the parallax never ran
+`HomeActivity` asked the *previous* tile to sway, but `AppTileView.sway()`
+returns early when the tile is not focused - and the previous tile has
+already lost focus. So the 3D lean and the artwork parallax were dead code.
+The artwork offset was also never returned to rest.
+
+Fix: the newly focused tile leans, the lean springs back to zero, and the
+artwork inside the card shifts with the lean and springs back to rest with
+it.
+
+### F3. Tween -> spring in the launcher
+Focus scale, label fade and the lean were fixed-duration tweens with an
+overshoot interpolator. All three are springs now, so an interrupted focus
+change continues instead of restarting.
+
+### F4. The type scale on the launcher screens
+The shelf, the clock pill, the tile labels, the app menu and the screen
+saver overlay still used ad-hoc text sizes. They use `Type` now, including
+a paint variant for the canvas-drawn screen saver text.
+
+### F5. Materials
+`GlassDrawable` gets a bright top edge (light catching the material) and the
+weight hierarchy is corrected: the big app bar is the heavier material, the
+small clock pill the lighter one. It was the other way round.
+
+### F6. Reduced motion
+`Prefs.reduceMotion()` had no settings row and nothing consumed it beyond
+the first read. There is a row now, and it is honoured by the focus scale,
+the lean, the sheen, the screen saver drift and the panel transitions -
+each degrading to a gentler equivalent, never to nothing.
+
+### F7. Launcher edge cases
+- The wallpaper was decoded on the main thread on every resume: now off it.
+- The idle watcher woke the CPU every second for nothing: now it sleeps
+  until the screen saver is actually due. It also stopped for good after the
+  first screen saver - it starts again when the saver is dismissed and it
+  stops entirely while the launcher is in the background.
+- Changing "apps per row", "app names", the order or the hidden apps in
+  Settings did nothing until the app was restarted: the grid now rebuilds
+  on resume.
+- A rebuilt grid lost the focus: the focused app is now kept.
+- "Reload apps" promised a reload that never happened: it does now.
+- BACK left to whatever app was open before, not to the TV home screen.
+- A configuration change reused artwork rendered for the old screen size.
+- The app artwork was cached at the width of the tile it was first drawn at,
+  so changing the column count left every banner the wrong size. The cache
+  is now keyed by the tile width.
+- `Motion` keeps its runners in a `WeakHashMap` keyed by the view, so a
+  runner that held its own view would have pinned its own key and never been
+  collected. The view properties hold the view weakly.
+- Dead code removed: the unused banner blur, the per-frame scrim
+  allocation, the unused fields, the dead helpers in `Ui`.
+
+### F8. The D-pad never reached the overlays
+The activity intercepts the D-pad to drive the grid, but it did so before
+`super.dispatchKeyEvent`, so the app menu and the screen saver never saw the
+arrow keys: the menu could not be walked and the saver could not change
+scene. The grid now only takes the D-pad when the grid has the focus;
+anything else gets the key.
+
+### F9. The spring physics is unit-tested
+`Spring` is pure maths, so it is tested without a device: a critical spring
+never overshoots, a springy one does, a re-aimed spring keeps its speed and
+still arrives, and a long stall cannot make it explode.

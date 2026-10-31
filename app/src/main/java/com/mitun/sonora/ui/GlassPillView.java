@@ -50,15 +50,13 @@ public final class GlassPillView extends FrameLayout {
         text.setGravity(Gravity.END);
         time = new TextView(context);
         time.setTextColor(Ui.INK);
-        time.setTextSize(17);
-        time.setTypeface(Ui.medium());
+        Type.apply(time, Type.BODY);
         time.setGravity(Gravity.END);
         time.setIncludeFontPadding(false);
         text.addView(time);
         date = new TextView(context);
         date.setTextColor(Ui.INK_TERTIARY);
-        date.setTextSize(10);
-        date.setTypeface(Ui.regular());
+        Type.apply(date, Type.MICRO);
         date.setGravity(Gravity.END);
         date.setIncludeFontPadding(false);
         text.addView(date);
@@ -86,10 +84,10 @@ public final class GlassPillView extends FrameLayout {
         setContentDescription("Settings");
 
         setOnFocusChangeListener((v, hasFocus) -> {
-            animate().scaleX(hasFocus ? 1.055f : 1f)
-                    .scaleY(hasFocus ? 1.055f : 1f)
-                    .setDuration(hasFocus ? 220 : 160)
-                    .start();
+            // A spring, so moving the focus on before the pill has settled
+            // continues from where it is instead of starting over.
+            Motion.scale(this, hasFocus ? 1.055f : 1f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS);
             setElevation(Ui.dpf(context, hasFocus ? 18f : 8f));
         });
         setOnClickListener(v -> {
@@ -132,7 +130,7 @@ public final class GlassPillView extends FrameLayout {
     @Override
     protected void onDetachedFromWindow() {
         handler.removeCallbacks(tick);
+        Motion.cancel(this);
         super.onDetachedFromWindow();
     }
-
 }

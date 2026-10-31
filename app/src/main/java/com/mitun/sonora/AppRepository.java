@@ -31,14 +31,30 @@ public final class AppRepository {
     private static final int BANNER_MAX_W = 480;
 
     private static volatile List<AppEntry> cached;
+    /** The tile width the cached artwork was stored at. */
+    private static volatile int cachedWidth = -1;
 
     private AppRepository() {
     }
 
-    /** The cached list, loading it on a background thread if it is missing. */
+    /**
+     * The cached list, loading it on a background thread if it is missing.
+     *
+     * @param tileWidthPx the width the artwork should be stored at, or 0 when
+     *                    the caller only wants the names and does not care
+     *                    what size the artwork is
+     */
     public static List<AppEntry> get(Context context, int tileWidthPx) {
         List<AppEntry> local = cached;
-        return local != null ? local : load(context, tileWidthPx);
+        if (local == null) {
+            return load(context, tileWidthPx);
+        }
+        if (tileWidthPx > 0 && cachedWidth != tileWidthPx) {
+            // The artwork was stored for a different tile, so it is the wrong
+            // size now. Reload rather than draw it stretched.
+            return load(context, tileWidthPx);
+        }
+        return local;
     }
 
     /** Rebuilds the list and the artwork. Call off the main thread. */
@@ -49,11 +65,13 @@ public final class AppRepository {
         collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), byPackage, tileWidthPx);
         List<AppEntry> out = new ArrayList<>(byPackage.values());
         cached = out;
+        cachedWidth = tileWidthPx;
         return out;
     }
 
     public static void invalidate() {
         cached = null;
+        cachedWidth = -1;
     }
 
     private static void collect(Context context, PackageManager pm, Intent intent,

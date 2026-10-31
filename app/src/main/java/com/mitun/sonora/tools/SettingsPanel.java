@@ -14,6 +14,7 @@ import com.mitun.sonora.Prefs;
 import com.mitun.sonora.R;
 import com.mitun.sonora.Scenes;
 import com.mitun.sonora.ui.ChoiceOverlay;
+import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Ui;
 
@@ -66,6 +67,14 @@ public final class SettingsPanel {
                     prefs.setShowSeconds(!prefs.showSeconds());
                     refresh(host);
                 }));
+        rows.add(SettingRow.toggle("Reduce motion", prefs.reduceMotion(),
+                () -> {
+                    prefs.setReduceMotion(!prefs.reduceMotion());
+                    // The launcher caches the setting, so it has to be told
+                    // that it changed or the next motion keeps animating.
+                    Motion.refresh(host);
+                    refresh(host);
+                }));
 
         rows.add(SettingRow.header("Screen Saver"));
         rows.add(SettingRow.choice("Start after", delayName(prefs),
@@ -81,6 +90,9 @@ public final class SettingsPanel {
                 () -> pickHiddenApps(host)));
         rows.add(SettingRow.action("Reload apps", () -> {
             AppRepository.invalidate();
+            // The launcher compares this key on resume, so this is how it
+            // learns that the app list has to be read again.
+            prefs.bumpAppsEpoch();
             Ui.toast(host, "Apps will reload when you go back");
         }));
         rows.add(SettingRow.action("Reset app order", () -> {

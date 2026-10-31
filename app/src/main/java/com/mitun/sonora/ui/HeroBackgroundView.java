@@ -14,17 +14,20 @@ import android.view.View;
 import com.mitun.sonora.AppEntry;
 
 /**
- * The full-bleed hero. A still aerial is the base; the focused app's banner is
- * reduced to a tiny bitmap and stretched back up, which gives a soft cinematic
- * wash for practically zero runtime cost.
+ * The full-bleed hero: a still aerial with a wash of the focused app's own
+ * colour over it.
+ *
+ * The focused app's banner is deliberately not painted here: tvOS shows the
+ * app's own content in that space, which a launcher does not have, so a
+ * stretched low-resolution banner would only look like a mistake.
  */
 public final class HeroBackgroundView extends View {
     private final Paint bitmapPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint tintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fallbackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private Bitmap wallpaper;
-    private Bitmap bannerBlur;
     private int accent = 0xFF3A6B8C;
 
     public HeroBackgroundView(Context context) {
@@ -38,31 +41,13 @@ public final class HeroBackgroundView extends View {
 
     /** Drops the artwork this view holds. The wallpaper belongs to the caller. */
     public void release() {
-        if (bannerBlur != null) {
-            bannerBlur.recycle();
-            bannerBlur = null;
-        }
         wallpaper = null;
         invalidate();
     }
 
     public void setEntry(AppEntry entry) {
-        if (bannerBlur != null) {
-            bannerBlur.recycle();
-            bannerBlur = null;
-        }
         accent = entry == null ? 0xFF3A6B8C : entry.accent;
         updateTint();
-        if (entry != null && entry.banner != null && !entry.banner.isRecycled()) {
-            try {
-                bannerBlur = Bitmap.createScaledBitmap(entry.banner, 28,
-                        Math.max(16, Math.round(28 * entry.banner.getHeight()
-                                / (float) entry.banner.getWidth())), true);
-            } catch (RuntimeException | OutOfMemoryError ignored) {
-                bannerBlur = null;
-            }
-        }
-        invalidate();
     }
 
     @Override
@@ -73,9 +58,13 @@ public final class HeroBackgroundView extends View {
         scrimPaint.setShader(new LinearGradient(0, 0, 0, h,
                 new int[]{0x8A000000, 0x1A000000, 0x30000000, 0xD9000000},
                 new float[]{0f, 0.30f, 0.58f, 1f}, Shader.TileMode.CLAMP));
+        fallbackPaint.setShader(new LinearGradient(0, 0, 0, h,
+                new int[]{0xFF0E1825, 0xFF243748, 0xFF070A0F},
+                null, Shader.TileMode.CLAMP));
         updateTint();
     }
 
+    /** The wash of colour changes with the focused app, so it is rebuilt there. */
     private void updateTint() {
         int w = getWidth();
         int h = getHeight();
@@ -95,10 +84,7 @@ public final class HeroBackgroundView extends View {
         if (wallpaper != null && !wallpaper.isRecycled()) {
             Ui.drawCenterCrop(canvas, wallpaper, rect, 1.015f, 0, 0);
         } else {
-            Paint gradient = new Paint();
-            gradient.setShader(new LinearGradient(0, 0, 0, h,
-                    new int[]{0xFF0E1825, 0xFF243748, 0xFF070A0F}, null, Shader.TileMode.CLAMP));
-            canvas.drawRect(rect, gradient);
+            canvas.drawRect(rect, fallbackPaint);
         }
         canvas.drawRect(rect, tintPaint);
         canvas.drawRect(rect, scrimPaint);
@@ -106,10 +92,7 @@ public final class HeroBackgroundView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
-        if (bannerBlur != null) {
-            bannerBlur.recycle();
-            bannerBlur = null;
-        }
+        wallpaper = null;
         super.onDetachedFromWindow();
     }
 }
