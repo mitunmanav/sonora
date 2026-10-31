@@ -63,7 +63,7 @@ public final class ChoiceOverlay extends FrameLayout {
 
         optionCount = options.length;
         for (int i = 0; i < options.length; i++) {
-            addOption(context, options[i], i == selectedIndex);
+            addOption(context, options[i], i == selected);
         }
         if (options.length == 0) {
             // A picker with no options would be a modal the remote cannot

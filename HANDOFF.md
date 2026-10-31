@@ -12,7 +12,7 @@ the Apple tvOS 26 home screen, is extremely light on system resources, and is
 fully customisable. It ships a screen saver (Daydream) because the previous
 session on this TV removed MiTV's own screen saver.
 
-The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 16
+The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 19
 commits** — use git, it exists so large refactors are safe.
 
 Work in **ponytail mode (full)**: smallest complete change, no speculative
