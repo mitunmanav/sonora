@@ -1,0 +1,140 @@
+package com.mitun.aerial;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
+/** All user choices in one tiny place. */
+public final class Prefs {
+    private static final String FILE = "aerial";
+    public static final int LABELS_OFF = 0;
+    public static final int LABELS_FOCUSED = 1;
+    public static final int LABELS_ALL = 2;
+
+    private final SharedPreferences sp;
+    private final Context appContext;
+
+    public Prefs(Context context) {
+        appContext = context.getApplicationContext();
+        sp = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    public int wallpaper() {
+        return sp.getInt("wallpaper", 0);
+    }
+
+    public String wallpaperUri() {
+        return sp.getString("wallpaper_uri", null);
+    }
+
+    public void setWallpaper(int index, String uri) {
+        sp.edit().putInt("wallpaper", index).putString("wallpaper_uri", uri).apply();
+    }
+
+    public int columns() {
+        return Math.max(4, Math.min(8, sp.getInt("columns", 6)));
+    }
+
+    public void setColumns(int columns) {
+        sp.edit().putInt("columns", Math.max(4, Math.min(8, columns))).apply();
+    }
+
+    public int labels() {
+        return Math.max(0, Math.min(2, sp.getInt("labels", LABELS_FOCUSED)));
+    }
+
+    public void setLabels(int mode) {
+        sp.edit().putInt("labels", mode).apply();
+    }
+
+    public boolean clock24() {
+        return sp.getBoolean("clock24", android.text.format.DateFormat.is24HourFormat(appContext));
+    }
+
+    public void setClock24(boolean value) {
+        sp.edit().putBoolean("clock24", value).apply();
+    }
+
+    public boolean showDate() {
+        return sp.getBoolean("show_date", false);
+    }
+
+    public void setShowDate(boolean value) {
+        sp.edit().putBoolean("show_date", value).apply();
+    }
+
+    public boolean showSeconds() {
+        return sp.getBoolean("show_seconds", false);
+    }
+
+    public void setShowSeconds(boolean value) {
+        sp.edit().putBoolean("show_seconds", value).apply();
+    }
+
+    public boolean reduceMotion() {
+        return sp.getBoolean("reduce_motion", false);
+    }
+
+    public void setReduceMotion(boolean value) {
+        sp.edit().putBoolean("reduce_motion", value).apply();
+    }
+
+    public int screensaverDelaySec() {
+        return Math.max(0, sp.getInt("ss_delay", 300));
+    }
+
+    public void setScreensaverDelaySec(int value) {
+        sp.edit().putInt("ss_delay", Math.max(0, value)).apply();
+    }
+
+    public int screensaverSceneSec() {
+        return Math.max(15, sp.getInt("ss_scene", 60));
+    }
+
+    public void setScreensaverSceneSec(int value) {
+        sp.edit().putInt("ss_scene", Math.max(15, value)).apply();
+    }
+
+    /** 0 = on input, 1 = always, 2 = never. */
+    public int screensaverClock() {
+        return Math.max(0, Math.min(2, sp.getInt("ss_clock", 0)));
+    }
+
+    public void setScreensaverClock(int value) {
+        sp.edit().putInt("ss_clock", Math.max(0, Math.min(2, value))).apply();
+    }
+
+    public String order() {
+        return sp.getString("order", "");
+    }
+
+    public void setOrder(String order) {
+        sp.edit().putString("order", order == null ? "" : order).apply();
+    }
+
+    public Set<String> hidden() {
+        Set<String> copy = sp.getStringSet("hidden", Collections.emptySet());
+        return new HashSet<>(copy);
+    }
+
+    public void setHidden(Set<String> hidden) {
+        sp.edit().putStringSet("hidden", new HashSet<>(hidden)).apply();
+    }
+
+    public boolean welcomeSeen() {
+        return sp.getBoolean("welcome", false);
+    }
+
+    public void setWelcomeSeen(boolean value) {
+        sp.edit().putBoolean("welcome", value).apply();
+    }
+
+    public void reset() {
+        boolean welcome = welcomeSeen();
+        sp.edit().clear().apply();
+        sp.edit().putBoolean("welcome", welcome).apply();
+    }
+}
