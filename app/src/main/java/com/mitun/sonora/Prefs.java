@@ -3,8 +3,10 @@ package com.mitun.sonora;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /** All user choices in one tiny place. */
@@ -81,6 +83,62 @@ public final class Prefs {
 
     public void setReduceMotion(boolean value) {
         sp.edit().putBoolean("reduce_motion", value).apply();
+    }
+
+    /** The browser is bundled but off until the user asks for it. */
+    public boolean browserEnabled() {
+        return sp.getBoolean("browser", false);
+    }
+
+    public void setBrowserEnabled(boolean value) {
+        sp.edit().putBoolean("browser", value).apply();
+    }
+
+    /** The file manager and the LAN share are bundled but off by default. */
+    public boolean filesEnabled() {
+        return sp.getBoolean("files", false);
+    }
+
+    public void setFilesEnabled(boolean value) {
+        sp.edit().putBoolean("files", value).apply();
+    }
+
+    public boolean browserAdBlock() {
+        return sp.getBoolean("browser_adblock", true);
+    }
+
+    public void setBrowserAdBlock(boolean value) {
+        sp.edit().putBoolean("browser_adblock", value).apply();
+    }
+
+    /** The bookmarked addresses, one per line. */
+    public List<String> browserBookmarks() {
+        String raw = sp.getString("browser_bookmarks", "");
+        List<String> out = new ArrayList<>();
+        if (raw != null) {
+            for (String line : raw.split("\\n")) {
+                String trimmed = line.trim();
+                if (trimmed.length() > 0) {
+                    out.add(trimmed);
+                }
+            }
+        }
+        return out;
+    }
+
+    public void addBrowserBookmark(String url) {
+        List<String> bookmarks = browserBookmarks();
+        if (!bookmarks.contains(url)) {
+            bookmarks.add(0, url);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String bookmark : bookmarks) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(bookmark);
+        }
+        sp.edit().putString("browser_bookmarks", sb.toString()).apply();
     }
 
     public int screensaverDelaySec() {
