@@ -2,8 +2,7 @@ package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -19,6 +18,12 @@ import java.util.List;
  * over the old one; BACK pops it. Everything the app shows that is a list -
  * settings, the app manager, the debug panel - is a screen in this stack, so
  * they all navigate the same way.
+ *
+ * A screen is either a list of {@link SettingRow}s or a custom view, for the
+ * few panels that need a real list of their own (the app manager).
+ *
+ * The push and the pop travel the same path: a screen that came in from the
+ * right leaves to the right, so the way back is the way it came.
  */
 public final class ScreenStack extends FrameLayout {
     public interface Listener {
@@ -33,8 +38,10 @@ public final class ScreenStack extends FrameLayout {
         final String title;
         final String subtitle;
         final List<SettingRow> rows = new ArrayList<>();
+        View custom;
         View view;
         LinearLayout list;
+        ScrollView scroller;
 
         Screen(String title, String subtitle) {
             this.title = title;
@@ -62,6 +69,7 @@ public final class ScreenStack extends FrameLayout {
     /** Replaces the whole stack with one screen. */
     public void show(String title, String subtitle, List<SettingRow> rows) {
         stack.clear();
+        removeAllViews();
         push(title, subtitle, rows);
     }
 
@@ -69,13 +77,14 @@ public final class ScreenStack extends FrameLayout {
     public void push(String title, String subtitle, List<SettingRow> rows) {
         Screen screen = new Screen(title, subtitle);
         screen.rows.addAll(rows);
-        screen.view = buildScreen(screen);
-        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        stack.add(screen);
-        focusTop();
-        if (listener != null) {
-            listener.onPushed();
-        }
+        add(screen);
+    }
+
+    /** Adds a screen whose content is a view of its own, such as a list. */
+    public void pushContent(String title, String subtitle, View content) {
+        Screen screen = new Screen(title, subtitle);
+        screen.custom = content;
+        add(screen);
     }
 
     /**
@@ -102,14 +111,19 @@ public final class ScreenStack extends FrameLayout {
         if (stack.isEmpty()) {
             return false;
         }
-        Screen screen = stack.remove(stack.size() - 1);
-        removeView(screen.view);
+        final Screen screen = stack.remove(stack.size() - 1);
+        final int width = getWidth();
         if (stack.isEmpty()) {
-            if (listener != null) {
-                listener.onEmpty();
-            }
+            slideOut(screen, width, () -> {
+                removeView(screen.view);
+                if (listener != null) {
+                    listener.onEmpty();
+                }
+            });
         } else {
-            focusTop();
+            final Screen under = stack.get(stack.size() - 1);
+            Motion.translateX(under.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
+            slideOut(screen, width, () -> removeView(screen.view));
         }
         return true;
     }
@@ -119,9 +133,89 @@ public final class ScreenStack extends FrameLayout {
             return;
         }
         Screen screen = stack.get(stack.size() - 1);
-        if (screen.list.getChildCount() > 0) {
-            screen.list.getChildAt(0).requestFocus();
+        if (screen.list != null) {
+            // The first child is usually a heading, which cannot take focus.
+            View target = firstFocusable(screen.list);
+            if (target != null) {
+                target.requestFocus();
+            }
+        } else if (screen.custom != null) {
+            screen.custom.requestFocus();
         }
+    }
+
+    private static View firstFocusable(LinearLayout list) {
+        for (int i = 0; i < list.getChildCount(); i++) {
+            View child = list.getChildAt(i);
+            if (child.isFocusable() && child.getVisibility() == View.VISIBLE) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Keeps the D-pad inside the panel. Without this the arrow keys walk out
+     * of the list and into whatever is behind it.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int code = event.getKeyCode();
+            if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
+                    || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                Screen screen = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+                if (screen != null && screen.list != null) {
+                    if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        Ui.moveListFocus(screen.list, code == KeyEvent.KEYCODE_DPAD_UP);
+                    }
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private void add(Screen screen) {
+        screen.view = buildScreen(screen);
+        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        Screen previous = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+        stack.add(screen);
+        slideIn(screen, previous);
+        focusTop();
+        if (screen.scroller != null) {
+            // A new screen starts at its first line, not wherever the focus
+            // pull would have scrolled it to.
+            screen.scroller.post(() -> screen.scroller.scrollTo(0, 0));
+        }
+        if (listener != null) {
+            listener.onPushed();
+        }
+    }
+
+    /** A screen arrives from the right; the one under it steps back. */
+    private void slideIn(Screen incoming, Screen outgoing) {
+        int width = getWidth();
+        if (width <= 0) {
+            incoming.view.setTranslationX(0f);
+            return;
+        }
+        incoming.view.setTranslationX(width);
+        Motion.translateX(incoming.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
+        if (outgoing != null) {
+            Motion.translateX(outgoing.view, -width * 0.22f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_MOVE);
+        }
+    }
+
+    /** A screen leaves by the path it came in on. */
+    private void slideOut(final Screen screen, int width, final Runnable onDone) {
+        if (width <= 0) {
+            onDone.run();
+            return;
+        }
+        Motion.spring(screen.view, Motion.TRANSLATION_X, width, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_PANEL, onDone);
     }
 
     private View buildScreen(Screen screen) {
@@ -130,12 +224,14 @@ public final class ScreenStack extends FrameLayout {
         column.setOrientation(LinearLayout.VERTICAL);
         column.setPadding(Ui.dp(context, 70), Ui.dp(context, 40),
                 Ui.dp(context, 70), Ui.dp(context, 40));
+        // Each screen covers the one below it, so a screen sliding in does
+        // not show the screen it is replacing through it.
+        column.setBackgroundColor(0xFF000000);
 
         TextView title = new TextView(context);
         title.setText(screen.title);
         title.setTextColor(Color.WHITE);
-        title.setTextSize(34);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(title, Type.DISPLAY);
         column.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -143,7 +239,7 @@ public final class ScreenStack extends FrameLayout {
             TextView subtitle = new TextView(context);
             subtitle.setText(screen.subtitle);
             subtitle.setTextColor(0xB3FFFFFF);
-            subtitle.setTextSize(15);
+            Type.apply(subtitle, Type.CAPTION);
             subtitle.setPadding(0, Ui.dp(context, 4), 0, Ui.dp(context, 22));
             column.addView(subtitle, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -151,28 +247,36 @@ public final class ScreenStack extends FrameLayout {
             title.setPadding(0, 0, 0, Ui.dp(context, 22));
         }
 
-        ScrollView scroller = new ScrollView(context);
-        scroller.setFocusable(false);
-        scroller.setVerticalScrollBarEnabled(false);
-        screen.list = new LinearLayout(context);
-        screen.list.setOrientation(LinearLayout.VERTICAL);
-        scroller.addView(screen.list, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        column.addView(scroller, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        if (screen.custom != null) {
+            column.addView(screen.custom, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        } else {
+            ScrollView scroller = new ScrollView(context);
+            scroller.setFocusable(false);
+            scroller.setVerticalScrollBarEnabled(false);
+            screen.scroller = scroller;
+            screen.list = new LinearLayout(context);
+            screen.list.setOrientation(LinearLayout.VERTICAL);
+            scroller.addView(screen.list, new ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            column.addView(scroller, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        }
 
         TextView hint = new TextView(context);
         hint.setText("OK to select · BACK to go back");
         hint.setTextColor(0x80FFFFFF);
-        hint.setTextSize(13);
+        Type.apply(hint, Type.CAPTION);
         hint.setPadding(0, Ui.dp(context, 16), 0, 0);
         column.addView(hint, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        for (SettingRow row : screen.rows) {
-            View view = row.view(context);
-            screen.list.addView(view, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (screen.custom == null) {
+            for (SettingRow row : screen.rows) {
+                View view = row.view(context);
+                screen.list.addView(view, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
         }
         return column;
     }

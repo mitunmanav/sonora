@@ -26,11 +26,13 @@ public final class ChoiceOverlay extends FrameLayout {
                          Callback callback) {
         super(context);
         this.callback = callback;
-        setBackgroundColor(0xE6000000);
+        // Heavy dim: a modal task pushes the screen behind it back.
+        setBackgroundColor(0xF7000000);
 
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 40), Ui.dp(context, 60), Ui.dp(context, 40));
+        // Clear of the app title along the top, so the two never overlap.
+        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 120), Ui.dp(context, 60), Ui.dp(context, 40));
 
         TextView heading = new TextView(context);
         heading.setText(title);
