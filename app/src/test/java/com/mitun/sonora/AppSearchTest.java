@@ -74,4 +74,19 @@ public class AppSearchTest {
         assertTrue(AppSearch.filter(null, "net").isEmpty());
         assertTrue(AppSearch.filter(Collections.emptyList(), "net").isEmpty());
     }
+
+    @Test
+    public void findsWhereTheFocusedAppSitsInTheResults() {
+        List<AppEntry> found = AppSearch.filter(APPS, "s");
+        int index = AppSearch.focusedIndex("com.spotify", found);
+        assertTrue(index >= 0);
+        assertEquals("com.spotify", found.get(index).packageName);
+    }
+
+    @Test
+    public void anAppThatIsNotInTheResultsHasNoIndex() {
+        assertEquals(-1, AppSearch.focusedIndex("com.gone", APPS));
+        assertEquals(-1, AppSearch.focusedIndex(null, APPS));
+        assertEquals(-1, AppSearch.focusedIndex("com.netflix", null));
+    }
 }

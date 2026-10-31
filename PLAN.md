@@ -384,3 +384,103 @@ refused by the system: it is declared now, and so is
 The process list is read off the UI thread now, because it is a binder call
 per app. "Refresh" refreshes the screen instead of throwing the stack away,
 and the numbers are read again instead of coming from the cache.
+
+---
+
+## 9. The search screen, rebuilt the tvOS way
+
+### 9.1 What the reference actually says
+
+Read from Apple's own material, not from memory:
+
+**WWDC26, "Design intuitive search experiences"**
+- The **search field** keeps its core elements intact. The magnifying glass is
+  universally recognised as Search; a custom icon must closely resemble the
+  symbol it replaces.
+- **Placement decides the animation.** Inline, the field stays at the top when
+  it is active. In a bottom toolbar it animates up over the keyboard. A
+  launcher has no bottom toolbar, so the field is **inline at the top**.
+- A **button appearance** "conveys that people will tap will immediately
+  engage search, and bring up the keyboard". So the search button is not a
+  shortcut to a list — it opens search *with the keyboard already up*.
+- Results update **live** while typing, and the number of suggestions is
+  limited so "search results feel front, and center".
+
+**WWDC20, "Discover search suggestions for Apple TV"**
+- tvOS 14 **increased the size of the text in the search field** "so it's easy
+  to see what you've typed", and moved many keyboards to one line "to leave
+  more space for the search results".
+- For IR remotes the keyboard is a **grid**, so the field and the results are
+  reachable with the D-pad alone.
+- While typing, the results occupy part of the screen width and "slide in to
+  fill the screen when focused".
+
+**The tvOS focus engine**
+- A row is calm and evenly spaced; a row that continues off-screen shows
+  10–20% of the next item so it is obvious there is more.
+
+**tvOS 26 Liquid Glass**
+- Glass belongs to the field and the toolbar. Content in the scroll region
+  uses ordinary content styling.
+
+**The apple-design skill, applied**
+- Springs, not tweens. Damping 1.0 (no overshoot) unless the gesture carried
+  momentum. Response 0.3–0.4 s.
+- Enter and exit along the same path. Materialize, do not just fade: animate
+  scale and opacity together.
+- Reduced motion keeps the feedback and drops the travel.
+- Type is size-specific: large text is tracked tighter.
+
+### 9.2 What Google TV does, for the parts tvOS does not cover
+
+From the teardown (`GOOGLE-TV-TEARDOWN.md` §9):
+- The launcher **never handles the search key**. The system fires
+  `ACTION_ASSIST` at the installed assistant.
+- The launcher's own entry point is a **search widget in the system bar**, and
+  it is **two orbs in one slot**: a microphone ("Click to speak") and a
+  keyboard ("Click to type"), morphing into each other on focus.
+- Both orbs fire the **same intent**: `ACTION_ASSIST`, flags
+  `NEW_TASK | RESET_TASK_IF_NEEDED`, extra **`search_type`** = 1 for voice,
+  0 for keyboard.
+- No assistant? Google toasts "Application unavailable" and gives up. It
+  never falls back to the keyboard. We do.
+
+### 9.3 What this means for Sonora, concretely
+
+| # | Change | Why | Size |
+|---|--------|-----|------|
+| 1 | A **round glass search button** in the top row, with a magnifier drawn by us | tvOS 26's top-right search button; Google's system-bar widget; the MiTV remote has no `KEYCODE_SEARCH` and its ASSIST key is swallowed, so search is unreachable today | S |
+| 2 | The button opens search **with the keyboard already up** | WWDC26: the button "immediately engages search, and brings up the keyboard" | S |
+| 3 | The field's text at **30 sp** (was 19 sp), the hint at caption size | WWDC20: tvOS increased the field text size so you can see what you typed | S |
+| 4 | Our own **magnifier glyph** instead of `android.R.drawable.ic_menu_search` | One look across every TV; WWDC26: keep the symbol, make it ours | S |
+| 5 | A **mic button** beside the field that fires `ACTION_ASSIST` with `search_type=1`, and **falls back to the keyboard** when nothing resolves | Google's orb; our fallback is the part Google got wrong | M |
+| 6 | **The result cards are built once and re-bound**, not rebuilt per keystroke | Today every character typed allocates 12 × (card + icon + label). This is the one real resource cost in the search | M |
+| 7 | The results are the **same 5:3 cards as the home screen** | Spatial consistency: the thing you find in search is the thing you saw at home | done |
+| 8 | An **empty state** with a sentence: "No apps match …" | Google's error catalogue: never an empty box | S |
+| 9 | **"This TV has no keyboard"** when no IME is enabled, and the D-pad browses the results instead | AGENTS.md: say what a device cannot do. Never a focusable field that swallows the remote | S |
+| 10 | The screen **materializes**: scale and opacity spring in, and leave the same way | apple-design: materialize, don't just fade; enter and exit on the same path | S |
+| 11 | The glass **catches the light on focus** (a glow inside the material, not a new shader) | Google's `ArgbEvaluator` tint; tvOS glass brightens under focus | S |
+| 12 | The top-row buttons are **circles**, not pills | Google's `Outline.setOval`; tvOS 26's circular glass buttons | S |
+
+### 9.4 Deliberately not built
+
+| Not building | Why |
+|---|---|
+| Our own on-screen keyboard | An IME is a large feature. The TV has one (its settings app is the AOSP TV one); the runtime check in #9 covers the case where it does not. |
+| Speech recognition | A new dependency and a network round trip. Both forbidden. Voice is a **delegation** to the TV's own assistant, exactly as Google does it. |
+| Search history, suggestions, network results | Forbidden. The search is the names of the apps on this TV, and nothing else. |
+| A categories tab (Apple TV's Search Tab) | There are no content categories on this TV. It would be an empty tab — a fake feature. |
+| The "slide in to fill the screen" morph | It buys little on one row of cards, and it fights the fixed grid. |
+| A predictive suggestion strip | It needs a corpus we do not have and may not ship. |
+
+### 9.5 The rules this screen keeps
+
+- **Local only.** `AppSearch` reads app names off the device. No network, no
+  history, nothing sent anywhere.
+- **No background work.** No thread, no timer, no service, no alarm. The
+  screen is a view hierarchy that exists while the user is looking at it.
+- **Few allocations.** The twelve result cards are made once. The glyphs are
+  two small bitmaps. Nothing is decoded, blurred or filtered per frame.
+- **Springs only.** `Motion` with damping 1.0 and response 0.3–0.4.
+- **Honest about the device.** No keyboard, no assistant: both are said out
+  loud, and the screen still works with the D-pad.

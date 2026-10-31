@@ -59,6 +59,28 @@ public final class AppSearch {
         return out;
     }
 
+    /**
+     * Where an app sits in the results.
+     *
+     * The card that had the focus keeps it when the app it is showing is
+     * still in the list, so a change of results does not throw the focus
+     * away and leave the user with a remote that goes nowhere.
+     *
+     * @return the index of the app, or -1 when it is not in the list
+     */
+    public static int focusedIndex(String packageName, List<AppEntry> matches) {
+        if (packageName == null || matches == null) {
+            return -1;
+        }
+        for (int i = 0; i < matches.size(); i++) {
+            AppEntry entry = matches.get(i);
+            if (entry != null && packageName.equals(entry.packageName)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     /** True when the needle starts a word inside the label. */
     private static boolean wordStartsWith(String label, String needle) {
         int index = label.indexOf(needle);

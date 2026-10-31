@@ -1,17 +1,18 @@
 package com.mitun.sonora.ui;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.PorterDuff;
 import android.graphics.Rect;
-import android.graphics.drawable.Drawable;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -23,7 +24,6 @@ import android.widget.TextView;
 import com.mitun.sonora.AppEntry;
 import com.mitun.sonora.AppSearch;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -31,6 +31,11 @@ import java.util.List;
  *
  * The search is local. It looks at the names of the apps on this TV and at
  * nothing else: no network, no history, nothing sent anywhere.
+ *
+ * The shape is tvOS's: the field sits at the top and stays there, the text in
+ * it is large enough to read from the sofa, and the results are the same
+ * cards the home screen shows, so the thing you find here is the thing you
+ * saw there.
  */
 public final class SearchOverlay extends FrameLayout {
     public interface Listener {
@@ -47,42 +52,45 @@ public final class SearchOverlay extends FrameLayout {
     private final EditText field;
     private final LinearLayout results;
     private final HorizontalScrollView resultScroller;
+    private final ResultCard[] cards;
+    private final TextView note;
+    private final LinearLayout column;
+    private final GlassIconPill mic;
     private final Listener listener;
     private final List<AppEntry> apps;
-    private final int cardWidth;
-    private final int cardHeight;
+    private final boolean noKeyboard;
 
     public SearchOverlay(Context context, List<AppEntry> apps, int cardWidth, int cardHeight,
-                         Listener listener) {
+                         int marginPx, Listener listener) {
         super(context);
         this.apps = apps;
-        this.cardWidth = cardWidth;
-        this.cardHeight = cardHeight;
         this.listener = listener;
 
         // A modal task pushes the screen behind it back.
         setBackgroundColor(0xF7000000);
 
-        LinearLayout column = new LinearLayout(context);
+        column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 60), Ui.dp(context, 60),
-                Ui.dp(context, 40));
+        column.setClipChildren(false);
+        column.setPadding(marginPx, Ui.dp(context, 34), marginPx, Ui.dp(context, 40));
 
-        // The field: a glass pill with a magnifying glass in it.
+        LinearLayout top = new LinearLayout(context);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setClipChildren(false);
+
+        // The field: a glass pill with the magnifying glass that means search
+        // on the left, the way tvOS puts it.
         LinearLayout pill = new LinearLayout(context);
         pill.setOrientation(LinearLayout.HORIZONTAL);
         pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setClipChildren(false);
         pill.setBackground(new GlassDrawable(context, 26f, 1f));
-        pill.setPadding(Ui.dp(context, 20), Ui.dp(context, 8), Ui.dp(context, 20), Ui.dp(context, 8));
+        pill.setPadding(Ui.dp(context, 20), Ui.dp(context, 6), Ui.dp(context, 20), Ui.dp(context, 6));
 
         ImageView glyph = new ImageView(context);
-        Drawable magnifier = context.getDrawable(android.R.drawable.ic_menu_search);
-        if (magnifier != null) {
-            magnifier = magnifier.mutate();
-            magnifier.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
-            glyph.setImageDrawable(magnifier);
-        }
-        int glyphSize = Ui.dp(context, 20);
+        glyph.setImageBitmap(Ui.magnifier(context, Ui.dp(context, 22)));
+        int glyphSize = Ui.dp(context, 22);
         LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(glyphSize, glyphSize);
         glyphParams.gravity = Gravity.CENTER_VERTICAL;
         glyphParams.rightMargin = Ui.dp(context, 14);
@@ -90,8 +98,10 @@ public final class SearchOverlay extends FrameLayout {
 
         field = new EditText(context);
         field.setTextColor(Color.WHITE);
-        field.setHintTextColor(0x99FFFFFF);
-        Type.apply(field, Type.HEADING);
+        field.setHintTextColor(0x8CFFFFFF);
+        // tvOS made the text in the search field bigger so that you can see
+        // what you typed from the sofa.
+        Type.apply(field, Type.TITLE);
         field.setSingleLine(true);
         field.setBackground(null);
         field.setHint("Search apps");
@@ -117,8 +127,25 @@ public final class SearchOverlay extends FrameLayout {
         });
         pill.addView(field, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        top.addView(pill, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        column.addView(pill, new LinearLayout.LayoutParams(
+        // The microphone: the TV's own assistant, asked to search out loud.
+        mic = new GlassIconPill(context, Ui.mic(context, Ui.dp(context, 22)), "Search by voice");
+        mic.setOnOpen(this::openAssistant);
+        LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        micParams.leftMargin = Ui.dp(context, 12);
+        top.addView(mic, micParams);
+        column.addView(top, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        note = new TextView(context);
+        note.setTextColor(0xB3FFFFFF);
+        Type.apply(note, Type.CAPTION);
+        note.setVisibility(GONE);
+        note.setPadding(Ui.dp(context, 4), Ui.dp(context, 10), Ui.dp(context, 4), 0);
+        column.addView(note, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         resultScroller = new HorizontalScrollView(context);
@@ -135,94 +162,173 @@ public final class SearchOverlay extends FrameLayout {
 
         addView(column, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+        // The cards are made once and re-bound as the query changes. Building
+        // them again on every keystroke would throw away a dozen views a
+        // letter, and this screen is used on a TV with little to spare.
+        cards = new ResultCard[MAX_RESULTS];
+        for (int i = 0; i < MAX_RESULTS; i++) {
+            ResultCard card = new ResultCard(context, cardWidth, cardHeight, entry -> {
+                if (listener != null) {
+                    listener.onPicked(entry);
+                }
+            });
+            cards[i] = card;
+            results.addView(card, new LinearLayout.LayoutParams(
+                    cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        noKeyboard = !hasKeyboard();
         showResults("");
+
+        // The screen arrives: it grows into place rather than appearing all at
+        // once, and it leaves the same way.
+        column.setPivotX(0f);
+        column.setPivotY(0f);
+        column.setAlpha(0f);
+        column.setTranslationY(Ui.dp(context, 18));
+        column.setScaleX(0.97f);
+        column.setScaleY(0.97f);
+        Motion.spring(column, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
+        Motion.spring(column, Motion.TRANSLATION_Y, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_PANEL);
+        Motion.spring(column, Motion.SCALE, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
     }
 
     /** Shows the field, and the keyboard with it. */
     public void start() {
         field.post(() -> {
-            field.requestFocus();
-            InputMethodManager manager = (InputMethodManager)
-                    getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-            if (manager != null) {
-                manager.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT);
+            if (noKeyboard) {
+                // No keyboard on this TV. Say so, and let the remote do the
+                // work, rather than leaving a field that swallows it.
+                focusFirstResult();
+                return;
             }
+            focusField();
+            raiseKeyboard();
         });
     }
 
     /** Puts the keyboard away. */
     public void close() {
-        InputMethodManager manager = (InputMethodManager)
-                getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        InputMethodManager manager = manager();
         if (manager != null) {
             manager.hideSoftInputFromWindow(field.getWindowToken(), 0);
         }
         field.clearFocus();
     }
 
-    private void showResults(String query) {
-        results.removeAllViews();
-        int shown = 0;
-        for (AppEntry entry : AppSearch.filter(apps, query)) {
-            if (shown++ >= MAX_RESULTS) {
-                break;
-            }
-            results.addView(resultCard(entry), new LinearLayout.LayoutParams(
-                    cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+    /**
+     * Takes the screen away, then runs the work that was asked for.
+     *
+     * It leaves the way it came, so the eye can follow it back.
+     */
+    public void dismiss(Runnable after) {
+        close();
+        Motion.spring(column, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_PANEL, after);
+        Motion.spring(column, Motion.TRANSLATION_Y, Ui.dp(getContext(), 18),
+                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
+        Motion.spring(column, Motion.SCALE, 0.97f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_PANEL);
+    }
+
+    /**
+     * Asks the TV's own assistant to search.
+     *
+     * This is the intent Google TV's search widget sends: the action is
+     * ASSIST, and the extra says which way the person means to search. When
+     * this TV has no assistant at all, the keyboard takes over instead of the
+     * screen giving up with a message.
+     */
+    private void openAssistant() {
+        Intent assist = new Intent(Intent.ACTION_ASSIST);
+        assist.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        assist.putExtra("search_type", 1);
+        try {
+            getContext().startActivity(assist);
+        } catch (RuntimeException e) {
+            focusField();
+            raiseKeyboard();
         }
     }
 
-    /** One result: the app's card with its name under it. */
-    private View resultCard(final AppEntry entry) {
-        LinearLayout card = new LinearLayout(getContext());
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER_HORIZONTAL);
-        card.setFocusable(true);
-        card.setFocusableInTouchMode(false);
-        card.setClickable(true);
-        card.setContentDescription(entry.label);
+    private void showResults(String query) {
+        List<AppEntry> matches = AppSearch.filter(apps, query);
 
-        AppIconView icon = new AppIconView(getContext());
-        icon.setEntry(entry);
-        card.addView(icon, new LinearLayout.LayoutParams(cardWidth, cardHeight));
+        // The card that had the focus, so it can keep it if it is still here.
+        String focused = null;
+        for (ResultCard card : cards) {
+            if (card.isFocused() && card.entry() != null) {
+                focused = card.entry().packageName;
+                break;
+            }
+        }
 
-        TextView label = new TextView(getContext());
-        label.setText(entry.label);
-        label.setTextColor(Color.WHITE);
-        label.setAlpha(0.82f);
-        Type.apply(label, Type.CAPTION);
-        label.setGravity(Gravity.CENTER);
-        label.setSingleLine(true);
-        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        card.addView(label, new LinearLayout.LayoutParams(cardWidth,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        card.setOnFocusChangeListener((v, focused) -> {
-            if (focused) {
-                Motion.scale(icon, 1.10f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
-                Motion.spring(label, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
-                        Motion.RESPONSE_FOCUS);
+        int shown = Math.min(matches.size(), cards.length);
+        for (int i = 0; i < cards.length; i++) {
+            if (i < shown) {
+                cards[i].bind(matches.get(i));
+                cards[i].setVisibility(VISIBLE);
             } else {
-                Motion.scale(icon, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
-                Motion.spring(label, Motion.ALPHA, 0.82f, Motion.DAMPING_CRITICAL,
-                        Motion.RESPONSE_FOCUS);
+                cards[i].setVisibility(GONE);
             }
-        });
-        card.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onPicked(entry);
+        }
+
+        if (noKeyboard) {
+            note.setText("This TV has no keyboard. Use the remote to browse the apps.");
+            note.setVisibility(VISIBLE);
+        } else if (shown == 0 && !query.trim().isEmpty()) {
+            note.setText("No apps match \"" + query.trim() + "\"");
+            note.setVisibility(VISIBLE);
+        } else {
+            note.setVisibility(GONE);
+        }
+
+        if (focused != null) {
+            int keep = AppSearch.focusedIndex(focused, matches);
+            if (keep >= 0 && keep < shown) {
+                cards[keep].requestFocus();
+                scrollTo(cards[keep]);
+                return;
             }
-        });
-        return card;
+            focusFirstResult();
+        }
+    }
+
+    private void focusField() {
+        field.requestFocus();
+    }
+
+    private void raiseKeyboard() {
+        InputMethodManager manager = manager();
+        if (manager != null) {
+            manager.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
+    private InputMethodManager manager() {
+        return (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+    }
+
+    /** True when this TV has a keyboard it can show. */
+    private boolean hasKeyboard() {
+        InputMethodManager manager = manager();
+        if (manager == null) {
+            return false;
+        }
+        List<InputMethodInfo> list = manager.getEnabledInputMethodList();
+        return list != null && !list.isEmpty();
     }
 
     private void focusFirstResult() {
-        if (results.getChildCount() == 0) {
-            return;
+        for (ResultCard card : cards) {
+            if (card.getVisibility() == VISIBLE) {
+                card.requestFocus();
+                scrollTo(card);
+                return;
+            }
         }
-        View first = results.getChildAt(0);
-        first.requestFocus();
-        scrollTo(first);
     }
 
     /** Keeps the D-pad inside the search instead of walking into the grid. */
@@ -236,17 +342,14 @@ public final class SearchOverlay extends FrameLayout {
                 }
             }
             if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                if (!field.isFocused()) {
-                    field.requestFocus();
-                    return true;
-                }
+                // Up always comes back to the field.
+                focusField();
                 return true;
             }
             if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                if (!field.isFocused()) {
-                    return true;
+                if (field.isFocused() || mic.isFocused()) {
+                    focusFirstResult();
                 }
-                focusFirstResult();
                 return true;
             }
         }
@@ -263,17 +366,71 @@ public final class SearchOverlay extends FrameLayout {
             return false;
         }
         int target = index + direction;
-        if (target < 0 || target >= results.getChildCount()) {
-            return true;
+        while (target >= 0 && target < cards.length) {
+            if (cards[target].getVisibility() == VISIBLE) {
+                cards[target].requestFocus();
+                scrollTo(cards[target]);
+                return true;
+            }
+            target += direction;
         }
-        View next = results.getChildAt(target);
-        next.requestFocus();
-        scrollTo(next);
         return true;
     }
 
     private void scrollTo(View child) {
         resultScroller.requestChildRectangleOnScreen(child,
                 new Rect(0, 0, child.getWidth(), child.getHeight()), true);
+    }
+
+    /** One result: the app's card with its name under it. */
+    private static final class ResultCard extends LinearLayout {
+        private final AppIconView icon;
+        private final TextView label;
+        private AppEntry entry;
+
+        ResultCard(Context context, int width, int height, OnPick pick) {
+            super(context);
+            setOrientation(VERTICAL);
+            setGravity(Gravity.CENTER_HORIZONTAL);
+            setFocusable(true);
+            setFocusableInTouchMode(false);
+            setClickable(true);
+
+            icon = new AppIconView(context);
+            addView(icon, new LayoutParams(width, height));
+
+            label = new TextView(context);
+            label.setTextColor(Color.WHITE);
+            label.setAlpha(0.82f);
+            Type.apply(label, Type.CAPTION);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            label.setEllipsize(TextUtils.TruncateAt.END);
+            addView(label, new LayoutParams(width, LayoutParams.WRAP_CONTENT));
+
+            setOnFocusChangeListener((v, focused) -> {
+                Motion.scale(icon, focused ? 1.10f : 1f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_FOCUS);
+                Motion.spring(label, Motion.ALPHA, focused ? 1f : 0.82f,
+                        Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
+            });
+            setOnClickListener(v -> pick.onPick(entry));
+        }
+
+        void bind(AppEntry entry) {
+            this.entry = entry;
+            icon.setEntry(entry);
+            label.setText(entry.label);
+            setContentDescription(entry.label);
+        }
+
+        AppEntry entry() {
+            return entry;
+        }
+    }
+
+    /** Picks a result. */
+    private interface OnPick {
+        void onPick(AppEntry entry);
     }
 }

@@ -335,9 +335,59 @@ public final class Ui {
         return bitmap;
     }
 
+    /**
+     * The magnifying glass that means "search".
+     *
+     * Drawn here rather than taken from the platform, so it is the same mark
+     * on every TV and the same family as the sliders and the gear.
+     */
+    public static Bitmap magnifier(Context context, int sizePx) {
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xFFF5F6F8);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(sizePx * 0.085f);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        float s = sizePx;
+        float cx = s * 0.42f;
+        float cy = s * 0.42f;
+        float r = s * 0.26f;
+        canvas.drawCircle(cx, cy, r, p);
+        // The handle, at the angle a magnifying glass is always drawn at.
+        canvas.drawLine(cx + r * 0.72f, cy + r * 0.72f, s * 0.74f, s * 0.74f, p);
+        return bitmap;
+    }
+
+    /**
+     * The microphone that means "speak".
+     *
+     * The capsule, the cradle under it and the stem: the shape everyone reads
+     * as "voice" without reading anything.
+     */
+    public static Bitmap mic(Context context, int sizePx) {
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xFFF5F6F8);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(sizePx * 0.075f);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        float s = sizePx;
+        float cx = s / 2f;
+        canvas.drawRoundRect(cx - s * 0.105f, s * 0.16f, cx + s * 0.105f, s * 0.50f,
+                s * 0.105f, s * 0.105f, p);
+        // The cradle: the lower half of a circle whose arms start level with
+        // the bottom of the capsule.
+        canvas.drawArc(cx - s * 0.21f, s * 0.29f, cx + s * 0.21f, s * 0.71f,
+                0f, 180f, false, p);
+        canvas.drawLine(cx, s * 0.71f, cx, s * 0.84f, p);
+        canvas.drawLine(cx - s * 0.13f, s * 0.84f, cx + s * 0.13f, s * 0.84f, p);
+        return bitmap;
+    }
+
     private static final Rect BITMAP_SRC = new Rect();
     private static final RectF BITMAP_DST = new RectF();
-
     public static void drawCenterCrop(Canvas canvas, Bitmap bitmap, RectF destination, float zoom,
                                       float offsetX, float offsetY) {
         drawCenterCrop(canvas, bitmap, destination, zoom, offsetX, offsetY, 255);

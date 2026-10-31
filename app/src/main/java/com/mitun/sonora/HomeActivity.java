@@ -55,6 +55,7 @@ public class HomeActivity extends Activity {
     private HeroBackgroundView hero;
     private GlassPillView clockPill;
     private GlassIconPill quickPill;
+    private GlassIconPill searchPill;
     private TextView shelfTitle;
     private TextView shelfSubtitle;
     private LinearLayout grid;
@@ -66,6 +67,9 @@ public class HomeActivity extends Activity {
 
     /** True while the user is arranging the apps with the D-pad. */
     private boolean editing;
+
+    /** True when the search was opened from the search button, not the remote. */
+    private boolean searchFromPill;
 
     private long lastInteraction;
     private boolean suppressIdle;
@@ -172,6 +176,14 @@ public class HomeActivity extends Activity {
         clockPill.setId(View.generateViewId());
         clockPill.setOnOpenSettings(this::openSettings);
 
+        // Search comes first in the row. This TV's remote has no search key
+        // and its voice key is swallowed by the system, so without a button
+        // of its own the search could never be reached.
+        searchPill = new GlassIconPill(this, Ui.magnifier(this, Ui.dp(this, 22)),
+                "Search apps");
+        searchPill.setId(View.generateViewId());
+        searchPill.setOnOpen(this::openSearch);
+
         // The control centre sits to the left of the clock: the TV's own
         // settings, one tap away.
         quickPill = new GlassIconPill(this, Ui.sliders(this, Ui.dp(this, 22)),
@@ -182,6 +194,10 @@ public class HomeActivity extends Activity {
         LinearLayout pills = new LinearLayout(this);
         pills.setOrientation(LinearLayout.HORIZONTAL);
         pills.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        searchParams.rightMargin = Ui.dp(this, 10);
+        pills.addView(searchPill, searchParams);
         LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         quickParams.rightMargin = Ui.dp(this, 10);
@@ -656,16 +672,21 @@ public class HomeActivity extends Activity {
             return;
         }
         suppressIdle = true;
+        searchFromPill = getCurrentFocus() == searchPill;
         Grid.Metrics metrics = gridMetrics();
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
         searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
-                Ui.dp(this, metrics.tileHeightDp), new SearchOverlay.Listener() {
+                Ui.dp(this, metrics.tileHeightDp), Ui.dp(this, metrics.marginDp),
+                new SearchOverlay.Listener() {
             @Override
             public void onPicked(AppEntry entry) {
-                closeSearch();
-                if (entry != null && !entry.launch(HomeActivity.this)) {
-                    Ui.toast(HomeActivity.this, "Could not open " + entry.label);
-                }
+                // The app opens once the search has gone, so the two do not
+                // fight over the screen.
+                closeSearch(() -> {
+                    if (entry != null && !entry.launch(HomeActivity.this)) {
+                        Ui.toast(HomeActivity.this, "Could not open " + entry.label);
+                    }
+                });
             }
 
             @Override
@@ -679,14 +700,30 @@ public class HomeActivity extends Activity {
     }
 
     private void closeSearch() {
+        closeSearch(null);
+    }
+
+    /** Takes the search away, and runs the work once it has gone. */
+    private void closeSearch(Runnable after) {
         if (searchOverlay == null) {
             return;
         }
-        searchOverlay.close();
-        overlayHost.removeView(searchOverlay);
+        final SearchOverlay overlay = searchOverlay;
         searchOverlay = null;
         suppressIdle = false;
-        restoreFocus();
+        overlay.dismiss(() -> {
+            overlayHost.removeView(overlay);
+            // The focus goes back where it came from: the button that opened
+            // the search, or the app that had it.
+            if (searchFromPill) {
+                searchPill.requestFocus();
+            } else {
+                restoreFocus();
+            }
+            if (after != null) {
+                after.run();
+            }
+        });
     }
 
     private void openSettings() {
@@ -941,6 +978,14 @@ public class HomeActivity extends Activity {
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
+                searchPill.requestFocus();
+            }
+            return true;
+        }
+        if (focused == searchPill) {
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
+                tiles.get(0).requestFocus();
+            } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 quickPill.requestFocus();
             }
             return true;
@@ -950,6 +995,8 @@ public class HomeActivity extends Activity {
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 clockPill.requestFocus();
+            } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
+                searchPill.requestFocus();
             }
             return true;
         }

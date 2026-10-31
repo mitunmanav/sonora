@@ -12,7 +12,7 @@ the Apple tvOS 26 home screen, is extremely light on system resources, and is
 fully customisable. It ships a screen saver (Daydream) because the previous
 session on this TV removed MiTV's own screen saver.
 
-The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 7
+The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 16
 commits** — use git, it exists so large refactors are safe.
 
 Work in **ponytail mode (full)**: smallest complete change, no speculative
@@ -170,15 +170,19 @@ A complete, building app, **verified on the physical TV**. Do not rewrite it.
     │       ├── AppIconView.java     # the 5:3 app card, focus sheen
     │       ├── AppTileView.java     # focusable tile: scale-up focus, parallax sway
     │       ├── GlassPillView.java   # top-right clock + profile pill (opens Settings)
+    │       ├── GlassIconPill.java   # a round glass button: search, control centre, mic
     │       ├── GlassDrawable.java   # cheap "Liquid Glass" fill/edge/highlight, no blur
+    │       ├── SearchOverlay.java   # the tvOS-style search screen: field + result rail
     │       ├── SettingRow.java      # one list row, six kinds
     │       ├── ScreenStack.java     # push/pop list screens, shared by every panel
     │       ├── ChoiceOverlay.java   # tvOS-style list picker
     │       └── ScreensaverView.java # Ken Burns crossfade screensaver, 2 bitmaps max
     └── test/java/com/mitun/sonora/
-        ├── AppOrderingTest.java   # 3 tests
+        ├── AppOrderingTest.java   # 8 tests
+        ├── AppSearchTest.java     # 10 tests
         ├── BackPolicyTest.java    # 4 tests
-        └── GridTest.java          # 8 tests
+        ├── GridTest.java          # 10 tests
+        └── SpringTest.java        # 8 tests
 ```
 
 **Build / test commands** (gradle 8.13 + JDK 21 are on this box):
@@ -421,7 +425,47 @@ Re-install with `android skills add --all --project=.`. The CLI is at
 
 ### NEXT WORK, IN PRIORITY ORDER
 
-**P1 — Finish the design pass with the apple-design skill.** The skill was
+**P0 — The search screen (done, needs the TV).** The search was rebuilt the
+tvOS way: a round glass search button in the top row, the field inline at the
+top with 30 sp text, our own magnifier and microphone marks, the result cards
+built **once** and re-bound instead of rebuilt per keystroke, and an
+`ACTION_ASSIST` mic that falls back to the keyboard when the TV has no
+assistant. `PLAN.md` §9 has the whole plan and the references. **Not yet
+verified on the device** — check the keyboard comes up, that the results rail
+takes the D-pad, and that the mic either opens the assistant or falls back.
+
+**P1 — The strict list, in order.** Every item is evidence-backed (see
+`GOOGLE-TV-TEARDOWN.md` §8-§10); do them in this order:
+1. **Working uninstall** — `PackageActions.requestUninstall` fires
+   `ACTION_DELETE` on a `package:` URI and the manifest has no
+   `REQUEST_DELETE_PACKAGES`, so the only route is a Play Store that may not
+   exist. Use `PackageInstaller.uninstall(pkg, callback)` + one manifest
+   permission, then add "Uninstall" to the long-press menu.
+2. **The long-press menu order** — Google TV's verified order is
+   **Open · Move · Favourites · Info · Uninstall**. Sonora has Open,
+   Favourites, Search apps, Edit Home Screen, Hide from Home, App info. Cut
+   "Search apps" (redundant now), merge "Edit Home Screen" into "Move"
+   (which starts arrange mode on that app), and add "Uninstall".
+3. **The D-pad dead-end** — `HomeActivity.moveFocus` returns `true` even when
+   it found no target, so LEFT at column 0 and RIGHT at the last column do
+   nothing at all. Google's grid scrolls the row instead; the smallest fix
+   that removes the dead end is to wrap to the next row.
+4. **`stateNotNeeded="true"`** on `HomeActivity` — Google has it on
+   `MainActivity`; one manifest line.
+5. **Marquee for long app names** — Google uses `ellipsize="marquee"`.
+6. **Errors that fix the problem** — Google's error screen has a *primary
+   action that fixes it*; Sonora says "Could not open X" in a toast.
+7. **Empty states say something** — "No apps match …", not a blank rail.
+8. **The edge fade** — Google's exact recipe: `saveLayer` the strip, draw,
+   then a `LinearGradient` with `PorterDuff.Mode.DST_IN`. ~40 lines, RTL-aware.
+9. **A directional move menu** — Google has Move up/down/left/right, each
+   disabled with a reason ("Can't move"). A visible-but-disabled row teaches
+   the rule; a missing row teaches nothing.
+10. **A drawn arrow for edit mode** — `OverlayTutorialArrow` points at the
+    control to press. "Edit Home Screen" has still never been verified on the
+    device.
+
+**P2 — Finish the design pass with the apple-design skill.** The skill was
 installed late, so only the foundations are in place. Do the rest:
 - Apply `Motion` (springs) to the launcher: the focus scale and the parallax
   sway are still fixed-duration tweens with an `OvershootInterpolator`. Make
@@ -442,7 +486,7 @@ installed late, so only the foundations are in place. Do the rest:
   to the right). Confirm the *easing* is mirrored and that the transition can
   be interrupted mid-flight.
 
-**P2 — Verify on the TV and finish what is half-built.** The tools were
+**P3 — Verify on the TV and finish what is half-built.** The tools were
 written and largely verified, but these are **not yet checked on the device**:
 - The app manager's per-app detail screen (Open / App info / Enabled toggle /
   Force stop / Clear storage / Uninstall), and the filter tabs.
@@ -456,7 +500,7 @@ written and largely verified, but these are **not yet checked on the device**:
   clock → screen saver → offer to become the default launcher. Runs once,
   skippable, never blocks. `Prefs.welcomeSeen()` already exists for it.
 
-**P3 — Ship.**
+**P4 — Ship.**
 - Keep `proguard-rules.pro` in sync as components are added. A stale keep rule
   means a **silently broken release build** — that is exactly the bug that was
   already fixed once. Re-verify with:
@@ -465,7 +509,7 @@ written and largely verified, but these are **not yet checked on the device**:
 - Re-check the release APK size against the < 6 MB budget as features land.
 - Add unit tests for any new pure logic. Keep pure logic out of Activities.
 
-**P4 — Nice to have, only if the above is done.**
+**P5 — Nice to have, only if the above is done.**
 - A **deep scan** / storage breakdown with reclaim, which the user asked for
   ("deep loader").
 - Search in the file manager is a plain text filter; a proper search box on a
