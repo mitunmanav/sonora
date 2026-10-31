@@ -169,7 +169,13 @@ public final class ScreenStack extends FrameLayout {
         } else {
             final Screen under = stack.get(stack.size() - 1);
             Motion.translateX(under.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
-            slideOut(screen, width, () -> removeView(screen.view));
+            // The focus went with the screen that was popped, so the screen
+            // underneath is left with nothing focused and the D-pad goes
+            // nowhere. It gets the focus back as it comes in.
+            slideOut(screen, width, () -> {
+                removeView(screen.view);
+                focusTop();
+            });
         }
         return true;
     }

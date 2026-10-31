@@ -46,9 +46,14 @@ public final class PackageActions {
      */
     public static Result setHidden(Context context, String packageName, boolean hidden) {
         PackageManager pm = context.getPackageManager();
-        Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
-        if (launchIntent == null) {
-            launchIntent = pm.getLeanbackLaunchIntentForPackage(packageName);
+        Intent launchIntent = null;
+        try {
+            launchIntent = pm.getLaunchIntentForPackage(packageName);
+            if (launchIntent == null) {
+                launchIntent = pm.getLeanbackLaunchIntentForPackage(packageName);
+            }
+        } catch (RuntimeException e) {
+            return new Result(false, "Cannot change this app");
         }
         if (launchIntent == null) {
             // No launcher entry: disable the whole application's components.
@@ -57,6 +62,11 @@ public final class PackageActions {
                         hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                                 : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
                         PackageManager.DONT_KILL_APP);
+                if (isOff(pm, packageName, null) != hidden) {
+                    return new Result(false, hidden
+                            ? "This device did not hide the app"
+                            : "This device did not restore the app");
+                }
                 return new Result(true, hidden ? "Hidden" : "Restored");
             } catch (RuntimeException e) {
                 return new Result(false, "Cannot change this app");
@@ -71,11 +81,37 @@ public final class PackageActions {
                     hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                             : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
                     PackageManager.DONT_KILL_APP);
+            // The state is read back: a device that quietly ignores the
+            // request must not be told the app was hidden.
+            if (isOff(pm, packageName, component) != hidden) {
+                return new Result(false, hidden
+                        ? "This device did not hide the app"
+                        : "This device did not restore the app");
+            }
             return new Result(true, hidden ? "Hidden from the home screen" : "Restored");
         } catch (SecurityException e) {
             return new Result(false, "Not allowed by this device");
         } catch (RuntimeException e) {
             return new Result(false, "Could not hide this app");
+        }
+    }
+
+    /**
+     * Whether the app is turned off right now.
+     *
+     * @param component the launcher component, or null for the whole package.
+     */
+    private static boolean isOff(PackageManager pm, String packageName, ComponentName component) {
+        try {
+            if (component != null) {
+                return pm.getComponentEnabledSetting(component)
+                        == PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+            }
+            int state = pm.getApplicationEnabledSetting(packageName);
+            return state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER;
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 

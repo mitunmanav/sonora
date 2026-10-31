@@ -111,4 +111,13 @@ public class SpringTest {
         Spring spring = new Spring(5f);
         assertTrue(spring.atRest());
     }
+
+    @Test
+    public void aSpringWithNoNumberInItIsAtRest() {
+        // A target that is not a number can never be reached, and a spring
+        // that never rests would keep the frame clock awake for good.
+        Spring spring = new Spring(0f);
+        spring.setTarget(Float.NaN, 1f, 0.4f);
+        assertTrue(spring.atRest());
+    }
 }

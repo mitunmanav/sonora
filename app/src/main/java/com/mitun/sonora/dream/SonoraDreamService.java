@@ -30,9 +30,16 @@ public class SonoraDreamService extends DreamService {
     public void onDreamingStarted() {
         super.onDreamingStarted();
         Prefs prefs = new Prefs(this);
+        if (view != null) {
+            // The dream was started again without being stopped, so the old
+            // view would keep its bitmaps alive.
+            view.stop();
+        }
         view = new ScreensaverView(this);
         view.setSceneDurationMs(prefs.screensaverSceneSec());
-        view.setShowOverlay(prefs.screensaverClock() != 2);
+        // "Always" shows the place from the first frame. "On input" waits for
+        // the user to press OK, and "never" never shows it.
+        view.setShowOverlay(prefs.screensaverClock() == 1);
         setContentView(view);
         view.setFocusable(true);
         view.requestFocus();

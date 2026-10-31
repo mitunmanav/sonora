@@ -48,6 +48,8 @@ public class HomeActivity extends Activity {
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
     private final List<AppTileView> tiles = new ArrayList<>();
+    /** Set when the artwork was dropped to free memory, so it is read again. */
+    private boolean artworkDropped;
     /** The apps the user pinned, in the order they pinned them. */
     private final List<String> favourites = new ArrayList<>();
 
@@ -196,11 +198,13 @@ public class HomeActivity extends Activity {
         pills.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        searchParams.rightMargin = Ui.dp(this, 10);
+        // An end margin, so the gap is on the side the next button is on in
+        // a right-to-left language too.
+        searchParams.setMarginEnd(Ui.dp(this, 10));
         pills.addView(searchPill, searchParams);
         LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        quickParams.rightMargin = Ui.dp(this, 10);
+        quickParams.setMarginEnd(Ui.dp(this, 10));
         pills.addView(quickPill, quickParams);
         pills.addView(clockPill, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -326,9 +330,11 @@ public class HomeActivity extends Activity {
         int gap = Ui.dp(this, metrics.gapDp);
 
         if (appEntries.length == 0) {
+            // The reason there is nothing to show, and the Settings tile
+            // below it: a device with no apps still has to be able to open
+            // Settings.
             grid.addView(emptyStateView(), new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            return;
         }
 
         for (int start = 0; start < tiles.size(); start += columns) {
@@ -341,7 +347,9 @@ public class HomeActivity extends Activity {
                 AppTileView tile = tiles.get(i);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(tileWidth,
                         tileHeight + (tile.labelSpace() ? Ui.dp(this, 22) : 0));
-                params.rightMargin = gap;
+                // The gap goes on the end side, so the row is the same in a
+                // right-to-left language.
+                params.setMarginEnd(gap);
                 row.addView(tile, params);
             }
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
@@ -527,7 +535,9 @@ public class HomeActivity extends Activity {
             dismissChoice();
             switch (index) {
                 case 0:
-                    entry.launch(this);
+                    if (!entry.launch(this)) {
+                        Ui.toast(this, "Could not open " + entry.label);
+                    }
                     break;
                 case 1:
                     toggleFavourite(entry);
@@ -1083,7 +1093,10 @@ public class HomeActivity extends Activity {
         // only seen when the launcher comes back. The grid is rebuilt when
         // something that changes it has changed; the wallpaper has its own
         // key, so it is checked every time.
-        if (gridChanged()) {
+        if (gridChanged() || artworkDropped) {
+            // The artwork was dropped to free memory, so the list has to be
+            // read again even when nothing about the grid has changed.
+            artworkDropped = false;
             loadApps();
         }
         applyWallpaper();
@@ -1137,6 +1150,11 @@ public class HomeActivity extends Activity {
             wallpaperBitmap = null;
             wallpaperKey = null;
             hero.release();
+            // The artwork of every app is the other thing worth holding on
+            // to. It is dropped and read again, so the old pixels are gone
+            // before the new ones are made.
+            AppRepository.invalidate();
+            artworkDropped = true;
         }
     }
 

@@ -113,12 +113,18 @@ public final class Cleanup {
         return new Result(turnedOff, alreadyOff, failed, problems);
     }
 
-    /** How a package is set up right now, or DISABLED when it is not here. */
+    /**
+     * How a package is set up right now.
+     *
+     * A package the system will not answer for is reported as DEFAULT: it
+     * was not looked at, so it must not be counted as one that was already
+     * off.
+     */
     private static int state(PackageManager pm, String packageName) {
         try {
             return pm.getApplicationEnabledSetting(packageName);
         } catch (RuntimeException e) {
-            return PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+            return PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
         }
     }
 }

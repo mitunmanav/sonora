@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
+import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.ScreenStack;
@@ -34,6 +35,9 @@ public final class ToolActivity extends Activity {
     private View choiceOverlay;
     /** Set while the first-run setup is on screen. */
     private SetupWizard wizard;
+    /** The package an uninstall was asked for, so the result can be reported. */
+    private String pendingUninstall;
+    private String pendingUninstallLabel;
 
     public static void open(Context context, String screen) {
         Intent intent = new Intent(context, ToolActivity.class);
@@ -161,10 +165,53 @@ public final class ToolActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
 
+    /**
+     * Asks the system to uninstall an app, and reports what happened.
+     *
+     * The system's uninstall screen does not tell the app what it decided,
+     * so the only honest way to know is to look at whether the package is
+     * still there when the app comes back.
+     */
+    public void uninstallApp(String packageName, String label) {
+        PackageActions.Result result = PackageActions.requestUninstall(this, packageName, label);
+        Ui.toast(this, result.message);
+        if (result.ok) {
+            pendingUninstall = packageName;
+            pendingUninstallLabel = label;
+        }
+    }
+
+    private void reportUninstall() {
+        if (pendingUninstall == null) {
+            return;
+        }
+        String packageName = pendingUninstall;
+        String label = pendingUninstallLabel;
+        pendingUninstall = null;
+        pendingUninstallLabel = null;
+        if (isInstalled(packageName)) {
+            Ui.toast(this, label + " was not uninstalled");
+        } else {
+            Ui.toast(this, "Uninstalled " + label);
+        }
+    }
+
+    private boolean isInstalled(String packageName) {
+        try {
+            getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         Ui.immersive(this);
+        reportUninstall();
     }
 
     @Override

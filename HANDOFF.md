@@ -182,7 +182,8 @@ A complete, building app, **verified on the physical TV**. Do not rewrite it.
         ├── AppSearchTest.java     # 10 tests
         ├── BackPolicyTest.java    # 4 tests
         ├── GridTest.java          # 10 tests
-        └── SpringTest.java        # 8 tests
+        ├── SpringTest.java        # 9 tests
+        └── tools/FileServerTest.java # 7 tests: the request the LAN server must survive
 ```
 
 **Build / test commands** (gradle 8.13 + JDK 21 are on this box):
@@ -191,7 +192,7 @@ A complete, building app, **verified on the physical TV**. Do not rewrite it.
 cd /home/mitun/aerial
 GRADLE=$(echo /home/mitun/.gradle/wrapper/dists/gradle-8.13-bin/*/gradle-8.13/bin/gradle)
 $GRADLE --offline :app:assembleDebug
-$GRADLE --offline :app:testDebugUnitTest      # 15 tests, all passing
+$GRADLE --offline :app:testDebugUnitTest      # 48 tests, all passing
 $GRADLE --offline :app:assembleRelease        # minified + shrunk, 3.27 MB
 ```
 
@@ -278,6 +279,58 @@ Also fixed earlier, and still true: the app list and its artwork are cached
 and the icon bitmap is dropped when the app has a banner it never uses, the
 wallpaper is decoded once instead of on every resume, `onTrimMemory` releases
 it, and a device with no launchable apps gets a real empty state.
+
+### THE EDGE CASES — walked through the code on 2026-10-31
+
+The §4 checklist of `PLAN.md` was walked item by item and everything that
+was broken was fixed. The full write-up is `PLAN.md` §10. **Do not
+reintroduce these:**
+
+1. **The LAN file server could be killed from the network.** A request line
+   of nothing but spaces split into no parts and `parts[0]` took the app
+   down; a broken `%` escape made `URLDecoder` throw, uncatchably; the
+   request line had no length cap; every folder link in the index was dead;
+   the client threads were not daemons. The parsing is now three pure
+   methods with `FileServerTest` over them.
+2. **The screen saver decoded a broken scene 30 times a second, for ever**,
+   because the scene clock was never set. `OutOfMemoryError` was not caught
+   on that path. And **"previous scene" went forwards**: `previousScene()`
+   called the same code as `nextScene()`.
+3. **A TV with no web engine took the app down.** `new WebView(this)` is the
+   only probe there is — the class is framework code — so it is made inside
+   a try, and the browser says the TV has no browser.
+4. **The app manager could crash on a package with no label** (`loadLabel()`
+   returns null) or no `applicationInfo`. Both were dereferenced on the
+   thread that loads the list.
+5. **One package the system would not answer for emptied the whole app
+   grid**: two `PackageManager` calls sat outside every try. The same was
+   true in `setHidden()` and in the app manager.
+6. **Hiding or uninstalling an app left it on the home screen**, because
+   the cache was kept and the epoch never moved. Both now drop the cache and
+   move the epoch.
+7. **An uninstall was never reported.** `REQUEST_DELETE_PACKAGES` was not
+   declared, so the system refused while Sonora said "Confirm to
+   uninstall". The permission is declared and the result is read back on
+   resume.
+8. **With no apps at all there was no way into Settings**: the empty state
+   replaced the grid, tile included.
+9. **Popping a screen lost the focus** of the screen underneath, so UP did
+   nothing.
+10. **The setup guide replaced the whole stack**, so BACK from it left the
+    tools activity instead of going back.
+11. The picker opened with nothing ticked and nothing focused when the
+    value was not on the list; the wallpaper picker replaced a photo with
+    the first scene; the process list rebuilt the screen underneath it; a
+    file was opened as `*/*`; the app's own folder was `/data/sonora`, which
+    the app cannot write to; the long-press menu opened apps silently when
+    the launch failed; the ad blocker cut the port before the userinfo; the
+    address bar had no "Go"; a page could read the TV's files on Android 6
+    to 9; a spring with a target that is not a number never rested; a
+    re-target threw away a waiting callback; the margins did not mirror in
+    RTL and the chevron pointed the wrong way; the dream showed the place
+    from the first frame in "on input" mode; the favourites and hidden-apps
+    screens read the app list on the main thread.
+
 
 ### THE GRID — why it matters, do not undo it
 
@@ -436,11 +489,11 @@ takes the D-pad, and that the mic either opens the assistant or falls back.
 
 **P1 — The strict list, in order.** Every item is evidence-backed (see
 `GOOGLE-TV-TEARDOWN.md` §8-§10); do them in this order:
-1. **Working uninstall** — `PackageActions.requestUninstall` fires
-   `ACTION_DELETE` on a `package:` URI and the manifest has no
-   `REQUEST_DELETE_PACKAGES`, so the only route is a Play Store that may not
-   exist. Use `PackageInstaller.uninstall(pkg, callback)` + one manifest
-   permission, then add "Uninstall" to the long-press menu.
+1. **Working uninstall** — done in part: `REQUEST_DELETE_PACKAGES` is
+   declared, the system uninstaller is asked, and the result is read back on
+   resume ("Uninstalled X" or "X was not uninstalled"). Still to do:
+   `PackageInstaller.uninstall(pkg, callback)` for a result the app is told
+   about directly, and **"Uninstall" in the long-press menu**.
 2. **The long-press menu order** — Google TV's verified order is
    **Open · Move · Favourites · Info · Uninstall**. Sonora has Open,
    Favourites, Search apps, Edit Home Screen, Hide from Home, App info. Cut

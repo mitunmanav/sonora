@@ -76,7 +76,7 @@ public final class ScreensaverView extends View {
         running = true;
         if (current == null) {
             currentIndex = -1;
-            showNextScene();
+            showNextScene(1);
         }
         postInvalidateOnAnimation();
     }
@@ -87,19 +87,34 @@ public final class ScreensaverView extends View {
 
     /** Called when the user asks for a different location. */
     public void nextScene() {
-        showNextScene();
+        showNextScene(1);
     }
 
     public void previousScene() {
-        panDirection = -1f;
-        showNextScene();
+        showNextScene(-1);
     }
 
-    private void showNextScene() {
+    /**
+     * Moves to the next scene, forwards or backwards.
+     *
+     * @param step 1 for the next scene, -1 for the one before this one.
+     */
+    private void showNextScene(int step) {
+        int count = Scenes.ALL.size();
+        if (count == 0) {
+            return;
+        }
+        // The pan follows the way the user went: a scene that arrives going
+        // back drifts back the way it came.
+        panDirection = step < 0 ? -1f : 1f;
         if (current == null) {
-            int index = (currentIndex + 1) % Scenes.ALL.size();
+            int index = wrap(currentIndex + step, count);
             Bitmap bitmap = load(index);
             if (bitmap == null) {
+                // A scene that will not decode must not be tried again on
+                // every frame: that would decode a full-screen picture 30
+                // times a second, forever. Wait for the next turn instead.
+                sceneStartedAt = System.currentTimeMillis();
                 return;
             }
             current = bitmap;
@@ -111,22 +126,37 @@ public final class ScreensaverView extends View {
                 listener.onSceneChanged(index);
             }
         } else {
-            nextIndex = (currentIndex + 1) % Scenes.ALL.size();
-            Bitmap bitmap = load(nextIndex);
+            int index = wrap(currentIndex + step, count);
+            Bitmap bitmap = load(index);
             if (bitmap == null) {
+                // The same rule as above: the clock restarts, so the failed
+                // decode is retried once per scene, not once per frame.
+                sceneStartedAt = System.currentTimeMillis();
                 return;
             }
+            nextIndex = index;
             next = bitmap;
             fadeStart = System.currentTimeMillis();
         }
         invalidate();
     }
 
+    /** The index after the current one, wrapping round at both ends. */
+    private static int wrap(int index, int count) {
+        return ((index % count) + count) % count;
+    }
+
     private Bitmap load(int index) {
         Scenes.Scene scene = Scenes.ALL.get(index);
         int width = Math.max(1280, getResources().getDisplayMetrics().widthPixels);
         int height = Math.max(720, getResources().getDisplayMetrics().heightPixels);
-        return Ui.decodeScene(getResources(), scene.res, width, height);
+        try {
+            return Ui.decodeScene(getResources(), scene.res, width, height);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A TV with little memory can refuse the decode. The saver says so
+            // rather than taking the whole app down with it.
+            return null;
+        }
     }
 
     @Override
@@ -164,7 +194,7 @@ public final class ScreensaverView extends View {
             long elapsed = System.currentTimeMillis() - sceneStartedAt;
             progress = Math.min(1f, elapsed / (float) sceneDurationMs);
             if (elapsed > sceneDurationMs && next == null) {
-                showNextScene();
+                showNextScene(1);
             }
             postInvalidateDelayed(FRAME_MS);
         }
@@ -188,7 +218,8 @@ public final class ScreensaverView extends View {
                     new float[]{0f, 1f}, Shader.TileMode.CLAMP));
         }
         canvas.drawRect(0, h * 0.72f, w, h, scrimPaint);
-        if (!showOverlay) {
+        if (!showOverlay || current == null) {
+            // Nothing is loaded, so there is no scene to name.
             return;
         }
         Scenes.Scene scene = Scenes.ALL.get(Math.max(0, currentIndex));

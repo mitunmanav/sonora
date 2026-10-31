@@ -118,6 +118,9 @@ com.mitun.sonora
 
 ## 4. Edge-case checklist (the real deliverable)
 
+Walked through the code on 2026-10-31; what was broken is fixed and written
+up in section 10.
+
 - Zero launchable apps -> empty state, not a crash or a blank screen
 - `PackageManager` throws -> caught, partial list still renders
 - Wallpaper permission denied -> bundled scene instead
@@ -484,3 +487,106 @@ From the teardown (`GOOGLE-TV-TEARDOWN.md` §9):
 - **Springs only.** `Motion` with damping 1.0 and response 0.3–0.4.
 - **Honest about the device.** No keyboard, no assistant: both are said out
   loud, and the screen still works with the D-pad.
+
+## 10. Session: the edge cases
+
+Every item of the §4 checklist was walked through the code, one by one, with
+CodeGraph for the map and the source for the truth. What was broken is fixed
+here; what was already right was left alone.
+
+### H1. The LAN file server could be killed from the network
+- A request line of nothing but spaces splits into **no parts at all**, and
+  `parts[0]` took the whole app down. Anything on the network can send one.
+- A broken `%` escape made `URLDecoder` throw, and the throw was not caught.
+- A request line had no length cap, and the socket timeout only bounds a read
+  that *blocks*: a client that kept sending grew the buffer until the memory
+  ran out.
+- Every link to a folder was dead: the index linked `sub/`, and `sub/` was
+  turned into `sub/index.html`, which does not exist. Now a folder with an
+  index of its own is served as that page and every other folder is listed.
+- The client threads were not daemons, so a client that hung on kept the
+  process alive.
+
+The request parsing is now three small pure methods, and `FileServerTest`
+covers them: the path, the query, the empty line, the broken escape and the
+endless line.
+
+### H2. The screen saver could spin on a broken scene
+- A scene that would not decode left the clock at zero, so **every frame**
+  decoded a full-screen picture again, 30 times a second, for ever. A
+  failed decode now waits for the next turn of the wheel.
+- `OutOfMemoryError` was not caught on that path, so a TV with little memory
+  lost the app. The wallpaper path already caught it; the saver does now.
+- **"Previous" went forwards.** `previousScene()` called the same code as
+  `nextScene()`; the pan went the right way but the picture went the wrong
+  way. Both the home saver and the dream had it.
+- The overlay named a scene that was never loaded.
+
+### H3. A TV with no web engine took the app down
+`new WebView(this)` was unguarded, and `android.webkit.WebView` is
+framework code, so there is no way to ask for it in advance: the only probe
+is to make one. The browser now says *"This TV has no web browser"* and
+names what is and is not affected.
+
+### H4. The app manager could crash on a package with no label
+`loadLabel()` returns null for a package with no label resource, and
+`applicationInfo` can be null as well. Both were dereferenced on the thread
+that loads the list, where an exception kills the whole process.
+
+### H5. One package the system would not answer for cost the user every app
+`getLeanbackLaunchIntentForPackage()` and `getLaunchIntentForPackage()` were
+outside every try, so one bad package emptied the whole grid. The same was
+true of `getLaunchIntentForPackage()` in `setHidden()` and of
+`getComponentEnabledSetting()` in the app manager.
+
+### H6. Hiding or uninstalling an app left it on the home screen
+The home grid kept its cached list and its epoch never moved, so the app was
+still there until the process was restarted. The app manager now drops the
+cache and moves the epoch, and the grid is rebuilt on the way back.
+
+### H7. An uninstall was never reported
+`REQUEST_DELETE_PACKAGES` was not declared, so the system refused the
+request while Sonora said "Confirm to uninstall X". The permission is
+declared, and the result is read back when the app comes back: the user is
+told whether the app was uninstalled or not.
+
+### H8. With no apps at all, there was no way into Settings
+The empty state replaced the whole grid, including the Settings tile. The
+reason is shown *and* the tile is there.
+
+### H9. The focus was lost on the way back
+Popping a screen threw the focused row away with it, so the screen
+underneath came back with nothing focused: DOWN worked, UP did not.
+
+### H10. The setup guide threw the user out of the activity
+It was the only panel that replaced the whole stack, so BACK from it left
+the tools activity instead of going back.
+
+### H11. Smaller ones
+- The picker opened with nothing ticked and nothing focused when the value
+  was not on the list (a wallpaper that is a photo is stored as -1).
+- The wallpaper picker opened on the first scene even when a photo was set,
+  and OK replaced the photo with it.
+- The process list was rebuilt on the screen *underneath* it when the user
+  pressed BACK while it was being read.
+- A file was opened as `*/*`, so the receiving app had no idea what it was.
+- The app's own folder was `/data/sonora`, which the app cannot write to,
+  and the file manager told the user it could.
+- The long-press menu opened apps without saying so when the launch failed.
+- The ad blocker cut the port before the userinfo, so `user@ads.example`
+  was never blocked, and it never cut the query string.
+- The address bar's keyboard had no "Go", so it did nothing.
+- A page could read the TV's files on Android 6 to 9.
+- A spring with a target that is not a number never rests, and would have
+  kept the frame clock awake for good.
+- A re-target threw away a callback that was waiting, which would have left
+  an overlay on the screen for good.
+- The margins were physical, so they did not mirror in a right-to-left
+  language, and the chevron pointed the wrong way.
+- The dream showed the place from the first frame even when the setting says
+  "on input".
+- The app list was read on the main thread by the favourites screen and by
+  the hidden-apps picker, which is long enough to be an ANR on a slow stick.
+- The artwork of every app is now dropped when the system asks for memory,
+  and the old pixels are gone before the new ones are made.
+

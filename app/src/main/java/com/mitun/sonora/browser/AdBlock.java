@@ -98,13 +98,24 @@ public final class AdBlock {
         int start = scheme < 0 ? 0 : scheme + 3;
         int end = url.indexOf('/', start);
         String host = end < 0 ? url.substring(start) : url.substring(start, end);
-        int colon = host.indexOf(':');
-        if (colon >= 0) {
-            host = host.substring(0, colon);
-        }
+        // The userinfo comes first: "user:pass@ads.example" is the host
+        // ads.example, not "user".
         int at = host.indexOf('@');
         if (at >= 0) {
             host = host.substring(at + 1);
+        }
+        // A query or a fragment is not part of the host.
+        int cut = host.indexOf('?');
+        if (cut < 0) {
+            cut = host.indexOf('#');
+        }
+        if (cut >= 0) {
+            host = host.substring(0, cut);
+        }
+        // And the port is not part of it either.
+        int colon = host.indexOf(':');
+        if (colon >= 0) {
+            host = host.substring(0, colon);
         }
         return host;
     }

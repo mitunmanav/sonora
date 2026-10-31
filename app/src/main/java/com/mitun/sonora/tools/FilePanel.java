@@ -139,7 +139,10 @@ public final class FilePanel {
     /** Opens a file with whatever app the device has for it. */
     private static void open(ToolActivity host, File file) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(com.mitun.sonora.SonoraProvider.uri(file), "*/*");
+        // The type comes from the provider, which knows the file's extension.
+        // Announcing "*/*" would leave the receiving app with no idea what it
+        // is being asked to open.
+        intent.setData(com.mitun.sonora.SonoraProvider.uri(file));
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
             host.startActivity(intent);

@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
     <!-- Stopping an app that is running in the background. -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- The app manager asks the system to uninstall an app, with the user's
+         confirmation. Without it the system refuses and nothing is removed. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- The name of the Wi-Fi network, shown in the device panel. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Reads the state of the network so the quick settings can say whether

@@ -175,7 +175,18 @@ public final class Motion {
             track = new Track(viewProperty(view, kind), read(view, kind));
             runner.tracks[kind] = track;
         }
-        track.onSettled = onSettled;
+        // A re-target must not throw away a callback that is already
+        // waiting: those callbacks take the view out of its parent, and a
+        // lost one leaves the view on the screen for good.
+        final Runnable previous = track.onSettled;
+        if (previous == null) {
+            track.onSettled = onSettled;
+        } else if (onSettled != null && onSettled != previous) {
+            track.onSettled = () -> {
+                previous.run();
+                onSettled.run();
+            };
+        }
         track.spring.setTarget(target, dampingRatio, response);
         start(runner);
     }
