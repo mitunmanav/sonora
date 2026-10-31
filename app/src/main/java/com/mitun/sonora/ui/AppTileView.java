@@ -5,7 +5,6 @@ import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
-import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -18,6 +17,10 @@ public final class AppTileView extends LinearLayout {
     public interface FocusListener {
         void onTileFocused(AppTileView tile, AppEntry entry);
     }
+
+    /** How far the card leans, in degrees, per step of travel. */
+    private static final float LEAN_X = 2.8f;
+    private static final float LEAN_Y = 2.4f;
 
     private final AppIconView icon;
     private final TextView label;
@@ -48,8 +51,7 @@ public final class AppTileView extends LinearLayout {
 
         label = new TextView(context);
         label.setTextColor(Color.WHITE);
-        label.setTextSize(13);
-        label.setTypeface(Ui.regular());
+        Type.apply(label, Type.CAPTION);
         label.setGravity(Gravity.CENTER);
         label.setSingleLine(true);
         label.setEllipsize(TextUtils.TruncateAt.END);
@@ -80,10 +82,6 @@ public final class AppTileView extends LinearLayout {
         return entry;
     }
 
-    public AppIconView iconView() {
-        return icon;
-    }
-
     public void setEntry(AppEntry entry) {
         this.entry = entry;
         icon.setEntry(entry);
@@ -102,66 +100,64 @@ public final class AppTileView extends LinearLayout {
             // order the D-pad links were built from.
             setZ(Ui.dpf(getContext(), 8f));
             icon.setFocused(true);
-            icon.animate().cancel();
-            icon.animate().scaleX(1.10f).scaleY(1.10f)
-                    .setDuration(300)
-                    .setInterpolator(new OvershootInterpolator(1.1f))
-                    .start();
+            Motion.scale(icon, 1.10f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
             if (labelSpace && labelMode != Prefs.LABELS_OFF) {
                 label.setVisibility(VISIBLE);
-                label.animate().alpha(1f).setDuration(150).start();
+                Motion.spring(label, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_FOCUS);
             }
             if (focusListener != null) {
                 focusListener.onTileFocused(this, entry);
             }
         } else {
             icon.setFocused(false);
-            icon.animate().cancel();
-            icon.animate().scaleX(1f).scaleY(1f)
-                    .setDuration(180)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f))
-                    .start();
+            Motion.scale(icon, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
             setZ(0f);
-            icon.setParallax(0f, 0f);
             if (labelSpace) {
                 if (labelMode == Prefs.LABELS_FOCUSED) {
-                    label.animate().alpha(0f).setDuration(120).withEndAction(
-                            () -> label.setVisibility(INVISIBLE)).start();
+                    Motion.spring(label, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                            Motion.RESPONSE_FOCUS, () -> label.setVisibility(INVISIBLE));
                 } else if (labelMode == Prefs.LABELS_ALL) {
-                    label.animate().alpha(0.82f).setDuration(120).start();
+                    Motion.spring(label, Motion.ALPHA, 0.82f, Motion.DAMPING_CRITICAL,
+                            Motion.RESPONSE_FOCUS);
                 }
             }
         }
     }
 
-    /** Nudge the artwork a little toward the direction of travel, then settle. */
-    public void sway(float directionX, float directionY) {
-        if (!focused) {
+    /**
+     * Leans the card in the direction of travel, then lets it settle back.
+     *
+     * The lean is a spring, so moving on before it has settled continues from
+     * where the card is instead of restarting the movement.
+     */
+    public void lean(float directionX, float directionY) {
+        if (directionX == 0f && directionY == 0f) {
             return;
         }
-        float dp = Ui.dpf(getContext(), 3f);
-        icon.setParallax(directionX * dp, directionY * dp);
+        if (Motion.isReduced(getContext())) {
+            // Reduced motion keeps the feedback but drops the travel: the
+            // card does not swing across the screen.
+            return;
+        }
         icon.setCameraDistance(Ui.dpf(getContext(), 1800f));
-        icon.setRotationX(-directionY * 2.4f);
-        icon.setRotationY(directionX * 2.8f);
-        icon.animate().rotationX(0f).rotationY(0f).setDuration(520)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator(2f))
-                .start();
+        Motion.nudge(icon, Motion.ROTATION_Y, directionX * LEAN_X);
+        Motion.nudge(icon, Motion.ROTATION_X, -directionY * LEAN_Y);
+        Motion.spring(icon, Motion.ROTATION_Y, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS);
+        Motion.spring(icon, Motion.ROTATION_X, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS);
+        // The artwork inside the card shifts with it, which is what gives the
+        // card its depth.
+        float dp = Ui.dpf(getContext(), 3f);
+        icon.nudgeParallax(directionX * dp, directionY * dp);
     }
 
-    public void setLabelMode(int mode) {
-        labelMode = mode;
-        if (!labelSpace) {
-            return;
-        }
-        if (mode == Prefs.LABELS_ALL) {
-            label.setVisibility(VISIBLE);
-            label.setAlpha(focused ? 1f : 0.82f);
-        } else if (mode == Prefs.LABELS_FOCUSED) {
-            label.setVisibility(focused ? VISIBLE : INVISIBLE);
-            label.setAlpha(focused ? 1f : 0f);
-        } else {
-            label.setVisibility(GONE);
-        }
+    @Override
+    protected void onDetachedFromWindow() {
+        Motion.cancel(this);
+        Motion.cancel(icon);
+        Motion.cancel(label);
+        super.onDetachedFromWindow();
     }
 }

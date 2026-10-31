@@ -2,7 +2,6 @@ package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -37,8 +36,7 @@ public final class ChoiceOverlay extends FrameLayout {
         TextView heading = new TextView(context);
         heading.setText(title);
         heading.setTextColor(Color.WHITE);
-        heading.setTextSize(30);
-        heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(heading, Type.DISPLAY);
         heading.setPadding(0, 0, 0, Ui.dp(context, 18));
         column.addView(heading, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -73,15 +71,14 @@ public final class ChoiceOverlay extends FrameLayout {
         TextView label = new TextView(context);
         label.setText(text);
         label.setTextColor(Color.WHITE);
-        label.setTextSize(19);
-        label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(label, Type.HEADING);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView check = new TextView(context);
         check.setText("✓");
         check.setTextColor(Color.WHITE);
-        check.setTextSize(19);
+        Type.apply(check, Type.HEADING);
         check.setVisibility(checked ? VISIBLE : INVISIBLE);
         line.addView(check, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));

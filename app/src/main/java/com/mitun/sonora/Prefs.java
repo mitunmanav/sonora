@@ -187,6 +187,29 @@ public final class Prefs {
         return sp.getBoolean("welcome", false);
     }
 
+    /**
+     * A fingerprint of everything that changes how the app grid is built. The
+     * launcher compares it on resume, so a change made in Settings shows up
+     * without the user having to restart anything.
+     */
+    public String gridKey() {
+        return columns() + "|" + labels() + "|" + order() + "|" + hidden().hashCode()
+                + "|" + appsEpoch();
+    }
+
+    /**
+     * Bumped when the app list should be read from the package manager
+     * again. The cache can be dropped without anything about the grid
+     * changing, so the launcher needs a way to notice.
+     */
+    public int appsEpoch() {
+        return sp.getInt("apps_epoch", 0);
+    }
+
+    public void bumpAppsEpoch() {
+        sp.edit().putInt("apps_epoch", appsEpoch() + 1).apply();
+    }
+
     public void setWelcomeSeen(boolean value) {
         sp.edit().putBoolean("welcome", value).apply();
     }
