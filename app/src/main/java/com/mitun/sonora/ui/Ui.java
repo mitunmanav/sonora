@@ -59,6 +59,22 @@ public final class Ui {
         return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color));
     }
 
+    /**
+     * The highlight on the row a list has selected.
+     *
+     * A list on a TV is driven by the D-pad, and the list itself holds the
+     * focus, so the selection has to be drawn for it.
+     */
+    public static android.graphics.drawable.Drawable listSelector(Context context) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setCornerRadius(dpf(context, 12));
+        // Light at the top, fading down: the same material as the rest of the
+        // app, so the row reads as a surface and not as a flat rectangle.
+        drawable.setColors(new int[]{0x26FFFFFF, 0x0CFFFFFF});
+        drawable.setStroke(Math.max(1, Math.round(dpf(context, 1))), 0x33FFFFFF);
+        return drawable;
+    }
+
     public static GradientDrawable rounded(int color, float radiusPx) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);

@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.provider.Settings;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * The actions the app manager offers, and the honest limits of each one.
@@ -136,7 +137,13 @@ public final class PackageActions {
         return file.delete();
     }
 
-    /** Stops a running app. */
+    /**
+     * Stops a running app.
+     *
+     * Only a background app can be stopped this way. An app in the foreground
+     * belongs to the user, and saying it was stopped when it was not would be
+     * a lie, so the message says what happened.
+     */
     public static Result forceStop(Context context, String packageName) {
         try {
             android.app.ActivityManager am =
@@ -145,10 +152,36 @@ public final class PackageActions {
                 return new Result(false, "No activity manager");
             }
             am.killBackgroundProcesses(packageName);
+            if (isRunning(context, packageName)) {
+                return new Result(false, "Still running: only background apps can be stopped");
+            }
             return new Result(true, "Stopped");
         } catch (RuntimeException e) {
             return new Result(false, "Could not stop this app");
         }
+    }
+
+    /** True when the package still has a process alive. */
+    private static boolean isRunning(Context context, String packageName) {
+        try {
+            android.app.ActivityManager am =
+                    (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) {
+                return false;
+            }
+            List<android.app.ActivityManager.RunningAppProcessInfo> running =
+                    am.getRunningAppProcesses();
+            if (running == null) {
+                return false;
+            }
+            for (android.app.ActivityManager.RunningAppProcessInfo info : running) {
+                if (info != null && packageName.equals(info.processName)) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return false;
     }
 
     /** Opens the system app-info page for a package. */

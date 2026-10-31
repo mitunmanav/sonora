@@ -73,6 +73,19 @@ public final class ScreenStack extends FrameLayout {
         push(title, subtitle, rows);
     }
 
+    /**
+     * Pushes a screen, or shows it as the only one when the stack is empty.
+     * A panel reached from a list keeps the list behind it, so BACK goes back
+     * to where the user came from.
+     */
+    public void showOrPush(String title, String subtitle, List<SettingRow> rows) {
+        if (stack.isEmpty()) {
+            show(title, subtitle, rows);
+        } else {
+            push(title, subtitle, rows);
+        }
+    }
+
     /** Adds a screen on top of the current one. */
     public void push(String title, String subtitle, List<SettingRow> rows) {
         Screen screen = new Screen(title, subtitle);
@@ -90,6 +103,10 @@ public final class ScreenStack extends FrameLayout {
     /**
      * Replaces the top screen with a freshly built one, keeping its place in
      * the stack. Use it when a value shown in the screen has changed.
+     *
+     * The focus stays on the row the user was on. Rebuilding a screen and
+     * throwing the focus back to the top of it is what makes a settings list
+     * feel like it is fighting the user.
      */
     public void refresh(String title, String subtitle, List<SettingRow> rows) {
         if (stack.isEmpty()) {
@@ -97,13 +114,42 @@ public final class ScreenStack extends FrameLayout {
         }
         int index = stack.size() - 1;
         Screen old = stack.remove(index);
+        int focusedIndex = -1;
+        int scrollY = 0;
+        if (old.list != null) {
+            View focused = old.list.getFocusedChild();
+            if (focused != null) {
+                focusedIndex = old.list.indexOfChild(focused);
+            }
+        }
+        if (old.scroller != null) {
+            scrollY = old.scroller.getScrollY();
+        }
         removeView(old.view);
         Screen screen = new Screen(title, subtitle);
         screen.rows.addAll(rows);
         screen.view = buildScreen(screen);
         addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         stack.add(index, screen);
-        focusTop();
+        if (focusedIndex >= 0 && screen.list != null
+                && focusedIndex < screen.list.getChildCount()
+                && screen.list.getChildAt(focusedIndex).isFocusable()) {
+            screen.list.getChildAt(focusedIndex).requestFocus();
+        } else {
+            focusTop();
+        }
+        if (screen.scroller != null) {
+            final int y = scrollY;
+            screen.scroller.post(() -> screen.scroller.scrollTo(0, y));
+        }
+    }
+
+    /** The title of the screen on top, or an empty string when there is none. */
+    public String topTitle() {
+        if (stack.isEmpty()) {
+            return "";
+        }
+        return stack.get(stack.size() - 1).title;
     }
 
     /** Pops the top screen. Returns false when the stack was already empty. */
@@ -137,11 +183,29 @@ public final class ScreenStack extends FrameLayout {
             // The first child is usually a heading, which cannot take focus.
             View target = firstFocusable(screen.list);
             if (target != null) {
-                target.requestFocus();
+                requestFocus(target);
             }
         } else if (screen.custom != null) {
-            screen.custom.requestFocus();
+            requestFocus(screen.custom);
         }
+    }
+
+    /**
+     * Gives the focus to a view, and asks again once the screen is laid out.
+     *
+     * A window that has not been given the focus cannot take it, and a view
+     * that has not been laid out cannot be asked. Both are true when a screen
+     * is built while the activity is still starting, which is why the request
+     * is repeated: without it the screen opens with nothing focused and the
+     * D-pad goes nowhere.
+     */
+    private static void requestFocus(final View target) {
+        target.requestFocus();
+        target.post(() -> {
+            if (!target.isFocused() && target.isFocusable()) {
+                target.requestFocus();
+            }
+        });
     }
 
     private static View firstFocusable(LinearLayout list) {

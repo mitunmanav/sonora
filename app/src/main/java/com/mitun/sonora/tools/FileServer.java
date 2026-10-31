@@ -77,7 +77,14 @@ public final class FileServer {
     private void acceptLoop() {
         while (running) {
             try {
-                Socket client = socket.accept();
+                // A local copy: stop() can null the field while this thread is
+                // between the check and the call, and a null socket here is a
+                // crash on a background thread.
+                ServerSocket listener = socket;
+                if (listener == null) {
+                    return;
+                }
+                Socket client = listener.accept();
                 new Thread(() -> handle(client), "sonora-share-client").start();
             } catch (IOException e) {
                 if (running) {
@@ -138,9 +145,18 @@ public final class FileServer {
         if (relative.endsWith("/")) {
             relative = relative + "index.html";
         }
+        // A name with a space arrives as %20, and the folder has to be found.
+        try {
+            relative = java.net.URLDecoder.decode(relative, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException ignored) {
+        }
         File file = new File(root, relative);
-        // Never serve anything outside the shared directory.
-        if (!file.getCanonicalPath().startsWith(root.getCanonicalPath())) {
+        // Never serve anything outside the shared directory. The separator
+        // matters: without it a folder that merely starts with the same name
+        // would pass.
+        String inside = root.getCanonicalPath() + File.separator;
+        String target = file.getCanonicalPath();
+        if (!target.equals(root.getCanonicalPath()) && !target.startsWith(inside)) {
             writeError(out, 403);
             out.flush();
             return true;
@@ -153,7 +169,7 @@ public final class FileServer {
         if (!file.isFile()) {
             return false;
         }
-        writeHeaders(out, 200, "application/octet-stream", file.length());
+        writeHeaders(out, 200, mimeOf(file.getName()), file.length());
         out.flush();
         copy(file, out);
         out.flush();
@@ -171,7 +187,7 @@ public final class FileServer {
         if (children != null) {
             java.util.Arrays.sort(children);
             for (File child : children) {
-                html.append("<a href=\"").append(escape(child.getName()))
+                html.append("<a href=\"").append(encode(child.getName()))
                         .append(child.isDirectory() ? "/" : "")
                         .append("\">").append(escape(child.getName()));
                 if (child.isDirectory()) {
@@ -219,12 +235,56 @@ public final class FileServer {
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
-    /** Copies a file, creating the destination folder when it is missing. */
+    private static String encode(String text) {
+        try {
+            return java.net.URLEncoder.encode(text, "UTF-8").replace("+", "%20");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return text;
+        }
+    }
+
+    /** The type a browser should show the file as. */
+    private static String mimeOf(String name) {
+        String lower = name.toLowerCase(java.util.Locale.US);
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (lower.endsWith(".txt") || lower.endsWith(".log")) {
+            return "text/plain; charset=utf-8";
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "text/html; charset=utf-8";
+        }
+        if (lower.endsWith(".mp4")) {
+            return "video/mp4";
+        }
+        if (lower.endsWith(".mp3")) {
+            return "audio/mpeg";
+        }
+        return "application/octet-stream";
+    }
+
+    /**
+     * Copies a file or a whole folder, creating the destination when it is
+     * missing. A folder that cannot be copied says so instead of pretending.
+     */
     public static boolean copyFile(File source, File destination) {
         try {
             File parent = destination.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
                 return false;
+            }
+            if (source.isDirectory()) {
+                return copyFolder(source, destination);
             }
             try (InputStream in = new BufferedInputStream(new FileInputStream(source));
                  OutputStream out = new BufferedOutputStream(new FileOutputStream(destination))) {
@@ -238,6 +298,22 @@ public final class FileServer {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    private static boolean copyFolder(File source, File destination) {
+        if (!destination.exists() && !destination.mkdirs()) {
+            return false;
+        }
+        File[] children = source.listFiles();
+        if (children == null) {
+            return false;
+        }
+        for (File child : children) {
+            if (!copyFile(child, new File(destination, child.getName()))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The folder the app may always write to, on every storage layout. */
