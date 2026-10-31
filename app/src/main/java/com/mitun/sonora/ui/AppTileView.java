@@ -58,7 +58,17 @@ public final class AppTileView extends LinearLayout {
                 labelSpace > 0 ? labelSpace : 0);
         labelParams.topMargin = Ui.dp(context, 5);
         addView(label, labelParams);
-        label.setVisibility(this.labelSpace ? VISIBLE : GONE);
+        // A label only shows for the focused tile in that mode, so the ones
+        // that are not focused have to start hidden rather than fade out
+        // after the tile has been focused once.
+        if (labelMode == Prefs.LABELS_FOCUSED) {
+            label.setVisibility(INVISIBLE);
+            label.setAlpha(0f);
+        } else if (labelMode == Prefs.LABELS_OFF) {
+            label.setVisibility(GONE);
+        } else {
+            label.setVisibility(VISIBLE);
+        }
 
         setOnFocusChangeListener((v, hasFocus) -> {
             focused = hasFocus;
@@ -87,7 +97,9 @@ public final class AppTileView extends LinearLayout {
 
     private void updateFocus() {
         if (focused) {
-            bringToFront();
+            // Raise the tile with its z, not with bringToFront: bringing a view
+            // to the front moves it to the end of its row, which breaks the
+            // order the D-pad links were built from.
             setZ(Ui.dpf(getContext(), 8f));
             icon.setFocused(true);
             icon.animate().cancel();

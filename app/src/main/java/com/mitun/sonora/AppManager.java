@@ -1,10 +1,12 @@
 package com.mitun.sonora;
 
 import android.content.Context;
+import android.content.ComponentName;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.graphics.drawable.Drawable;
+import android.graphics.Bitmap;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +32,9 @@ public final class AppManager {
         public final int versionCode;
         public final String versionName;
         /** Lazily loaded; loading every icon up front is what makes managers slow. */
-        public Drawable icon;
+        public Bitmap icon;
+        /** Hidden from the home screen by the user. */
+        public boolean hidden;
 
         Item(String packageName, String label, boolean systemApp, boolean updatedSystemApp,
              boolean enabled, boolean hasLauncherEntry, long installTime, int versionCode,
@@ -83,9 +87,14 @@ public final class AppManager {
             }
             boolean system = (app.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
             boolean updated = (app.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
+            ComponentName launcher = launcherComponent(pm, info.packageName);
+            boolean hasEntry = launcher != null;
+            boolean hidden = hasEntry && pm.getComponentEnabledSetting(launcher)
+                    == PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
             out.add(new Item(info.packageName, label, system, updated,
-                    app.enabled, hasLauncherEntry(pm, info.packageName),
+                    app.enabled, hasEntry,
                     info.firstInstallTime, info.versionCode, info.versionName));
+            out.get(out.size() - 1).hidden = hidden;
         }
         Collections.sort(out, (a, b) -> a.label.compareToIgnoreCase(b.label));
         cached = out;
@@ -93,12 +102,16 @@ public final class AppManager {
         return out;
     }
 
-    private static boolean hasLauncherEntry(PackageManager pm, String pkg) {
+    /** The component that launches the app, or null when it has none. */
+    private static ComponentName launcherComponent(PackageManager pm, String pkg) {
         try {
-            return pm.getLaunchIntentForPackage(pkg) != null
-                    || pm.getLeanbackLaunchIntentForPackage(pkg) != null;
+            Intent intent = pm.getLaunchIntentForPackage(pkg);
+            if (intent == null) {
+                intent = pm.getLeanbackLaunchIntentForPackage(pkg);
+            }
+            return intent == null ? null : intent.getComponent();
         } catch (RuntimeException e) {
-            return false;
+            return null;
         }
     }
 

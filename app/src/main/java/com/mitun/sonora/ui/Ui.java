@@ -367,7 +367,9 @@ public final class Ui {
         if (list == null) {
             return false;
         }
-        View focused = list.findFocus();
+        // getFocusedChild, not findFocus: findFocus asks the parent whether it
+        // is focused, which it never is, and always answers no.
+        View focused = list.getFocusedChild();
         int index = focused == null ? -1 : list.indexOfChild(focused);
         int count = list.getChildCount();
         for (int i = index + (up ? -1 : 1); i >= 0 && i < count; i += (up ? -1 : 1)) {
