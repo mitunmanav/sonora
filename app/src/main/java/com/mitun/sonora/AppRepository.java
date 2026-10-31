@@ -9,7 +9,6 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 
 import java.util.ArrayList;
@@ -19,25 +18,46 @@ import java.util.Map;
 
 import com.mitun.sonora.ui.Ui;
 
-/** Loads launchable apps and small, pre-scaled artwork off the main thread. */
+/**
+ * Loads launchable apps and small, pre-scaled artwork off the main thread.
+ *
+ * The result is cached: TVs kill background processes and the transition to the
+ * launcher is slow if every resume re-queries PackageManager and re-decodes
+ * every icon. Call {@link #invalidate()} when the set of apps may have changed.
+ */
 public final class AppRepository {
     private static final int ICON_MAX = 192;
-    private static final int BANNER_W = 480;
-    private static final int BANNER_H = 288;
+    /** Artwork wider than this is upscaled rather than stored, to bound memory. */
+    private static final int BANNER_MAX_W = 480;
+
+    private static volatile List<AppEntry> cached;
 
     private AppRepository() {
     }
 
-    public static List<AppEntry> load(Context context) {
+    /** The cached list, loading it on a background thread if it is missing. */
+    public static List<AppEntry> get(Context context, int tileWidthPx) {
+        List<AppEntry> local = cached;
+        return local != null ? local : load(context, tileWidthPx);
+    }
+
+    /** Rebuilds the list and the artwork. Call off the main thread. */
+    public static List<AppEntry> load(Context context, int tileWidthPx) {
         PackageManager pm = context.getPackageManager();
         Map<String, AppEntry> byPackage = new LinkedHashMap<>();
-        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), byPackage);
-        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), byPackage);
-        return new ArrayList<>(byPackage.values());
+        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), byPackage, tileWidthPx);
+        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), byPackage, tileWidthPx);
+        List<AppEntry> out = new ArrayList<>(byPackage.values());
+        cached = out;
+        return out;
+    }
+
+    public static void invalidate() {
+        cached = null;
     }
 
     private static void collect(Context context, PackageManager pm, Intent intent,
-                                Map<String, AppEntry> out) {
+                                Map<String, AppEntry> out, int tileWidthPx) {
         List<ResolveInfo> resolved;
         try {
             resolved = pm.queryIntentActivities(intent, 0);
@@ -84,28 +104,41 @@ public final class AppRepository {
             } catch (RuntimeException ignored) {
             }
 
-            Bitmap icon = Ui.drawableToBitmap(iconDrawable, ICON_MAX, ICON_MAX, true);
+            // Artwork is stored at the size the tile actually draws at, so a
+            // 1080p stick does not carry 4K pictures around in memory.
+            boolean lowRam = SystemInfo.get(context).lowRam;
+            int bannerW = Math.max(160, Math.min(BANNER_MAX_W, tileWidthPx));
+            if (lowRam) {
+                bannerW = Math.max(120, bannerW / 2);
+            }
+            int bannerH = Math.max(1, Math.round(bannerW * 0.6f));
+            int iconMax = lowRam ? ICON_MAX / 2 : ICON_MAX;
+
+            Bitmap icon = Ui.drawableToBitmap(iconDrawable, iconMax, iconMax, true);
             int iconW = iconDrawable == null ? 0 : iconDrawable.getIntrinsicWidth();
             int iconH = iconDrawable == null ? 0 : iconDrawable.getIntrinsicHeight();
             float iconRatio = iconH > 0 ? iconW / (float) iconH : 1f;
 
             Bitmap banner = null;
             if (validBannerRatio(bannerDrawable)) {
-                banner = drawWide(bannerDrawable, BANNER_W, BANNER_H);
+                banner = drawWide(bannerDrawable, bannerW, bannerH);
             } else if (icon != null && iconRatio > 1.25f && iconRatio < 2.4f) {
-                banner = Ui.drawableToBitmap(iconDrawable, BANNER_W, BANNER_H, true);
+                banner = Ui.drawableToBitmap(iconDrawable, bannerW, bannerH, true);
             }
 
-            int accent = Ui.averageColor(icon);
-            if (banner != null && (accent == 0 || Color.alpha(accent) == 0)) {
+            int accent = icon != null ? Ui.averageColor(icon) : 0;
+            if (accent == 0 && banner != null) {
                 accent = Ui.averageColor(banner);
             }
             if (accent == 0) {
                 accent = 0xFF3A3F4A;
             }
+            // A card draws its banner when there is one and the icon only
+            // otherwise, so keeping both doubles the memory for nothing.
+            Bitmap keepIcon = banner == null ? icon : null;
             out.put(pkg, new AppEntry(loadedLabel.toString(), pkg,
                     new ComponentName(ai.packageName, ai.name),
-                    icon, banner, accent, false));
+                    keepIcon, banner, accent, false));
         }
     }
 

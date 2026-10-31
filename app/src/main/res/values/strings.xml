@@ -24,4 +24,6 @@
     <string name="welcome_body">A quiet home for your TV.\n\nUse the D-pad to move. Press OK to open. Hold OK for app options. The time in the corner opens Settings.</string>
     <string name="start">Start</string>
     <string name="credits">Imagery credits</string>
+
+    <string name="no_apps">No apps found on this device.\n\nInstall an app from the TV\'s app store, then reload. Sonora\'s own settings are below.</string>
 </resources>

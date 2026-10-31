@@ -6,6 +6,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -179,6 +180,25 @@ public final class SettingsOverlay extends FrameLayout {
         if (list.getChildCount() > 0) {
             list.getChildAt(0).requestFocus();
         }
+    }
+
+    /**
+     * Keeps the D-pad inside the panel. Without this the arrow keys walk out
+     * of the list and into the launcher grid behind it.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int code = event.getKeyCode();
+            if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                Ui.moveListFocus(list, code == KeyEvent.KEYCODE_DPAD_UP);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private String wallpaperName() {
