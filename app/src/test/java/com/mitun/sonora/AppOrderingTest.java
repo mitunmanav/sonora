@@ -1,4 +1,4 @@
-package com.mitun.aerial;
+package com.mitun.sonora;
 
 import static org.junit.Assert.assertEquals;
 

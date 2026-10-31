@@ -1,4 +1,4 @@
-package com.mitun.aerial;
+package com.mitun.sonora;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -9,7 +9,7 @@ import java.util.Set;
 
 /** All user choices in one tiny place. */
 public final class Prefs {
-    private static final String FILE = "aerial";
+    private static final String FILE = "sonora";
     public static final int LABELS_OFF = 0;
     public static final int LABELS_FOCUSED = 1;
     public static final int LABELS_ALL = 2;

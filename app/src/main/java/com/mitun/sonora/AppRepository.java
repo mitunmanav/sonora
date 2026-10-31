@@ -1,4 +1,4 @@
-package com.mitun.aerial;
+package com.mitun.sonora;
 
 import android.content.Context;
 import android.content.Intent;
@@ -17,7 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.mitun.aerial.ui.Ui;
+import com.mitun.sonora.ui.Ui;
 
 /** Loads launchable apps and small, pre-scaled artwork off the main thread. */
 public final class AppRepository {

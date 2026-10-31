@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -13,7 +13,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.mitun.aerial.Prefs;
+import com.mitun.sonora.Prefs;
 
 import java.util.Locale;
 
@@ -185,7 +185,7 @@ public final class SettingsOverlay extends FrameLayout {
         if (prefs.wallpaper() < 0) {
             return "Photo";
         }
-        return com.mitun.aerial.AerialScenes.ALL.get(prefs.wallpaper()).name;
+        return com.mitun.sonora.Scenes.ALL.get(prefs.wallpaper()).name;
     }
 
     private String labelName() {
