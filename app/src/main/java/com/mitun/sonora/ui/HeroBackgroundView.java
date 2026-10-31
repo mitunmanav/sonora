@@ -54,10 +54,16 @@ public final class HeroBackgroundView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         rect.set(0, 0, w, h);
-        // Darkness at the top for the title and time, and a deep floor for the dock.
+        // Darkness at the top for the title and the buttons, and a deep floor
+        // for the dock.
+        //
+        // The top band is strong because the chrome has to read over any
+        // wallpaper: Google TV puts a gradient scrim under its system bar
+        // for the same reason, and a white mark over a bright sky does not
+        // survive without one.
         scrimPaint.setShader(new LinearGradient(0, 0, 0, h,
-                new int[]{0x8A000000, 0x1A000000, 0x30000000, 0xD9000000},
-                new float[]{0f, 0.30f, 0.58f, 1f}, Shader.TileMode.CLAMP));
+                new int[]{0xDB000000, 0xA6000000, 0x52000000, 0x1A000000, 0x30000000, 0xD9000000},
+                new float[]{0f, 0.05f, 0.13f, 0.30f, 0.58f, 1f}, Shader.TileMode.CLAMP));
         fallbackPaint.setShader(new LinearGradient(0, 0, 0, h,
                 new int[]{0xFF0E1825, 0xFF243748, 0xFF070A0F},
                 null, Shader.TileMode.CLAMP));
