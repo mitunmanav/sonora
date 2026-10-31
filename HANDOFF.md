@@ -1,46 +1,48 @@
 # HANDOFF — Sonora
 
-Copy everything below the line into the new session. Nothing else is needed.
+Everything needed to start cold. Copy the block below the line into the new
+session; nothing else is needed.
 
 ---
 
 ## PROMPT FOR THE NEW SESSION
 
-You are continuing work on **Sonora**, an Android TV launcher that replicates the
-Apple tvOS 26 home screen, is extremely light on system resources, and is fully
-customizable. It ships a screen saver (Daydream) because the previous session on
-this TV removed MiTV's own screen saver.
+You are continuing work on **Sonora**, an Android TV launcher that replicates
+the Apple tvOS 26 home screen, is extremely light on system resources, and is
+fully customisable. It ships a screen saver (Daydream) because the previous
+session on this TV removed MiTV's own screen saver.
 
-The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 3
-commits** — use git, it was added specifically so large refactors are safe.
+The project lives at `/home/mitun/aerial`. **Git repo, working tree clean, 7
+commits** — use git, it exists so large refactors are safe.
 
 Work in **ponytail mode (full)**: smallest complete change, no speculative
-abstractions, comment only the "why", no features nobody asked for. Keep the app
-**dependency-free** (no AndroidX, no Compose, no networking libs, no QR libs).
+abstractions, comment only the "why", no features nobody asked for. Keep the
+app **dependency-free** (no AndroidX, no Compose, no networking libs).
 
-### THE GOAL (this changed mid-project — read carefully)
+### THE GOAL
 
-Sonora is no longer "just a tvOS launcher". The user expanded the scope to a
-**launcher + TV utility suite**, in **one APK**:
+Sonora is a **launcher + TV utility suite** in **one APK**:
 
 - The **launcher is the main product**. It must stay the best thing in the app.
-- **Optional, off by default** extras, bundled but switchable per-feature:
+- **Optional, off by default** extras, bundled but switchable per feature:
   a **browser with an ad blocker**, a **file manager**, and **file transfer**.
-- Plus: an **app manager** (disable / uninstall / manage every installed app), a
-  **guided step-by-step live debugging guide**, and a **debug panel**.
+- Plus: an **app manager** (disable / uninstall / manage every installed app),
+  a **guided step-by-step live debugging guide**, and a **debug panel**.
 
-**The headline requirement: "extremely light, little to no usage of system
-resources".** Concretely:
+The headline requirement is **"extremely light, little to no usage of system
+resources"**:
+
 - **No background services.** No WorkManager, no JobScheduler, no alarms, no
-  boot receiver, no foreground service. A launcher that idles at 0% CPU *is* the
-  product.
-- The only Service is the Daydream `DreamService`, which exists solely while the
-  system is showing the dream.
+  boot receiver, no foreground service. A launcher that idles at 0% CPU *is*
+  the product.
+- The only Service is the Daydream `DreamService`, which exists solely while
+  the system is showing the dream.
 - The **LAN file server runs on a thread inside the visible Share activity and
   dies with it** — no listening socket when the app is closed.
 - `INTERNET` permission is declared but **no code touches the network** unless
-  the browser or the transfer client is explicitly enabled.
-- Target: **< 6 MB APK**, at most two screen-sized bitmaps alive.
+  the browser is explicitly enabled.
+- Target: **< 6 MB APK** (currently **3.27 MB**), at most two screen-sized
+  bitmaps alive.
 
 ### USER DECISIONS ALREADY MADE (do not re-litigate)
 
@@ -50,142 +52,236 @@ resources".** Concretely:
 | Browser packaging | **One APK, browser off by default** (hidden until enabled in Settings) |
 | File transfer | **Full-fledged file manager + file transfer**, bundled and optional like the browser |
 
-The file transfer answer was free-text: *"a full fledge file transfer and a full
-fledge file manger optinal bundled like browser as well"*. So implement a real
-file manager (browse, copy, move, rename, delete, properties) **and** a real
-transfer mechanism. The user asked for "fast, easy to connect". Recommended
-approach that satisfies "easy to connect" without a big dependency: a small
-**LAN HTTP server** (so a phone/laptop types the TV's IP and pulls files) plus
-the **Android share sheet** for sending out. Avoid SMB (big to implement well).
-Keep the server on a thread inside the Share activity — **no Service**.
+### THE USER'S EXACT FEATURE REQUESTS (verbatim)
 
-### THE USER'S EXACT FEATURE REQUESTS (verbatim, all still open)
-
-> "To enable debugging, we need a guided, step‑by‑step live guide that is
+> "To enable debugging, we need a guided, step-by-step live guide that is
 > helpful. Once enabled, our app should be able to uninstall, save, and perform
-> other actions through a built‑in file manager and file‑share feature that is
-> fast, easy to connect, and lightweight. The file manager should be advanced yet
-> simple to use. We also need to rename the app and add an optional browser with
-> an ad blocker; the browser should be lightweight as well."
+> other actions through a built-in file manager and file-share feature that is
+> fast, easy to connect, and lightweight. The file manager should be advanced
+> yet simple to use. We also need to rename the app and add an optional
+> browser with an ad blocker; the browser should be lightweight as well."
 
-> "include a lot of features like deep loader, debugging, removing, and disabling
-> things. Once a person opens this APK on any Android TV, it's going to set it
-> up."
+> "include a lot of features like deep loader, debugging, removing, and
+> disabling things. Once a person opens this APK on any Android TV, it's going
+> to set it up."
 
-Interpretation to build:
-1. **Guided live debugging guide** — reads *live* device state (developer
-   options on? adb authorised? wireless debugging on?), step by step, each step
-   able to open the exact Settings screen it needs, copy-to-clipboard adb
-   commands, show the TV's IP. Never pretend a step is done when it isn't.
-2. **App manager** — disable ("removing and disabling things"), uninstall,
-   clear data, force stop, app info, per-app detail. Plus a **deep loader /
-   deep scan** of storage and installed apps.
-3. **First-run setup** — "once a person opens this APK on any Android TV, it's
-   going to set it up": a wizard that configures wallpaper, grid, clock, screen
-   saver and offers to become the default launcher. Runs once, skippable.
-4. **File manager** — advanced yet simple.
-5. **Optional browser with ad blocker** — lightweight.
+### THE APPLE-DESIGN SKILL IS INSTALLED AND IS THE DESIGN AUTHORITY
+
+The user asked for Apple's design principles to be applied to **every** screen,
+the launcher included. The skill is installed at:
+
+```
+/home/mitun/.config/opencode/skills/apple-design/SKILL.md
+```
+
+(23,036 bytes, fetched from
+`https://github.com/emilkowalski/skills/tree/main/skills/apple-design`. Load it
+with the `skill` tool, id `apple-design`.)
+
+**Read it before any UI work.** It is written for the web, so translate it to
+platform views, but the principles are not negotiable:
+
+- **Springs, not tweens.** Interruptible, re-targetable, velocity-carrying.
+- **Response on the press, not on release.**
+- **Spatial consistency:** a screen that comes in from the right leaves to the
+  right. Enter and exit along the same path.
+- **Reduced motion** is a gentler equivalent, never no feedback. The system
+  `ANIMATOR_DURATION_SCALE` is the honest signal.
+- **Typography:** tracking and leading follow the size. Large text is tracked
+  tighter, small text slightly open. Never one global value.
+- **Materials:** translucent layers, heavier material for bigger surfaces,
+  never stack a light translucent surface on another. Dim to focus.
+- **Restraint.** Every element earns its place.
+
+**Android translation used in this codebase** (`ui/Motion.java`,
+`ui/Spring.java`, `ui/Type.java`):
+
+- Android has **no platform spring animation** — `SpringAnimation` is
+  **AndroidX**, and this app has no dependencies. So `ui/Spring.java` solves
+  the damped harmonic oscillator itself on a `Choreographer`, with a fixed
+  1/240 s integration step. It keeps the value *and the velocity* when
+  re-targeted, which is what makes it interruptible. **Do not replace it with
+  a `ViewPropertyAnimator` tween.**
+- Parameters are Apple's: damping ratio 1.0 = no overshoot (the default),
+  below 1.0 = settle. "Response" is seconds-to-target, not a duration.
+  `Motion.DAMPING_CRITICAL`, `Motion.DAMPING_SPRINGY`, `Motion.RESPONSE_MOVE`,
+  `Motion.RESPONSE_PANEL`, `Motion.RESPONSE_FOCUS`.
+- `ui/Type.java` is the type scale: `DISPLAY, TITLE, HEADING, BODY, CAPTION,
+  MICRO`, each with its own size, weight, tracking and leading. **Use it
+  instead of ad-hoc `setTextSize` calls.**
 
 ### CURRENT STATE — what exists and works
 
-A complete, building app. **Do not rewrite it — continue from it.**
+A complete, building app, **verified on the physical TV**. Do not rewrite it.
 
 ```
 /home/mitun/aerial
-├── PLAN.md                     # the full plan, keep it updated
+├── PLAN.md                     # the plan; keep it updated
 ├── HANDOFF.md                  # this file
-├── .agents/skills/             # official Google Android skills (see below)
+├── .agents/skills/             # official Google Android skills
 ├── settings.gradle             # rootProject.name = "Sonora"
 ├── build.gradle                # root, intentionally empty
 ├── gradle.properties           # useAndroidX=false, optimizedResourceShrinking=true
 ├── local.properties            # sdk.dir=/home/mitun/Android/Sdk
 ├── app/build.gradle            # AGP 8.13.0, compileSdk 35, minSdk 23, targetSdk 35,
 │                               # Java 17, junit:junit:4.13.2 (test only), NO runtime deps
-├── app/proguard-rules.pro      # keeps HomeActivity + SonoraDreamService  (FIXED - see P4)
+├── app/proguard-rules.pro      # keeps HomeActivity, dream, tools.**, browser.**
 └── app/src
     ├── main/AndroidManifest.xml
     ├── main/res/values/{strings.xml,styles.xml}
+    ├── main/res/raw/adlist.txt # the browser's bundled ad list (hosts-style)
     ├── main/res/drawable-nodpi/
     │   ├── sonora_ngorongoro.jpg  sonora_vigo.jpg  sonora_zhuravlyne.jpg
     │   ├── sonora_punjab.jpg      sonora_dulmen.jpg   (5 aerials, CC BY-SA 4.0)
     │   ├── banner.png  ic_launcher.png
     ├── main/java/com/mitun/sonora/
-    │   ├── HomeActivity.java      # home screen: grid, D-pad focus, app menu,
-    │   │                          # settings overlay, idle screensaver  (~830 lines)
+    │   ├── HomeActivity.java      # grid, D-pad, app menu, idle screensaver
     │   ├── Grid.java              # PURE: runtime-sized grid maths       [tested]
     │   ├── AppOrdering.java       # PURE: order + hidden set            [tested]
+    │   ├── BackPolicy.java        # PURE: what BACK means on the grid   [tested]
     │   ├── AppEntry.java          # model: label, pkg, component, icon, banner, accent
-    │   ├── AppRepository.java     # launchable apps, rendered off the main thread
+    │   ├── AppRepository.java     # launchable apps + artwork, cached, off the main thread
     │   ├── AppManager.java        # ALL installed packages, cached 30s
     │   ├── PackageActions.java    # enable/disable/uninstall/clear/force-stop, guarded
     │   ├── SystemInfo.java        # cached device facts + byte formatting
     │   ├── Prefs.java             # every user choice, one file
     │   ├── Scenes.java            # the 5 bundled scenes: res id + name + credit
+    │   ├── SonoraProvider.java    # content URIs for local files (for share / open with)
     │   ├── dream/SonoraDreamService.java  # system Daydream entry point
+    │   ├── tools/
+    │   │   ├── ToolActivity.java  # the host for every panel; one ScreenStack
+    │   │   ├── SettingsPanel.java # the Settings screen
+    │   │   ├── ToolsPanel.java    # the Tools menu + the on/off flow for the extras
+    │   │   ├── AppPanel.java      # app manager: all packages, filters, lazy icons
+    │   │   ├── DebugPanel.java    # device, processes, battery, network, log, self check
+    │   │   ├── SetupGuide.java    # the guided live debugging guide
+    │   │   ├── FilePanel.java     # file manager: browse, sort, search, copy/move/rename/delete
+    │   │   ├── FileServer.java    # the LAN HTTP server; runs on a thread, dies with its screen
+    │   │   └── ShareActivity.java # the visible screen that runs the server
+    │   ├── browser/
+    │   │   ├── BrowserActivity.java  # WebView, off by default
+    │   │   └── AdBlock.java          # local hosts-style blocker, no network round trip
     │   └── ui/
     │       ├── Ui.java              # dp/sp, glass drawable, bitmap decode, gear, immersive
+    │       ├── Motion.java          # the spring API + reduced-motion handling
+    │       ├── Spring.java          # the spring solver (no AndroidX available)
+    │       ├── Type.java            # the type scale
     │       ├── HeroBackgroundView.java  # full-bleed wallpaper + accent tint + scrim
     │       ├── AppIconView.java     # the 5:3 app card, focus sheen
     │       ├── AppTileView.java     # focusable tile: scale-up focus, parallax sway
     │       ├── GlassPillView.java   # top-right clock + profile pill (opens Settings)
     │       ├── GlassDrawable.java   # cheap "Liquid Glass" fill/edge/highlight, no blur
-    │       ├── SettingsOverlay.java # tvOS-style settings list (LEGACY - see below)
+    │       ├── SettingRow.java      # one list row, six kinds
+    │       ├── ScreenStack.java     # push/pop list screens, shared by every panel
     │       ├── ChoiceOverlay.java   # tvOS-style list picker
-    │       ├── SettingRow.java      # NEW: one list row, four kinds (header/value/action/push)
-    │       ├── ScreenStack.java     # NEW: push/pop list screens, shared by every panel
     │       └── ScreensaverView.java # Ken Burns crossfade screensaver, 2 bitmaps max
     └── test/java/com/mitun/sonora/
         ├── AppOrderingTest.java   # 3 tests
+        ├── BackPolicyTest.java    # 4 tests
         └── GridTest.java          # 8 tests
 ```
 
-**Build / test commands** (gradle 8.13 + JDK 21 already on this box):
+**Build / test commands** (gradle 8.13 + JDK 21 are on this box):
 
 ```bash
 cd /home/mitun/aerial
 GRADLE=$(echo /home/mitun/.gradle/wrapper/dists/gradle-8.13-bin/*/gradle-8.13/bin/gradle)
 $GRADLE --offline :app:assembleDebug
-$GRADLE --offline :app:testDebugUnitTest      # 11 tests, all passing
-$GRADLE --offline :app:assembleRelease        # minified + shrunk
+$GRADLE --offline :app:testDebugUnitTest      # 15 tests, all passing
+$GRADLE --offline :app:assembleRelease        # minified + shrunk, 3.27 MB
 ```
 
 Gradle **must** run `--offline`; all AGP/Gradle artifacts are cached locally.
 
-### WHAT WAS COMPLETED IN THE LAST SESSION
+### THE PHYSICAL TV — how to test on the device
 
-1. **Renamed Aerial → Sonora** — package `com.mitun.aerial` → `com.mitun.sonora`,
-   classes renamed (`AerialScenes`→`Scenes`, `AerialDreamService`→`SonoraDreamService`,
-   `AerialScreensaverView`→`ScreensaverView`), resources `aerial_*.jpg`→`sonora_*.jpg`,
-   prefs file `aerial`→`sonora`, `Theme.Aerial`→`Theme.Sonora`. Done with `git mv`
-   so history is preserved.
-2. **`Grid.java`** — pure, unit-tested, resolution-independent grid maths. This is
-   the single most important change so far; details below.
-3. **`SettingRow.java`** + **`ScreenStack.java`** — the shared list-row and
-   push/pop-screen primitives that every new panel will use. Built but **not yet
-   wired into anything**.
-4. **`SystemInfo.java`**, **`AppManager.java`**, **`PackageActions.java`** — the
-   data/action layer for the app manager and debug panel. Built, **not yet
-   wired into any UI**.
-5. **`gradle.properties`**: added `android.r8.optimizedResourceShrinking=true`
-   (required for AGP 8.12/8.13 per the r8-analyzer skill).
-6. **Git repo created** with 3 commits and a `.gitignore`.
-7. **A real bug found and fixed**: `proguard-rules.pro` still referenced the
-   old package `com.mitun.aerial`, so the **release build was stripping both the
-   launcher and the dream service** — a release APK with no launcher at all.
-   Now fixed and **verified**: `assembleRelease` builds, `dexdump` confirms both
-   `com.mitun.sonora.HomeActivity` and
-   `com.mitun.sonora.dream.SonoraDreamService` survive R8, and the release APK is
-   **3.2 MB** (budget is 6 MB).
+The user asked to try it on the TV, so **device verification is wanted**. The
+device is a **Xiaomi MiTV-AYFR0, Android 11 (API 30), 1920×1080 @ 320dpi =
+960×540dp**, which is the 6-column case.
+
+```bash
+export PATH=$PATH:/home/mitun/Android/Sdk/platform-tools
+adb connect 192.168.68.108:5555     # may refuse for a while; retry every ~6s
+adb install -r -t /home/mitun/aerial/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.mitun.sonora/.HomeActivity
+adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png /tmp/opencode/s.png
+```
+
+- **The adb connection drops** (the TV's wireless adb listener closes). Retry
+  in a loop; it comes back within a minute.
+- **The user is often using the remote at the same time.** Their key presses
+  interleave with yours and will confuse a key-sequence test. Check
+  `adb shell dumpsys window | grep mCurrentFocus` before and after, and prefer
+  verifying with the view tree over guessing:
+  ```bash
+  adb shell dumpsys activity top | grep -oE "AppTileView\{[^}]*\}" | grep '\.F'
+  ```
+- **`ToolActivity`, `ShareActivity`, `BrowserActivity` are `exported=false`**,
+  so `adb shell am start` on them is refused. Reach them through the UI:
+  Settings tile on the home screen → OK.
+- **`com.mitun.aerial` (the old package) is still installed on the TV**, so
+  there are two launchers with the same name in the grid. The user has not
+  said whether to uninstall it — **ask before removing it**.
+- **Sonora is not the default launcher on the TV** (`com.google.android.tvlauncher`
+  is). So BACK at the top of the grid leaves to the Google TV launcher. That
+  is the designed behaviour when Sonora is not the default home.
+
+### WHAT THE LAST SESSION FOUND AND FIXED (all verified on the TV)
+
+These were **live bugs**, not theories. Do not reintroduce them.
+
+1. **`dispatchKeyEvent` swallowed every key while an overlay was open.** It
+   returned `true` for all keys, so the focused row never saw the event:
+   Settings, the app menu and every picker were dead — no focus movement, no
+   OK, no click.
+2. **Arrow keys escaped an overlay into the grid behind it**, where OK would
+   launch an app the user never picked. Fixed with `Ui.moveListFocus`, which
+   moves focus explicitly inside the list instead of letting the framework
+   search for it.
+3. **`Ui.moveListFocus` asked `list.findFocus()` whether the list had focus.**
+   `findFocus()` asks the *parent* whether *it* is focused, so it always
+   answered no, and DOWN always jumped back to the first row. It now uses
+   `list.getFocusedChild()`.
+4. **`ScreenStack.focusTop()` focused child 0**, which is a heading and
+   cannot take focus, so no row was focused at all. It now finds the first
+   *focusable* child, and a new screen starts scrolled to the top.
+5. **`AppTileView.updateFocus()` called `bringToFront()`** on the focused
+   tile. `bringToFront()` **moves a view to the end of its row**, so the tiles
+   were re-ordered under the user while the D-pad links, built from the
+   original order, still pointed at the old neighbours. The tile now raises
+   itself with `setZ()` only.
+6. **The framework's spatial focus search overrode the grid's links** and
+   jumped to whatever happened to be nearest on screen. The D-pad is now
+   driven by `HomeActivity.moveFocus()`: along the row, then between the rows,
+   with the clock pill above the first row. `wireFocus()` was deleted.
+7. **The first tile did not get the focus at startup** — the grid is not laid
+   out when it is built, so `requestFocus()` failed and the framework picked
+   one. It is now requested after the layout, and again on window focus.
+8. **A label in "focused only" mode stayed visible until the tile had been
+   focused once.** Unfocused labels now start hidden.
+9. **Screens in the stack were transparent**, so the screen being replaced
+   showed through the one sliding in. Each screen is now opaque.
+10. **The app menu was drawn over the app title** and the grid showed through
+    it. The scrim is heavier and the menu starts below the title.
+11. **BACK on the grid fell through to the system** and exited the launcher.
+    Now: overlay → screensaver → scroll the grid to the top and focus the
+    first tile → and only leave if Sonora is *not* the default launcher.
+
+Also fixed earlier, and still true: the app list and its artwork are cached
+(`AppRepository`), artwork is stored at the size the tile actually draws at
+and the icon bitmap is dropped when the app has a banner it never uses, the
+wallpaper is decoded once instead of on every resume, `onTrimMemory` releases
+it, and a device with no launchable apps gets a real empty state.
 
 ### THE GRID — why it matters, do not undo it
 
 The old code hardcoded 6 columns and 44dp padding. That is wrong on most TVs:
-Google's own density table maps 720p/1080p/4K to 960×540dp, **but many Chinese
+Google's density table maps 720p/1080p/4K to 960×540dp, **but many Chinese
 boxes report 240dpi, which is 1280×720dp**. Hardcoding breaks on exactly the
 hardware this app targets.
 
-`Grid` now derives everything from the runtime width, using proportions
-**measured off Apple's own tvOS 26 press renders** (`tvos-research/shots/apple-home.jpg`):
+`Grid` derives everything from the runtime width, using proportions **measured
+off Apple's own tvOS 26 press renders**:
 
 | Quantity | Value | Source |
 |---|---|---|
@@ -204,19 +300,18 @@ meaningful.**
 
 ### HARD CONSTRAINTS (non-negotiable)
 
-- **No network permission in practice.** `INTERNET` may be declared, but no code
-  path may use it unless the browser/transfer feature is enabled by the user.
+- **No network permission in practice.** `INTERNET` is declared, but no code
+  path uses it unless the browser is switched on.
 - **No AndroidX, no Compose, no third-party libraries of any kind.** Platform
-  APIs only.
+  APIs only. This is why the spring had to be written by hand.
 - **No background processes.** No Service except the DreamService. No receivers.
 - `minSdk 23` — Play requires TV apps to keep minSdk ≤ 31. **Do not raise it.**
-- `QUERY_ALL_PACKAGES` is already declared (needed for the app manager). If you
-  add `<queries>`, keep it consistent.
+- `QUERY_ALL_PACKAGES` is declared (needed for the app manager).
 - `android.software.leanback` and `android.hardware.touchscreen` are both
-  `required="false"` — **never** make them required, it blocks installation on
-  some TVs.
+  `required="false"` — **never** make them required.
 - The Play TV checklist wants a **320×180 banner** (exists) and an icon
   **≥160×160 at xhdpi** (exists, 512×512).
+- `usesCleartextTraffic="false"` — do not remove it.
 
 ### RESEARCH FINDINGS (do not redo — these were expensive)
 
@@ -229,10 +324,10 @@ meaningful.**
   translucent glass bar** floating over the artwork near the bottom; further
   rows below, scrollable.
 - App names are **not** shown under icons by default — only the focused tile
-  shows its name (tvOS 17+). `Prefs.LABELS_FOCUSED` is the default. ✔ already done.
+  shows its name (tvOS 17+). `Prefs.LABELS_FOCUSED` is the default. ✔
 - Focus effect: focused icon scales ~1.10× and lifts with a stronger shadow;
-  neighbours lean away with subtle 3D parallax/tilt; a specular sheen sweeps the
-  focused card. ✔ already implemented in `AppTileView` + `AppIconView`.
+  neighbours lean away with subtle 3D parallax/tilt; a specular sheen sweeps
+  the focused card. ✔ in `AppTileView` + `AppIconView`.
 - Apple's HIG grid: 6-column = 260pt content width, 40pt horizontal, 100pt vertical.
 - tvOS app icon assets: home 400×240pt; App Store 1280×768; Top Shelf 1920×720.
 - The 5 bundled aerials are **real CC BY-SA 4.0 photographs from Wikimedia
@@ -245,33 +340,26 @@ meaningful.**
 
 - **Never re-query `PackageManager` in `onResume`.** TVs kill background
   processes and "transition to the Launcher can be significantly delayed".
-  **Cache the app list and its icons.** ← `AppManager` does this; `HomeActivity`
-  still needs to stop re-loading on resume.
+  **Cache the app list and its icons.** ✔ `AppRepository` does this.
 - **`ActivityManager.isLowRamDevice()`** is the official way to detect a 1GB
-  stick — never infer from RAM. Use it to size caches.
-- **BACK is breadcrumb-style only.** It must never act as a toggle, must never
-  show a confirmation dialog, there must be no on-screen back button, and
-  consecutive presses must always eventually reach the TV home screen. On the
-  top-level app grid, BACK should scroll to the first row / clear focus —
-  **never exit the launcher.** ← **not yet implemented in `HomeActivity`.**
+  stick — never infer from RAM. It now halves the artwork size.
+- **BACK is breadcrumb-style only.** Never a toggle, never a confirmation
+  dialog, no on-screen back button. Consecutive presses must always reach the
+  TV home screen.
 - **Dream picker is hidden on Google TV and Philips-style sets.** Ship a
-  user-launched screensaver *activity* as the primary path (already exists as the
-  in-app idle saver) plus a deep link to `Settings.ACTION_DREAM_SETTINGS`.
+  user-launched screensaver *activity* as the primary path (the in-app idle
+  saver) plus a deep link to `Settings.ACTION_DREAM_SETTINGS`.
 - **A normal app CAN hide bloatware** via
   `PackageManager.setComponentEnabledSetting(..., COMPONENT_ENABLED_STATE_DISABLED, DONT_KILL_APP)`
-  — `CHANGE_COMPONENT_ENABLED_STATE` is a **normal** permission. This is the
-  only reliable hide mechanism for a non-privileged app. ✔ in `PackageActions`.
+  — `CHANGE_COMPONENT_ENABLED_STATE` is a **normal** permission. ✔ `PackageActions`.
 - **Uninstalling a preinstalled app is per-user removal**, not deletion from
-  `/system` (that needs the hidden `DELETE_SYSTEM_APP` flag). The UI must say
-  this plainly rather than promising removal.
+  `/system`. The UI says this plainly.
 - **`clearApplicationUserData` for another app is NOT possible** from a normal
-  app — the public API doesn't exist and `CLEAR_APP_USER_DATA` is privileged.
-  `PackageActions.clearData` therefore opens the system app-info page and tells
-  the user to use "Clear storage". **Do not try to work around this.**
-- `Settings.Secure.screensaver_components` is a **Secure** setting — a normal app
-  cannot write it; it can only offer a dream and link to the picker.
-- Google TV enters **Ambient Mode after 10 min inactivity**, then Energy Saver
-  powers the display off.
+  app. `PackageActions.clearData` opens the system app-info page and tells the
+  user to use "Clear storage". **Do not try to work around this.**
+- `Settings.Secure.screensaver_components` is a **Secure** setting — a normal
+  app cannot write it.
+- Google TV enters **Ambient Mode after 10 min inactivity**.
 - Play TV quality rules: minSdk ≤ 31; 320×180 banner; no touchscreen requirement.
 
 **Device class reality** (so the app works on cheap sticks too):
@@ -280,108 +368,106 @@ meaningful.**
   S922X, RK3318, RK3566) · Android 12/13/14 (MTK9456, RTD286x).
 - **dp viewports**: 720p@240dpi = 853×480dp · 1080p@320dpi = 960×540dp ·
   1080p@240dpi = 1280×720dp · 4K@480dpi = 1280×720dp. **Read at runtime.**
-- 1GB sticks are `isLowRamDevice() == true` — the common case, not the exception.
+- 1GB sticks are `isLowRamDevice() == true` — the common case.
 - Samsung/Tizen is **not** Android TV, out of scope.
 
-### OFFICIAL ANDROID SKILLS INSTALLED (use them)
+### OFFICIAL ANDROID SKILLS INSTALLED
 
-Google's official `android/skills` repo is installed at `.agents/skills/`:
+Google's official `android/skills` repo is at `.agents/skills/`:
 
 | Skill | Use for |
 |---|---|
-| `r8-analyzer` | release APK size, ProGuard keep-rule analysis. **Note: it needs R8 ≥ 9.4.34 to produce the report, and this box is offline — so apply its `references/CONFIGURATION.md` checklist by hand rather than running the script.** Already applied: `minifyEnabled`, `shrinkResources`, `proguard-android-optimize.txt`, `android.r8.optimizedResourceShrinking=true`. Verify `android.enableR8.fullMode=false` is absent (it is). |
+| `r8-analyzer` | release APK size, ProGuard keep-rule analysis. **It needs R8 ≥ 9.4.34 to produce the report and this box is offline — apply its `references/CONFIGURATION.md` checklist by hand.** Already applied: `minifyEnabled`, `shrinkResources`, `proguard-android-optimize.txt`, `android.r8.optimizedResourceShrinking=true`. Verify `android.enableR8.fullMode=false` is absent (it is). |
 | `android-profiler` | CPU/memory/heap profiling, allocation churn, LMK analysis. |
 | `anr-audit-and-fix` | ANR hunting — relevant since this app must never block the main thread. |
 | `android-permissions-security` | auditing the manifest permissions and IPC components. |
 | `android-intent-security` | auditing intent handling, `exported` components, intent redirection. |
 
-Re-install or update them with:
-`android skills add --all --project=.` / `android skills update --all`.
-The `android` CLI is at `/home/mitun/.local/bin/android`.
+Re-install with `android skills add --all --project=.`. The CLI is at
+`/home/mitun/.local/bin/android`.
 
 ### GOTCHAS / TRAPS (learned the hard way)
 
 - **`Ui.drawCenterCrop` uses a shared static `Paint`.** If you add an alpha
   variant you must restore the previous alpha — a bug where alpha leaked across
   draws was already fixed once here. Do not reintroduce it.
-- `HeroBackgroundView` deliberately does **not** paint the focused app's banner
-  over the wallpaper (tvOS shows the app's *content* there, which a launcher
-  doesn't have).
+- **AndroidX's `SpringAnimation` does not exist in the platform SDK.** The
+  spring is hand-written in `ui/Spring.java`. Do not reach for a tween.
+- **`View.findFocus()` on a container is not "the focused child".** Use
+  `getFocusedChild()`.
+- **`bringToFront()` reorders children.** It is not a z-order operation; use
+  `setZ()`.
+- **`requestFocus()` before the first layout silently fails.** Post it, or ask
+  for it on window focus.
+- **`hero.setEntry` deliberately does not paint the focused app's banner** over
+  the wallpaper (tvOS shows the app's *content* there, which a launcher does
+  not have).
 - `AppRepository` renders each app's `android:banner` (TV banner) into the wide
-  5:3 card when present, else generates a branded card from icon + accent
-  colour. That is why the cards look like real tvOS app icons.
-- `AppOrdering` is pure and unit-tested — keep ordering logic out of
-  `HomeActivity`.
+  5:3 card when present, else generates a branded card from icon + accent.
+- `AppOrdering` and `BackPolicy` are pure and unit-tested — keep ordering and
+  BACK logic out of Activities.
 - `ScreenStack.refresh()` takes the new title, subtitle and rows and rebuilds
-  the top screen in place, keeping its position in the stack. Use it when a
-  displayed value has changed.
+  the top screen in place, keeping its position in the stack.
 - `SettingRow.DANGER` draws its label in the warning colour — use it for
-  destructive rows (uninstall, wipe). It is a real constant now, not a
-  decorative one.
-- `Prefs.columns()` now returns **0 = Auto**; `Grid.resolve(widthDp, stored)`
+  destructive rows. It is a real constant, not decorative.
+- `Prefs.columns()` returns **0 = Auto**; `Grid.resolve(widthDp, stored)`
   handles the fallback. The settings row shows "Auto (N)".
-- The ADB device (`192.168.68.108:5555`, Xiaomi MiTV-AYFR0, Android 11) was
-  **disconnected by the user** for this session. It may come back later:
-  `adb connect 192.168.68.108:5555`. **Do not waste time on device work** —
-  build and test on the JVM; the user wants everything verified at the end.
+- `FilePanel` writes only where the platform allows: on Android 11 the shared
+  storage can be read but not written; the app's own folder
+  (`getExternalFilesDir`) is always writable. **Say so in the UI rather than
+  failing silently** — that is a hard project rule.
 
 ### NEXT WORK, IN PRIORITY ORDER
 
-The user asked to "plan exhaustively and proceed", "fix all the edge cases", and
-that "the launcher is main". So:
+**P1 — Finish the design pass with the apple-design skill.** The skill was
+installed late, so only the foundations are in place. Do the rest:
+- Apply `Motion` (springs) to the launcher: the focus scale and the parallax
+  sway are still fixed-duration tweens with an `OvershootInterpolator`. Make
+  them springs so an interrupted focus change continues instead of restarting.
+- Apply `Type` to the remaining screens: the home shelf, the clock pill, the
+  app tile labels, the screensaver overlay. `SettingRow`, `ScreenStack`,
+  `ChoiceOverlay` already use it.
+- The materials: `GlassDrawable` exists. The skill asks for a **bright top
+  edge** (light catching the material), **material weight encoding hierarchy**
+  (heavier for the bigger surfaces), and **never stacking a light translucent
+  surface on another**. Check the clock pill, the app bar and the tool panels.
+- Wire **reduced motion** properly: `Motion.isReduced()` reads the system
+  `ANIMATOR_DURATION_SCALE` and `Prefs.reduceMotion()`. `Prefs.reduceMotion()`
+  exists but **has no settings row yet** — add one. Check that the focus scale,
+  the parallax, the sheen and the screen transitions all degrade to something
+  gentle rather than nothing.
+- The screen transitions exist (a screen slides in from the right and leaves
+  to the right). Confirm the *easing* is mirrored and that the transition can
+  be interrupted mid-flight.
 
-**P1 — Launcher polish + edge cases (the main product, do this first)**
-- [ ] BACK semantics: breadcrumb-only; on the top-level grid it scrolls to the
-      first row / clears focus and **never exits the launcher**. Never a confirm
-      dialog.
-- [ ] Stop re-querying `PackageManager` on resume; cache the app list + icons
-      (TVs kill background processes and slow the transition to the launcher).
-- [ ] Use `isLowRamDevice()` to size the icon/banner caches.
-- [ ] Implement `onTrimMemory` to release bitmaps.
-- [ ] Edge cases: zero launchable apps → a real empty state, not a blank screen;
-      `PackageManager` throwing → caught, partial list still renders; wallpaper
-      permission denied → fall back to a bundled scene; `ActivityNotFoundException`
-      → toast and survive; font scale 2.0+ → rows grow without clipping; RTL →
-      margins mirror; rotate/resize → no reload (`configChanges` already set).
+**P2 — Verify on the TV and finish what is half-built.** The tools were
+written and largely verified, but these are **not yet checked on the device**:
+- The app manager's per-app detail screen (Open / App info / Enabled toggle /
+  Force stop / Clear storage / Uninstall), and the filter tabs.
+- The debug panel: processes, battery, network, the logcat tail, the self check.
+- The file manager and the LAN share: the Share screen, the address, and
+  pulling a file from a laptop.
+- The browser: it must be switched on in Settings first, then check the ad
+  blocker actually blocks.
+- The **first-run setup wizard** ("once a person opens this APK on any Android
+  TV, it's going to set it up") is **not built at all**: wallpaper → grid →
+  clock → screen saver → offer to become the default launcher. Runs once,
+  skippable, never blocks. `Prefs.welcomeSeen()` already exists for it.
 
-**P2 — Wire the built pieces into UI**
-- [ ] Replace `SettingsOverlay`'s hand-rolled rows with `SettingRow` +
-      `ScreenStack` so settings, app manager, debug panel and file manager all
-      navigate identically.
-- [ ] Add the tool host: a `ToolActivity` (or a screen stack inside
-      `HomeActivity`) that every panel lives in.
-- [ ] App manager UI over the already-built `AppManager` + `PackageActions`:
-      list all packages, sort/filter (user/system/disabled), search, per-app
-      detail with Open / App info / Hide from Home / Uninstall / Clear storage /
-      Force stop. **Icons must load lazily** — loading every icon up front is
-      what makes these panels slow.
-- [ ] Debug panel over `SystemInfo`: memory (heap/native/system), CPU, processes,
-      storage, battery, thermal, logcat tail, and a self-check row.
-- [ ] **Guided live debugging guide** (explicitly requested): step-by-step,
-      reads live device state, each step opens the exact Settings screen, copies
-      adb commands to the clipboard, shows the TV's IP.
+**P3 — Ship.**
+- Keep `proguard-rules.pro` in sync as components are added. A stale keep rule
+  means a **silently broken release build** — that is exactly the bug that was
+  already fixed once. Re-verify with:
+  `dexdump -f app/build/outputs/apk/release/app-release-unsigned.apk | grep <ClassName>`
+  (and check the provider's `openFile`/`query` methods survived, not just the class).
+- Re-check the release APK size against the < 6 MB budget as features land.
+- Add unit tests for any new pure logic. Keep pure logic out of Activities.
 
-**P3 — Optional features (off by default, one APK)**
-- [ ] First-run setup wizard: wallpaper → grid → clock → screen saver → offer to
-      become the default launcher. Runs once, skippable, never blocks.
-- [ ] File manager: browse internal + external storage, breadcrumbs, sort,
-      search, copy/move/rename/delete, properties, open-with.
-- [ ] File transfer: LAN HTTP server on a thread inside the Share activity
-      (short URL + big on-screen code) + Android share sheet for sending out.
-- [ ] Browser: WebView + hosts-style ad blocker with a **local** blocklist
-      (no network round-trip for the list), URL bar, back/forward/reload/home,
-      bookmarks. Off by default; hide the tile entirely when disabled.
-
-**P4 — Ship**
-- [x] `proguard-rules.pro` fixed (was pointing at the old package) and the
-      release build verified: launcher + dream service survive R8, **3.2 MB**.
-- [ ] Keep `proguard-rules.pro` in sync as new components are added — a stale
-      keep rule here means a **silently broken release build**, which is exactly
-      the bug that was just fixed. Re-verify with:
-      `dexdump -f app/build/outputs/apk/release/app-release-unsigned.apk | grep <ClassName>`
-- [ ] Re-check the release APK size against the < 6 MB budget as features land.
-- [ ] Add unit tests for any new pure logic (e.g. file sorting, blocklist
-      matching, path helpers). Keep pure logic out of Activities.
+**P4 — Nice to have, only if the above is done.**
+- A **deep scan** / storage breakdown with reclaim, which the user asked for
+  ("deep loader").
+- Search in the file manager is a plain text filter; a proper search box on a
+  TV is awkward, so this may be better left as is.
 
 ### WORKING STYLE
 
@@ -389,23 +475,26 @@ that "the launcher is main". So:
   `PLAN.md` is the source of truth; update it as you go.
 - **Work in a loop**: implement → build → test → fix → commit. Keep the build
   green at every commit.
+- **Verify on the physical TV** when the change is about controls, focus or
+  layout. The user is watching the TV and will try it.
 - **Do not blow up your context window.** Prefer subagents for research
-  (the `explore`/`general` subagents work well) and read files surgically.
+  (`explore`/`general`) and read files surgically.
 - Commit often; the repo exists so you can.
 - When something genuinely cannot be done on a retail non-rooted Android TV
-  (e.g. clearing another app's data, deleting from /system), **say so in the
-  UI and in your report to the user** rather than shipping a fake feature.
+  (e.g. clearing another app's data, deleting from /system, writing to shared
+  storage on Android 11), **say so in the UI and in your report to the user**
+  rather than shipping a fake feature.
 
 ### DEFINITION OF DONE
 
 Sonora is the TV's home screen: pixel-close tvOS 26 (glass pill clock
 top-right, glass app bar over full-bleed aerial artwork, 5:3 cards, focus
 scale + sheen + parallax), D-pad navigation like tvOS, long-press per-app
-actions, fully customisable settings, and a system screen saver playing Aerial's
-aerials with a location overlay and swipe-to-change. On top of that: an app
-manager that really disables and uninstalls, a guided live debugging guide, a
-file manager with LAN transfer, and an optional ad-blocking browser. It stays
-under 6 MB, holds at most two screen-sized bitmaps, adds no background
-processes, and idles at essentially zero CPU.
+actions, fully customisable settings, and a system screen saver playing
+Aerial's aerials with a location overlay and swipe-to-change. On top of that:
+an app manager that really disables and uninstalls, a guided live debugging
+guide, a file manager with LAN transfer, and an optional ad-blocking browser.
+It stays under 6 MB, holds at most two screen-sized bitmaps, adds no
+background processes, and idles at essentially zero CPU.
 
 ---
