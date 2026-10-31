@@ -258,7 +258,10 @@ public final class FileServer {
 
     private void writeHeaders(OutputStream out, int code, String type, long length)
             throws IOException {
-        String status = code == 200 ? "200 OK" : code == 403 ? "403 Forbidden" : "404 Not Found";
+        String status = code == 200 ? "200 OK"
+                : code == 403 ? "403 Forbidden"
+                : code == 400 ? "400 Bad Request"
+                : "404 Not Found";
         String head = "HTTP/1.1 " + status + "\r\n"
                 + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + length + "\r\n"
