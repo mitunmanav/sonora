@@ -1,0 +1,197 @@
+package com.mitun.sonora;
+
+import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.provider.Settings;
+
+import java.io.File;
+
+/**
+ * The actions the app manager offers, and the honest limits of each one.
+ *
+ * On a retail, non-rooted Android TV a normal app can:
+ *   - hide an app from every launcher by disabling its launcher activity
+ *     (CHANGE_COMPONENT_ENABLED_STATE is a normal permission);
+ *   - uninstall an app with the user's confirmation (REQUEST_DELETE_PACKAGES);
+ *   - clear an app's data and force-stop it (both normal permissions).
+ *
+ * What it cannot do is delete a preinstalled app from /system: the uninstall
+ * is applied per-user, which hides the app but leaves the system copy in place.
+ * The UI says so rather than pretending otherwise.
+ */
+public final class PackageActions {
+    private PackageActions() {
+    }
+
+    /** Result of an action, so the UI can report what actually happened. */
+    public static final class Result {
+        public final boolean ok;
+        public final String message;
+
+        Result(boolean ok, String message) {
+            this.ok = ok;
+            this.message = message;
+        }
+    }
+
+    /**
+     * Disables the launcher activity of a package, which hides it from the
+     * home screen and from other launchers.
+     */
+    public static Result setHidden(Context context, String packageName, boolean hidden) {
+        PackageManager pm = context.getPackageManager();
+        Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
+        if (launchIntent == null) {
+            launchIntent = pm.getLeanbackLaunchIntentForPackage(packageName);
+        }
+        if (launchIntent == null) {
+            // No launcher entry: disable the whole application's components.
+            try {
+                pm.setApplicationEnabledSetting(packageName,
+                        hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                                : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                        PackageManager.DONT_KILL_APP);
+                return new Result(true, hidden ? "Hidden" : "Restored");
+            } catch (RuntimeException e) {
+                return new Result(false, "Cannot change this app");
+            }
+        }
+        ComponentName component = launchIntent.getComponent();
+        if (component == null) {
+            return new Result(false, "Cannot find this app's launcher");
+        }
+        try {
+            pm.setComponentEnabledSetting(component,
+                    hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                            : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                    PackageManager.DONT_KILL_APP);
+            return new Result(true, hidden ? "Hidden from the home screen" : "Restored");
+        } catch (SecurityException e) {
+            return new Result(false, "Not allowed by this device");
+        } catch (RuntimeException e) {
+            return new Result(false, "Could not hide this app");
+        }
+    }
+
+    /** Opens the system uninstall confirmation for a package. */
+    public static Result requestUninstall(Activity activity, String packageName, String label) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_DELETE,
+                    Uri.parse("package:" + packageName));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(intent);
+            return new Result(true, "Confirm to uninstall " + label);
+        } catch (RuntimeException e) {
+            return new Result(false, "This device will not uninstall apps");
+        }
+    }
+
+    /**
+     * Clears another app's data.
+     *
+     * A normal app cannot do this: CLEAR_APP_USER_DATA is a privileged
+     * permission and the public API for it is not exposed. So we do the only
+     * honest thing and send the user to the system page that can.
+     */
+    public static Result clearData(Context context, String packageName) {
+        Result info = openAppInfo(context, packageName);
+        if (!info.ok) {
+            return info;
+        }
+        return new Result(true, "Use “Clear storage” on the app info page");
+    }
+
+    /** Clears our own cached files. Always allowed, and the one thing we can do silently. */
+    public static Result clearOwnCache(Context context) {
+        try {
+            File dir = context.getCacheDir();
+            long freed = 0;
+            File[] files = dir == null ? null : dir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    freed += file.length();
+                    delete(file);
+                }
+            }
+            return new Result(true, "Cleared " + SystemInfo.bytes(freed));
+        } catch (RuntimeException e) {
+            return new Result(false, "Could not clear the cache");
+        }
+    }
+
+    private static boolean delete(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    delete(child);
+                }
+            }
+        }
+        return file.delete();
+    }
+
+    /** Stops a running app. */
+    public static Result forceStop(Context context, String packageName) {
+        try {
+            android.app.ActivityManager am =
+                    (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) {
+                return new Result(false, "No activity manager");
+            }
+            am.killBackgroundProcesses(packageName);
+            return new Result(true, "Stopped");
+        } catch (RuntimeException e) {
+            return new Result(false, "Could not stop this app");
+        }
+    }
+
+    /** Opens the system app-info page for a package. */
+    public static Result openAppInfo(Context context, String packageName) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + packageName));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            return new Result(true, "");
+        } catch (RuntimeException e) {
+            return new Result(false, "No app info screen on this device");
+        }
+    }
+
+    /** Launches an app by package name. */
+    public static Result launch(Context context, String packageName) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            Intent intent = pm.getLaunchIntentForPackage(packageName);
+            if (intent == null) {
+                intent = pm.getLeanbackLaunchIntentForPackage(packageName);
+            }
+            if (intent == null) {
+                return new Result(false, "This app cannot be started");
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            return new Result(true, "");
+        } catch (RuntimeException e) {
+            return new Result(false, "This app cannot be started");
+        }
+    }
+
+    /** True when the package is a preinstalled app we can only hide, not remove. */
+    public static boolean isSystemApp(Context context, String packageName) {
+        try {
+            ApplicationInfo info = context.getPackageManager().getApplicationInfo(packageName, 0);
+            return (info.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+}

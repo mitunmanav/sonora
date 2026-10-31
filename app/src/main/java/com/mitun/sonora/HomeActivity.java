@@ -97,6 +97,9 @@ public class HomeActivity extends Activity {
         root.setClipChildren(false);
         root.setClipToPadding(false);
 
+        Grid.Metrics metrics = gridMetrics();
+        int margin = Ui.dp(this, metrics.marginDp);
+
         hero = new HeroBackgroundView(this);
         root.addView(hero, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -104,7 +107,7 @@ public class HomeActivity extends Activity {
         // Top shelf: the focused app's title, plus the clock pill on the right.
         FrameLayout shelf = new FrameLayout(this);
         shelf.setClipChildren(false);
-        shelf.setPadding(Ui.dp(this, 44), Ui.dp(this, 34), Ui.dp(this, 44), 0);
+        shelf.setPadding(margin, Ui.dp(this, 34), margin, 0);
 
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
@@ -139,7 +142,7 @@ public class HomeActivity extends Activity {
         scroller.setVerticalScrollBarEnabled(false);
         scroller.setClipChildren(false);
         scroller.setClipToPadding(false);
-        scroller.setPadding(Ui.dp(this, 44), Ui.dp(this, 12), Ui.dp(this, 44), Ui.dp(this, 26));
+        scroller.setPadding(margin, Ui.dp(this, 12), margin, Ui.dp(this, 26));
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
         grid.setClipChildren(false);
@@ -184,13 +187,11 @@ public class HomeActivity extends Activity {
         tiles.clear();
         rows.clear();
 
-        int columns = prefs.columns();
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int padding = Ui.dp(this, 44);
-        int gap = Ui.dp(this, 14);
-        int available = screenWidth - padding * 2 - gap * (columns - 1);
-        int tileWidth = Math.max(Ui.dp(this, 80), available / columns);
-        int tileHeight = (int) (tileWidth * 0.6f);
+        Grid.Metrics metrics = gridMetrics();
+        int columns = metrics.columns;
+        int tileWidth = Ui.dp(this, metrics.tileWidthDp);
+        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
+        int gap = Ui.dp(this, metrics.gapDp);
         boolean labels = prefs.labels() != Prefs.LABELS_OFF;
         int labelHeight = labels ? Ui.dp(this, 22) : 0;
 
@@ -247,16 +248,22 @@ public class HomeActivity extends Activity {
             }
             rows.add(row);
         }
-        wireFocus();
+        wireFocus(columns);
         if (!tiles.isEmpty()) {
             tiles.get(0).requestFocus();
         }
         updateShelf(appEntries.length > 0 ? appEntries[0] : null);
     }
 
+    /** Grid metrics for the real screen, so a 720p stick and a 4K panel match. */
+    private Grid.Metrics gridMetrics() {
+        int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density);
+        return Grid.resolve(widthDp, prefs.columns());
+    }
+
     /** Explicit left/right/up/down so the D-pad behaves like tvOS, not like a list. */
-    private void wireFocus() {
-        int columns = prefs.columns();
+    private void wireFocus(int columns) {
         for (int i = 0; i < tiles.size(); i++) {
             AppTileView tile = tiles.get(i);
             int rowIndex = i / columns;
@@ -541,15 +548,15 @@ public class HomeActivity extends Activity {
     }
 
     private void pickColumns() {
-        String[] options = {"4", "5", "6", "7", "8"};
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Apps per row", options,
-                Math.max(0, prefs.columns() - 4), index -> {
-                    dismissChoice();
-                    prefs.setColumns(index + 4);
-                    buildGrid();
-                    settingsOverlay.rebuild();
-                    suppressIdle = false;
-                });
+        String[] options = {"Auto", "4", "5", "6", "7", "8"};
+        int current = prefs.columns() == 0 ? 0 : prefs.columns() - 3;
+        ChoiceOverlay overlay = new ChoiceOverlay(this, "Apps per row", options, current, index -> {
+            dismissChoice();
+            prefs.setColumns(index == 0 ? 0 : index + 3);
+            buildGrid();
+            settingsOverlay.rebuild();
+            suppressIdle = false;
+        });
         showOverlay(overlay);
         overlay.focusSelected();
     }
