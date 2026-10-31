@@ -1,4 +1,4 @@
-package com.mitun.aerial;
+package com.mitun.sonora;
 
 import android.app.SearchManager;
 import android.content.ComponentName;
