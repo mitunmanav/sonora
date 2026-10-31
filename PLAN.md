@@ -148,3 +148,47 @@ com.mitun.sonora
 - [x] Columns preference: Auto by default
 - [ ] Launcher polish + edge cases
 - [ ] Everything else
+
+## 5. Session plan (this session)
+
+Ordered by value, one commit each, build green at every commit.
+
+**A. Launcher (P1) — the product**
+- A1. Key dispatch: overlays must not swallow D-pad. Today `dispatchKeyEvent`
+  returns `true` for every key while an overlay is up, so the focused row never
+  sees the event: no focus movement, no OK, no click. Settings, the app menu
+  and every picker are dead. Only BACK may be consumed.
+- A2. BACK is breadcrumb-only: close overlay -> pop screen -> scroll grid to top
+  and focus the first tile. Never a dialog, never a toggle. Top level only
+  leaves the app when Sonora is *not* the default launcher, so the user can
+  always reach the TV home screen.
+- A3. Cache the app list and its artwork. `AppRepository` caches the list; the
+  grid rebuilds from the cache instead of re-querying `PackageManager`.
+- A4. Artwork sized to the real tile, not to a guess. Keep the banner only
+  when the app has one (the icon bitmap is then unused), and halve everything
+  on a low-RAM stick. Target: well under 10 MB of artwork for 25 apps.
+- A5. Wallpaper decoded once and cached; not re-decoded on every resume.
+- A6. `onTrimMemory` releases the wallpaper and screen-saver bitmaps.
+- A7. Edge cases: no apps -> real empty state; `PackageManager` throws ->
+  partial list still renders; config change -> grid rebuilt; wallpaper
+  permission denied -> bundled scene.
+
+**B. Tools (P2)**
+- B1. One `ToolActivity` hosting a `ScreenStack`; every panel is a screen.
+- B2. Settings rebuilt on `SettingRow` + `ScreenStack` (delete `SettingsOverlay`).
+- B3. App manager: all packages, sort/filter, lazy icons, per-app actions.
+- B4. Debug panel over `SystemInfo`.
+- B5. Guided live debugging guide: reads live state, opens the exact Settings
+  screen, copies adb commands, shows the TV's IP.
+
+**C. Optional extras (P3)** - off by default, one APK
+- C1. First-run wizard.
+- C2. File manager: browse, copy, move, rename, delete, properties.
+- C3. LAN share: HTTP server on a thread inside the visible Share activity.
+- C4. Browser: WebView + local hosts-style ad blocker, hidden until enabled.
+
+**D. Ship (P4)**
+- D1. Keep `proguard-rules.pro` in sync; re-verify with `dexdump`.
+- D2. Release size under 6 MB.
+- D3. Unit tests for the new pure logic.
+- D4. `PLAN.md` and `HANDOFF.md` updated.

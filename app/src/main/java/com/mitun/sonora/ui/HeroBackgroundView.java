@@ -36,6 +36,16 @@ public final class HeroBackgroundView extends View {
         invalidate();
     }
 
+    /** Drops the artwork this view holds. The wallpaper belongs to the caller. */
+    public void release() {
+        if (bannerBlur != null) {
+            bannerBlur.recycle();
+            bannerBlur = null;
+        }
+        wallpaper = null;
+        invalidate();
+    }
+
     public void setEntry(AppEntry entry) {
         if (bannerBlur != null) {
             bannerBlur.recycle();

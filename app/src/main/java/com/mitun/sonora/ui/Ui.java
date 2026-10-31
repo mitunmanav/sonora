@@ -28,6 +28,7 @@ import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.Window;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import java.io.InputStream;
@@ -354,8 +355,32 @@ public final class Ui {
         return Math.max(min, Math.min(max, v));
     }
 
-    public static void setMargins(View view, int left, int top, int right, int bottom) {
-        if (view.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+    /**
+     * Moves the focus one row up or down inside a vertical list.
+     *
+     * The panels do this themselves instead of letting the framework search
+     * for the next focusable view: a framework search would walk out of the
+     * panel and land on the launcher grid behind it, where OK would launch an
+     * app the user never picked.
+     */
+    public static boolean moveListFocus(LinearLayout list, boolean up) {
+        if (list == null) {
+            return false;
+        }
+        View focused = list.findFocus();
+        int index = focused == null ? -1 : list.indexOfChild(focused);
+        int count = list.getChildCount();
+        for (int i = index + (up ? -1 : 1); i >= 0 && i < count; i += (up ? -1 : 1)) {
+            View child = list.getChildAt(i);
+            if (child.isFocusable() && child.getVisibility() == View.VISIBLE) {
+                child.requestFocus();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void setMargins(View view, int left, int top, int right, int bottom) {        if (view.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
             android.view.ViewGroup.MarginLayoutParams params =
                     (android.view.ViewGroup.MarginLayoutParams) view.getLayoutParams();
             params.setMargins(left, top, right, bottom);

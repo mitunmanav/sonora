@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -102,5 +103,21 @@ public final class ChoiceOverlay extends FrameLayout {
         if (index < list.getChildCount()) {
             list.getChildAt(index).requestFocus();
         }
+    }
+
+    /** Keeps the D-pad inside the picker instead of walking into the grid. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int code = event.getKeyCode();
+            if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                Ui.moveListFocus(list, code == KeyEvent.KEYCODE_DPAD_UP);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 }
