@@ -34,12 +34,13 @@ public final class Prefs {
         sp.edit().putInt("wallpaper", index).putString("wallpaper_uri", uri).apply();
     }
 
+    /** 0 means "fit the screen", which is what every resolution should do. */
     public int columns() {
-        return Math.max(4, Math.min(8, sp.getInt("columns", 6)));
+        return Math.max(0, Math.min(Grid.MAX_COLUMNS, sp.getInt("columns", 0)));
     }
 
     public void setColumns(int columns) {
-        sp.edit().putInt("columns", Math.max(4, Math.min(8, columns))).apply();
+        sp.edit().putInt("columns", Math.max(0, Math.min(Grid.MAX_COLUMNS, columns))).apply();
     }
 
     public int labels() {
