@@ -264,3 +264,117 @@ give the user an empty tab. The split only becomes worth building if a
 `content://android.media.tv` provider ever appears on the device — at which
 point "Customize channels" and a "Play Next" row are the two things to copy,
 in that order.
+
+---
+
+## 8. The subtle half — read from the layouts and view code
+
+The obvious features are in §2. These are the ones that only show up in the
+layouts, the custom views and the string catalogue.
+
+### The system bar (`system_bar_view.xml`)
+
+Not one bar but a row: **search widget · notifications button · restricted
+profile · inputs · partner widget · settings · account particle · clock**, over a
+scrim (`fc_system_bar_scrim`). Every slot is `visibility="gone"` except search
+and settings. The clock sits last and is right-aligned; the account particle is
+a `ViewStub`, so it only inflates when there is an account.
+
+### The pill / chip row
+
+`pill_view.xml` and `chip_view.xml` — a horizontal row of chips, each
+`icon + text + subtext`, tinted by `duplicateParentState` so the whole chip
+follows the focus, driven by a `HorizontalGridView` with `focusOutFront="true"`.
+`LinearChannelWithChipsView` puts one above a content row. This is the tvOS
+segmented-control idiom.
+
+### The edge fade (`FadingEdgeContainer.dispatchDraw`)
+
+The recipe, and it is worth copying exactly: `saveLayer` the strip, draw the
+content, then draw a `LinearGradient` with `PorterDuff.Mode.DST_IN` over it.
+The result is a genuine alpha ramp, so a row **dissolves** at the screen edge
+instead of being sliced. RTL-aware: it fades the opposite side.
+
+### Focus search (`FocusSearchFrameLayout`, `DispatchKeyAndFocusSearchFrameLayout`)
+
+`focusSearch` + `dispatchKeyEvent` — when a direction key finds no focusable
+neighbour, the container **searches along that axis** for the next focusable
+thing and scrolls to it. This is what lets Google TV's Home be a vertical list
+of horizontal rows and still navigate cleanly.
+
+### The idle timer (`idle_timer_view.xml`)
+
+A 50dp `ProgressBar` styled as a ring, `max=30`, `progress=30`,
+`scaleX="-1"` so the ring **unwinds**; the countdown number sits inside it;
+then a title, a description and a 200×40dp **Keep watching** button. A
+`accessibilityLiveRegion="polite"` hidden TextView announces the countdown.
+Google TV pauses playback when you stop touching the remote.
+
+### Install state on a tile (`install_state_overlay.xml`)
+
+A greyed-out banner plus an indeterminate `ProgressBar` pinned to the bottom,
+with the strings `downloading`, `installing`, `install_pending`,
+`update_pending`, `restore_pending`.
+
+### The card itself (`view_app_card.xml`, `view_app_banner_apps_tab.xml`)
+
+- The title `TextView` is `visibility="invisible"` — it **appears only when the
+  card has focus**.
+- `stateListAnimator="@animator/app_animator"`; the Apps-tab banner uses
+  `app:focused_scale` with `app:scale_anim_duration_ms="175"`.
+- `edit_focused_frame` overlays an `edit_mode_frame` drawable in arrange mode.
+- The banner image is `fitCenter` on a `banner_container` of fixed height.
+
+### Other details
+
+- `notification_tray_item.xml` — title and body use `ellipsize="marquee"` with
+  `marqueeRepeatLimit="marquee_forever"`, plus per-item **See more** and
+  **Dismiss** buttons, and a `NowPlayingIndicatorView` (a hand-drawn animated
+  bar equaliser with its own `ValueAnimator`).
+- `OverlayTutorialArrow` — draws a real arrow (`Path` + `Paint`) pointing at the
+  control it wants you to press.
+- `MemoryConservedImageView` — pauses image loading in `onDetachedFromWindow`
+  and resumes in `onAttachedToWindow`.
+- `chip_view` subtext is 11sp against a 12sp label: the count is a whisper
+  under the name.
+- `entity_details_truncated_description` — long text ends with a **"More"**
+  link in the same weight as the body, not an ellipsis.
+
+### Error handling, and what it teaches
+
+| String | Text |
+|---|---|
+| `failed_launch` | "Can't open this right now" |
+| `app_unavailable` | "Application unavailable" |
+| `network_error_title_text` | "Internet connection lost" |
+| `network_error_fragment_primary_action_text` | "Network settings" |
+| `network_error_fragment_secondary_action_text` | "Go back" |
+| `content_failed_to_load_storage_full_title` | "Can't load content because device storage is full" |
+| `content_failed_to_load_clear_data_suggestion_description` | "…or Clear storage in Settings. Go to Settings > Apps > Look for TV Home > Clear data." |
+| `empty_channel_message` | "Channel is empty" |
+| `channel_temporarily_hidden_message` | "This channel is empty and will be temporarily hidden until more programs are available." |
+| `no_apps_available_title` | "All available apps are already in favorites" |
+| `channel_flipper_nudge_text` | "Press UP or DOWN on your remote to quickly flip channels" |
+
+Two patterns: an error screen has a **primary action that fixes it** and a
+secondary that backs out; and a **dead row hides itself** instead of showing an
+empty box.
+
+### Activity flags
+
+`stateNotNeeded="true"` and `resumeWhilePausing="true"` on `MainActivity`;
+`noHistory="true"` on all seven side panels; `taskAffinity=".TvLauncher"`.
+
+### Privacy warts, for the record
+
+- `WatsonKatnissConfigContentProvider` is **exported with no permission** — any
+  app on the TV can read the launcher's configuration.
+- `AdsPersonalizationAwarenessNotificationReceiver` pushes a notification about
+  ad personalisation.
+- `BootHelperEmptyActivity` runs at boot.
+- `MarketUpdateReceiver` + `StopOutOfBoxOrderingJobService` reorder the Play
+  Store's install queue in the background.
+- `SilentFeedbackReceiver` reports crashes from a separate `:crash_report`
+  process.
+- `AppDoctorReceiver` accepts self-repair actions from Play services.
+
