@@ -23,8 +23,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
-import android.text.format.DateFormat;
-import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.Window;
@@ -36,7 +34,6 @@ import java.io.InputStream;
 /** Drawing and platform helpers shared by the launcher and the screen saver. */
 public final class Ui {
     public static final int INK = 0xFFF5F6F8;
-    public static final int INK_SECONDARY = 0xB8F5F6F8;
     public static final int INK_TERTIARY = 0x7AF5F6F8;
     public static final int NIGHT = 0xFF05070B;
 
@@ -57,10 +54,6 @@ public final class Ui {
                 context.getResources().getDisplayMetrics());
     }
 
-    public static boolean system24Hour(Context context) {
-        return DateFormat.is24HourFormat(context);
-    }
-
     public static int alpha(int color, float factor) {
         int a = Math.round(Color.alpha(color) * Math.max(0f, Math.min(1f, factor)));
         return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color));
@@ -73,21 +66,8 @@ public final class Ui {
         return d;
     }
 
-    public static LinearGradient verticalScrim(int top, int middle, int bottom) {
-        return new LinearGradient(0f, 0f, 0f, 1f, new int[]{top, middle, bottom},
-                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
-    }
-
     public static Typeface medium() {
         return Typeface.create("sans-serif-medium", Typeface.NORMAL);
-    }
-
-    public static Typeface regular() {
-        return Typeface.create("sans-serif", Typeface.NORMAL);
-    }
-
-    public static Typeface light() {
-        return Typeface.create("sans-serif-light", Typeface.NORMAL);
     }
 
     public static void immersive(Activity activity) {
@@ -351,10 +331,6 @@ public final class Ui {
                 Math.round(Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t));
     }
 
-    public static float clamp(float v, float min, float max) {
-        return Math.max(min, Math.min(max, v));
-    }
-
     /**
      * Moves the focus one row up or down inside a vertical list.
      *
@@ -380,25 +356,5 @@ public final class Ui {
             }
         }
         return false;
-    }
-
-    public static void setMargins(View view, int left, int top, int right, int bottom) {        if (view.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
-            android.view.ViewGroup.MarginLayoutParams params =
-                    (android.view.ViewGroup.MarginLayoutParams) view.getLayoutParams();
-            params.setMargins(left, top, right, bottom);
-            view.setLayoutParams(params);
-        }
-    }
-
-    public static void applyCardShadow(View view, float elevationDp, Context context) {
-        view.setElevation(dpf(context, elevationDp));
-        view.setOutlineProvider(new android.view.ViewOutlineProvider() {
-            @Override
-            public void getOutline(View v, android.graphics.Outline outline) {
-                float radius = Math.min(v.getWidth(), v.getHeight()) * 0.18f;
-                outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
-            }
-        });
-        view.setClipToOutline(false);
     }
 }

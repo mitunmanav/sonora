@@ -13,6 +13,10 @@ import android.graphics.drawable.Drawable;
 /**
  * A cheap Liquid Glass imitation: translucent white fill, a light top edge and
  * a soft specular pool. It uses three canvas draws, no blur, no bitmap sampling.
+ *
+ * The edge is brightest at the top, where the light catches the material, and
+ * fades towards the bottom. That single gradient is what makes a flat shape
+ * read as a surface with a thickness rather than a rectangle.
  */
 public final class GlassDrawable extends Drawable {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -24,6 +28,11 @@ public final class GlassDrawable extends Drawable {
     private final float tint;
     private int alpha = 255;
 
+    /**
+     * @param tint how heavy the material is. A big surface reads thicker than
+     *             a small one, and a heavier material separates a structural
+     *             region from the content it holds.
+     */
     public GlassDrawable(Context context, float radiusDp, float tint) {
         radius = Ui.dpf(context, radiusDp);
         this.tint = tint;
@@ -44,7 +53,11 @@ public final class GlassDrawable extends Drawable {
         highlightPaint.setShader(new RadialGradient(bounds.width() * 0.25f, bounds.height() * 0.05f,
                 bounds.width() * 0.8f, new int[]{adjust(Color.WHITE, 0.10f * tint), Color.TRANSPARENT},
                 null, Shader.TileMode.CLAMP));
-        edgePaint.setColor(adjust(Color.WHITE, 0.20f * tint));
+        // The light catches the top edge, so that is where the edge is
+        // brightest. It fades out towards the bottom of the material.
+        edgePaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
+                new int[]{adjust(Color.WHITE, 0.34f * tint), adjust(Color.WHITE, 0.10f * tint)},
+                new float[]{0f, 1f}, Shader.TileMode.CLAMP));
     }
 
     private static int adjust(int color, float factor) {
