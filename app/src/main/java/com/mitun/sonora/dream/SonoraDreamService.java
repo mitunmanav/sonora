@@ -1,21 +1,21 @@
-package com.mitun.aerial.dream;
+package com.mitun.sonora.dream;
 
 import android.service.dreams.DreamService;
 import android.view.KeyEvent;
 import android.view.View;
 
-import com.mitun.aerial.AerialScenes;
-import com.mitun.aerial.Prefs;
-import com.mitun.aerial.ui.AerialScreensaverView;
-import com.mitun.aerial.ui.Ui;
+import com.mitun.sonora.Scenes;
+import com.mitun.sonora.Prefs;
+import com.mitun.sonora.ui.ScreensaverView;
+import com.mitun.sonora.ui.Ui;
 
 /**
  * The system screen saver. When the TV goes idle the dream service takes over
  * and Aerial's aerial stills play, so the screen is never a dead black panel -
  * which is exactly what removing MiTVDream left behind.
  */
-public class AerialDreamService extends DreamService {
-    private AerialScreensaverView view;
+public class SonoraDreamService extends DreamService {
+    private ScreensaverView view;
 
     @Override
     public void onAttachedToWindow() {
@@ -30,7 +30,7 @@ public class AerialDreamService extends DreamService {
     public void onDreamingStarted() {
         super.onDreamingStarted();
         Prefs prefs = new Prefs(this);
-        view = new AerialScreensaverView(this);
+        view = new ScreensaverView(this);
         view.setSceneDurationMs(prefs.screensaverSceneSec());
         view.setShowOverlay(prefs.screensaverClock() != 2);
         setContentView(view);

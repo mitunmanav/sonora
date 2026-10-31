@@ -1,0 +1,100 @@
+package com.mitun.sonora;
+
+/**
+ * Grid geometry for the home screen. Pure maths, no Android types, so it is
+ * unit-testable and correct on every screen from a 720p stick to a 4K panel.
+ *
+ * tvOS keeps the app icons a fixed fraction of the screen width and lets the
+ * column count follow, so we do the same. The proportions below were measured
+ * off Apple's own tvOS 26 press renders: a 5:3 icon is 14.7% of the screen
+ * width, the screen margin is 2.8% each side and the gutter 1.2%.
+ *
+ * Nothing here is hard-coded to a resolution. A 720p@240dpi box reports
+ * 1280x720dp while a 1080p@320dpi box reports 960x540dp, and both must land on
+ * the same layout.
+ */
+public final class Grid {
+    /** tvOS app icons are 5:3 landscape. */
+    public static final float ASPECT = 0.6f;
+
+    /** Icon width as a fraction of the screen width, measured from tvOS 26. */
+    public static final float ICON_WIDTH_RATIO = 0.147f;
+    /** Screen margin on each side, as a fraction of the screen width. */
+    public static final float MARGIN_RATIO = 0.028f;
+    /** Gutter between icons, as a fraction of the screen width. */
+    public static final float GAP_RATIO = 0.012f;
+
+    public static final int MIN_COLUMNS = 4;
+    public static final int MAX_COLUMNS = 8;
+    /** Below this icon width the labels stop being readable, so drop a column. */
+    public static final int MIN_TILE_WIDTH_DP = 92;
+
+    private Grid() {
+    }
+
+    public static final class Metrics {
+        public final int columns;
+        public final int tileWidthDp;
+        public final int tileHeightDp;
+        public final int marginDp;
+        public final int gapDp;
+
+        Metrics(int columns, int tileWidthDp, int tileHeightDp, int marginDp, int gapDp) {
+            this.columns = columns;
+            this.tileWidthDp = tileWidthDp;
+            this.tileHeightDp = tileHeightDp;
+            this.marginDp = marginDp;
+            this.gapDp = gapDp;
+        }
+    }
+
+    /**
+     * Picks the column count that keeps icons at their tvOS size: the fewest
+     * icons that fill the width without shrinking them, so a wide screen shows
+     * more rather than bigger icons.
+     */
+    public static Metrics compute(int widthDp) {
+        return compute(widthDp, MIN_COLUMNS, MAX_COLUMNS);
+    }
+
+    public static Metrics compute(int widthDp, int minColumns, int maxColumns) {
+        int margin = Math.round(widthDp * MARGIN_RATIO);
+        int gap = Math.max(1, Math.round(widthDp * GAP_RATIO));
+        int content = Math.max(1, widthDp - margin * 2);
+        int preferred = Math.max(1, Math.round(widthDp * ICON_WIDTH_RATIO));
+
+        // columns = (content + gap) / (icon + gap)
+        int columns = Math.round((content + gap) / (float) (preferred + gap));
+        columns = Math.max(minColumns, Math.min(maxColumns, columns));
+
+        // tvOS proportions are scale-invariant, so a 16:9 screen always lands on
+        // the same column count. On a screen too narrow for that, drop columns
+        // until the icons are big enough to read rather than shrink them.
+        int tileWidth = (content - gap * (columns - 1)) / columns;
+        while (columns > minColumns && tileWidth < MIN_TILE_WIDTH_DP) {
+            columns--;
+            tileWidth = (content - gap * (columns - 1)) / columns;
+        }
+
+        int tileHeight = Math.round(tileWidth * ASPECT);
+        return new Metrics(columns, Math.max(1, tileWidth), Math.max(1, tileHeight), margin, gap);
+    }
+
+    /**
+     * Honours a stored column count. A stored value of zero means "fit to the
+     * screen", which is the default.
+     */
+    public static Metrics resolve(int widthDp, int storedColumns) {
+        if (storedColumns >= MIN_COLUMNS && storedColumns <= MAX_COLUMNS) {
+            Metrics auto = compute(widthDp);
+            int margin = auto.marginDp;
+            int gap = auto.gapDp;
+            int content = Math.max(1, widthDp - margin * 2);
+            int tileWidth = (content - gap * (storedColumns - 1)) / storedColumns;
+            int tileHeight = Math.round(tileWidth * ASPECT);
+            return new Metrics(storedColumns, Math.max(1, tileWidth), Math.max(1, tileHeight),
+                    margin, gap);
+        }
+        return compute(widthDp);
+    }
+}

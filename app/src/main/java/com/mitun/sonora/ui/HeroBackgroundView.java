@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -11,7 +11,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 
-import com.mitun.aerial.AppEntry;
+import com.mitun.sonora.AppEntry;
 
 /**
  * The full-bleed hero. A still aerial is the base; the focused app's banner is

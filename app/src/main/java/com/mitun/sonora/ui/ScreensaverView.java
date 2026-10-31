@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -10,7 +10,7 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.view.View;
 
-import com.mitun.aerial.AerialScenes;
+import com.mitun.sonora.Scenes;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -21,7 +21,7 @@ import java.util.Locale;
  * into each other. Two bitmaps are alive at a time, so the memory cost stays
  * around two screen-sized images regardless of how many scenes exist.
  */
-public final class AerialScreensaverView extends View {
+public final class ScreensaverView extends View {
     private static final long FRAME_MS = 33; // ~30fps is plenty for a slow drift.
 
     public interface Listener {
@@ -49,7 +49,7 @@ public final class AerialScreensaverView extends View {
     private float panDirection = 1f;
     private Listener listener;
 
-    public AerialScreensaverView(Context context) {
+    public ScreensaverView(Context context) {
         super(context);
         textPaint.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         textPaint.setColor(Color.WHITE);
@@ -95,7 +95,7 @@ public final class AerialScreensaverView extends View {
 
     private void showNextScene() {
         if (current == null) {
-            int index = (currentIndex + 1) % AerialScenes.ALL.size();
+            int index = (currentIndex + 1) % Scenes.ALL.size();
             Bitmap bitmap = load(index);
             if (bitmap == null) {
                 return;
@@ -109,7 +109,7 @@ public final class AerialScreensaverView extends View {
                 listener.onSceneChanged(index);
             }
         } else {
-            nextIndex = (currentIndex + 1) % AerialScenes.ALL.size();
+            nextIndex = (currentIndex + 1) % Scenes.ALL.size();
             Bitmap bitmap = load(nextIndex);
             if (bitmap == null) {
                 return;
@@ -121,7 +121,7 @@ public final class AerialScreensaverView extends View {
     }
 
     private Bitmap load(int index) {
-        AerialScenes.Scene scene = AerialScenes.ALL.get(index);
+        Scenes.Scene scene = Scenes.ALL.get(index);
         int width = Math.max(1280, getResources().getDisplayMetrics().widthPixels);
         int height = Math.max(720, getResources().getDisplayMetrics().heightPixels);
         return Ui.decodeScene(getResources(), scene.res, width, height);
@@ -184,7 +184,7 @@ public final class AerialScreensaverView extends View {
         if (!showOverlay) {
             return;
         }
-        AerialScenes.Scene scene = AerialScenes.ALL.get(Math.max(0, currentIndex));
+        Scenes.Scene scene = Scenes.ALL.get(Math.max(0, currentIndex));
         float density = getResources().getDisplayMetrics().density;
         textPaint.setTextSize(30 * density);
         textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));

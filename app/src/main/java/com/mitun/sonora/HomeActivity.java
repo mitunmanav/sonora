@@ -1,4 +1,4 @@
-package com.mitun.aerial;
+package com.mitun.sonora;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
@@ -21,14 +21,14 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.mitun.aerial.ui.AppTileView;
-import com.mitun.aerial.ui.AerialScreensaverView;
-import com.mitun.aerial.ui.ChoiceOverlay;
-import com.mitun.aerial.ui.GlassDrawable;
-import com.mitun.aerial.ui.GlassPillView;
-import com.mitun.aerial.ui.HeroBackgroundView;
-import com.mitun.aerial.ui.SettingsOverlay;
-import com.mitun.aerial.ui.Ui;
+import com.mitun.sonora.ui.AppTileView;
+import com.mitun.sonora.ui.ScreensaverView;
+import com.mitun.sonora.ui.ChoiceOverlay;
+import com.mitun.sonora.ui.GlassDrawable;
+import com.mitun.sonora.ui.GlassPillView;
+import com.mitun.sonora.ui.HeroBackgroundView;
+import com.mitun.sonora.ui.SettingsOverlay;
+import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Aerial: a tvOS-style home screen for Android TV.
+ * Sonora: a tvOS-style home screen for Android TV.
  *
  * The whole thing is plain platform views on purpose - no AndroidX, no Compose,
  * no networking - so it stays a few hundred KB and draws with the GPU only.
@@ -62,7 +62,7 @@ public class HomeActivity extends Activity {
     private SettingsOverlay settingsOverlay;
     private FrameLayout overlayHost;
     private View choiceOverlay;
-    private AerialScreensaverView screensaver;
+    private ScreensaverView screensaver;
 
     private long lastInteraction;
     private boolean loading = true;
@@ -176,7 +176,7 @@ public class HomeActivity extends Activity {
                 buildGrid();
                 loading = false;
             });
-        }, "aerial-apps").start();
+        }, "sonora-apps").start();
     }
 
     private void buildGrid() {
@@ -319,7 +319,7 @@ public class HomeActivity extends Activity {
             return;
         }
         shelfTitle.setText(entry.label);
-        shelfSubtitle.setText(entry.settings ? "Press OK to open Aerial settings"
+        shelfSubtitle.setText(entry.settings ? "Press OK to open Sonora settings"
                 : "Hold OK for options");
     }
 
@@ -508,9 +508,9 @@ public class HomeActivity extends Activity {
     }
 
     private void pickWallpaper() {
-        String[] names = new String[AerialScenes.ALL.size() + 1];
-        for (int i = 0; i < AerialScenes.ALL.size(); i++) {
-            names[i] = AerialScenes.ALL.get(i).name;
+        String[] names = new String[Scenes.ALL.size() + 1];
+        for (int i = 0; i < Scenes.ALL.size(); i++) {
+            names[i] = Scenes.ALL.get(i).name;
         }
         names[names.length - 1] = "Choose a photo…";
         ChoiceOverlay overlay = new ChoiceOverlay(this, "Wallpaper", names, prefs.wallpaper(),
@@ -696,8 +696,8 @@ public class HomeActivity extends Activity {
                 }
             }
         }
-        Bitmap bitmap = Ui.decodeScene(getResources(), AerialScenes.ALL.get(
-                AerialScenes.safeIndex(index)).res,
+        Bitmap bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
+                Scenes.safeIndex(index)).res,
                 getResources().getDisplayMetrics().widthPixels,
                 getResources().getDisplayMetrics().heightPixels);
         hero.setWallpaper(bitmap);
@@ -707,7 +707,7 @@ public class HomeActivity extends Activity {
         if (screensaver != null) {
             return;
         }
-        screensaver = new AerialScreensaverView(this);
+        screensaver = new ScreensaverView(this);
         screensaver.setSceneDurationMs(prefs.screensaverSceneSec());
         screensaver.setShowOverlay(prefs.screensaverClock() == 1);
         root.addView(screensaver, new FrameLayout.LayoutParams(

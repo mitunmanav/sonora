@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.mitun.aerial'
+    namespace 'com.mitun.sonora'
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.mitun.aerial"
+        applicationId "com.mitun.sonora"
         minSdk 23
         targetSdk 35
         versionCode 1

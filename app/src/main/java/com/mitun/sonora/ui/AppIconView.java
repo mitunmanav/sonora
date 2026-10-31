@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
@@ -15,7 +15,7 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.animation.OvershootInterpolator;
 
-import com.mitun.aerial.AppEntry;
+import com.mitun.sonora.AppEntry;
 
 /**
  * The app "icon": a tvOS-shaped 5:3 card. It uses the app's Android TV banner

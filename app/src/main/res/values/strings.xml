@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Aerial</string>
-    <string name="dream_name">Aerial</string>
+    <string name="app_name">Sonora</string>
+    <string name="dream_name">Sonora</string>
+
     <string name="settings_title">Settings</string>
     <string name="apps_per_row">Apps per row</string>
     <string name="labels">App labels</string>
@@ -11,14 +12,16 @@
     <string name="manage_apps">Apps</string>
     <string name="launcher">Default launcher</string>
     <string name="reset">Reset</string>
-    <string name="about">About Aerial</string>
-    <string name="about_text">A quiet, fast, tvOS-inspired home for Android TV. Not affiliated with Apple.\n\nAerial imagery (CC BY-SA 4.0, Wikimedia Commons):\n• Ngorongoro, Tanzania — Tasha~visual\n• Vigo di Fassa, Italy — Syrio\n• Zhuravlyne Lake, Ukraine — Medoffer\n• Punjab, India — Bhullargraphic\n• Dülmen, Germany — Dietmar Rabich\n\nNo network, analytics, or ads. Just your apps.</string>
+    <string name="about">About Sonora</string>
     <string name="hidden_apps">Hidden apps</string>
     <string name="refresh_apps">Refresh apps</string>
     <string name="reset_order">Reset app order</string>
-    <string name="set_default">Set Aerial as default launcher</string>
-    <string name="welcome_title">Aerial</string>
+    <string name="set_default">Set Sonora as default launcher</string>
+
+    <string name="about_text">A quiet, fast, tvOS-inspired home for Android TV, plus the tools a TV actually needs: an app manager, a file manager, a debug guide and a browser with an ad blocker. Not affiliated with Apple.\n\nImagery (CC BY-SA 4.0, Wikimedia Commons):\n• Ngorongoro, Tanzania — Tasha~visual\n• Vigo di Fassa, Italy — Syrio\n• Zhuravlyne Lake, Ukraine — Medoffer\n• Punjab, India — Bhullargraphic\n• Dülmen, Germany — Dietmar Rabich\n\nNo analytics, no ads, no background services.</string>
+
+    <string name="welcome_title">Sonora</string>
     <string name="welcome_body">A quiet home for your TV.\n\nUse the D-pad to move. Press OK to open. Hold OK for app options. The time in the corner opens Settings.</string>
     <string name="start">Start</string>
-    <string name="credits">Aerial imagery credits</string>
+    <string name="credits">Imagery credits</string>
 </resources>

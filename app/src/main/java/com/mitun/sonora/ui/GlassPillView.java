@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.drawable.GradientDrawable;
@@ -10,7 +10,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.mitun.aerial.Prefs;
+import com.mitun.sonora.Prefs;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;

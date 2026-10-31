@@ -1,4 +1,4 @@
-package com.mitun.aerial.ui;
+package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -10,8 +10,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.mitun.aerial.AppEntry;
-import com.mitun.aerial.Prefs;
+import com.mitun.sonora.AppEntry;
+import com.mitun.sonora.Prefs;
 
 /** A focusable app tile: the wide icon plus an optional name. */
 public final class AppTileView extends LinearLayout {
