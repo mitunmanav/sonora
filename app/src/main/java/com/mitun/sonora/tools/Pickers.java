@@ -216,6 +216,11 @@ public final class Pickers {
         return count == 0 ? "None" : count + (count == 1 ? " app" : " apps");
     }
 
+    public static String favouritesName(Prefs prefs) {
+        int count = prefs.favourites().size();
+        return count == 0 ? "None" : count + (count == 1 ? " app" : " apps");
+    }
+
     private static int clockIndex(Prefs prefs) {
         if (!prefs.clock24()) {
             return 0;

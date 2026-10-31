@@ -92,6 +92,20 @@ public final class Prefs {
         sp.edit().putBoolean("reduce_motion", value).apply();
     }
 
+    /**
+     * The remote's search key opens Sonora's own search.
+     *
+     * It is on by default, because a search that only looks at this TV is
+     * what a person pressing the search key on their remote is asking for.
+     */
+    public boolean searchKey() {
+        return sp.getBoolean("search_key", true);
+    }
+
+    public void setSearchKey(boolean value) {
+        sp.edit().putBoolean("search_key", value).apply();
+    }
+
     /** The browser is bundled but off until the user asks for it. */
     public boolean browserEnabled() {
         return sp.getBoolean("browser", false);
@@ -173,6 +187,19 @@ public final class Prefs {
         sp.edit().putInt("ss_clock", Math.max(0, Math.min(2, value))).apply();
     }
 
+    /** The apps the user pinned, in the order they pinned them. */
+    public List<String> favourites() {
+        return lines(sp.getString("favourites", ""));
+    }
+
+    public void setFavourites(List<String> packages) {
+        sp.edit().putString("favourites", join(packages)).apply();
+    }
+
+    public boolean isFavourite(String packageName) {
+        return packageName != null && favourites().contains(packageName);
+    }
+
     public String order() {
         return sp.getString("order", "");
     }
@@ -215,7 +242,7 @@ public final class Prefs {
      */
     public String gridKey() {
         return columns() + "|" + labels() + "|" + order() + "|" + hidden().hashCode()
-                + "|" + appsEpoch();
+                + "|" + appsEpoch() + "|" + sp.getString("favourites", "");
     }
 
     /**
@@ -240,5 +267,38 @@ public final class Prefs {
         int mode = mode();
         sp.edit().clear().apply();
         sp.edit().putBoolean("welcome", welcome).putInt("mode", mode).apply();
+    }
+
+    /** Splits a stored list of packages, one per line. */
+    private static List<String> lines(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        for (String line : raw.split("\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.length() > 0) {
+                out.add(trimmed);
+            }
+        }
+        return out;
+    }
+
+    /** Joins a list of packages into the form they are stored in. */
+    private static String join(List<String> packages) {
+        if (packages == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String value : packages) {
+            if (value == null || value.trim().length() == 0) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(value.trim());
+        }
+        return sb.toString();
     }
 }

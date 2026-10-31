@@ -18,6 +18,7 @@ public final class ChoiceOverlay extends FrameLayout {
     }
 
     private final LinearLayout list;
+    private final LinearLayout column;
     private final Callback callback;
     private int selected = -1;
 
@@ -31,7 +32,7 @@ public final class ChoiceOverlay extends FrameLayout {
         // Heavy dim: a modal task pushes the screen behind it back.
         setBackgroundColor(0xF7000000);
 
-        LinearLayout column = new LinearLayout(context);
+        column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
         // Clear of the app title along the top, so the two never overlap.
         column.setPadding(Ui.dp(context, 60), Ui.dp(context, 120), Ui.dp(context, 60), Ui.dp(context, 40));
@@ -58,6 +59,28 @@ public final class ChoiceOverlay extends FrameLayout {
         for (int i = 0; i < options.length; i++) {
             addOption(context, options[i], i == selectedIndex);
         }
+
+        // The picker arrives: it grows out of the place it came from rather
+        // than appearing all at once. A spring carries the movement, so it
+        // can be interrupted.
+        column.setAlpha(0f);
+        column.setTranslationY(Ui.dp(context, 26));
+        Motion.spring(column, Motion.ALPHA, 1f, Motion.DAMPING_SPRINGY, Motion.RESPONSE_PANEL);
+        Motion.spring(column, Motion.TRANSLATION_Y, 0f, Motion.DAMPING_SPRINGY,
+                Motion.RESPONSE_PANEL);
+    }
+
+    /**
+     * Takes the picker away, then runs the work that was asked for.
+     *
+     * The picker leaves the way it came: down and out. The caller removes the
+     * view when the movement is done.
+     */
+    public void dismiss(Runnable after) {
+        Motion.spring(column, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL,
+                after);
+        Motion.spring(column, Motion.TRANSLATION_Y, Ui.dp(getContext(), 26),
+                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
     }
 
     private void addOption(Context context, String text, boolean checked) {

@@ -6,6 +6,7 @@ import android.view.ViewGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.mitun.sonora.AppEntry;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.R;
@@ -41,6 +42,7 @@ public final class SettingsPanel {
         }
     }
 
+    private static final Page QUICK = new Page("Quick settings", "The TV's own screens, one tap away");
     private static final Page HOME = new Page("Home Screen", "The picture and the apps");
     private static final Page CLOCK = new Page("Clock", "The time in the corner");
     private static final Page SAVER = new Page("Screen Saver", "What the TV does when you rest");
@@ -72,6 +74,9 @@ public final class SettingsPanel {
     }
 
     private static Page pageFor(String title) {
+        if (QUICK.title.equals(title)) {
+            return QUICK;
+        }
         if (HOME.title.equals(title)) {
             return HOME;
         }
@@ -94,6 +99,9 @@ public final class SettingsPanel {
     }
 
     private static List<SettingRow> rowsFor(ToolActivity host, Page page) {
+        if (QUICK == page) {
+            return QuickPanel.rows(host);
+        }
         if (HOME == page) {
             return homeRows(host);
         }
@@ -118,6 +126,8 @@ public final class SettingsPanel {
     private static List<SettingRow> rootRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.push("Quick settings", "Wi-Fi, sound, display, updates",
+                () -> open(host, QUICK)));
         rows.add(SettingRow.choice("Mode", Pickers.modeName(prefs),
                 () -> Pickers.mode(host, () -> refresh(host))));
         rows.add(SettingRow.note("Default keeps the settings short. Technical shows every "
@@ -125,7 +135,8 @@ public final class SettingsPanel {
         rows.add(SettingRow.push(HOME.title, "picture and apps", () -> open(host, HOME)));
         rows.add(SettingRow.push(CLOCK.title, "time and date", () -> open(host, CLOCK)));
         rows.add(SettingRow.push(SAVER.title, "when the TV rests", () -> open(host, SAVER)));
-        rows.add(SettingRow.push(APPS.title, "hidden apps and order", () -> open(host, APPS)));
+        rows.add(SettingRow.push(APPS.title, "favourites, hidden apps and order",
+                () -> open(host, APPS)));
         rows.add(SettingRow.push(TOOLS.title, "app manager, files, browser", () -> open(host, TOOLS)));
         rows.add(SettingRow.push(SYSTEM.title, "home screen and reset", () -> open(host, SYSTEM)));
         return rows;
@@ -138,6 +149,12 @@ public final class SettingsPanel {
                 () -> Pickers.wallpaper(host, () -> refresh(host))));
         rows.add(SettingRow.choice("App names", Pickers.labelName(prefs),
                 () -> Pickers.labels(host, () -> refresh(host))));
+        rows.add(SettingRow.toggle("Search key", prefs.searchKey(), () -> {
+            prefs.setSearchKey(!prefs.searchKey());
+            refresh(host);
+        }));
+        rows.add(SettingRow.note("The search key on your remote opens Sonora's own search. "
+                + "It looks at the apps on this TV and sends nothing anywhere."));
         if (prefs.technical()) {
             rows.add(SettingRow.choice("Apps per row", Pickers.columnsName(host),
                     () -> Pickers.columns(host, () -> refresh(host))));
@@ -197,6 +214,8 @@ public final class SettingsPanel {
     private static List<SettingRow> appsRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.push("Favourites", Pickers.favouritesName(prefs),
+                () -> openFavourites(host)));
         rows.add(SettingRow.push("Manage apps", "disable and uninstall", () -> AppPanel.show(host)));
         rows.add(SettingRow.choice("Hidden apps", Pickers.hiddenName(prefs),
                 () -> Pickers.hiddenApps(host, () -> refresh(host))));
@@ -213,6 +232,43 @@ public final class SettingsPanel {
             prefs.bumpAppsEpoch();
             Ui.toast(host, "Apps will reload when you go back");
         }));
+        return rows;
+    }
+
+    /**
+     * The apps the user can pin to the top of the home screen.
+     *
+     * A ticked app sits at the top of the home screen, in the order it was
+     * ticked. Everything else follows.
+     */
+    private static void openFavourites(ToolActivity host) {
+        host.stack().push("Favourites", "Ticked apps sit at the top of the home screen",
+                favouriteRows(host));
+    }
+
+    private static List<SettingRow> favouriteRows(ToolActivity host) {
+        List<SettingRow> rows = new ArrayList<>();
+        for (AppEntry entry : AppRepository.get(host, 0)) {
+            final String pkg = entry.packageName;
+            if (pkg == null) {
+                continue;
+            }
+            boolean pinned = host.prefs().isFavourite(pkg);
+            rows.add(SettingRow.check(entry.label, pinned, () -> {
+                List<String> pinned2 = new ArrayList<>(host.prefs().favourites());
+                if (pinned2.contains(pkg)) {
+                    pinned2.remove(pkg);
+                } else {
+                    pinned2.add(0, pkg);
+                }
+                host.prefs().setFavourites(pinned2);
+                host.stack().refresh("Favourites",
+                        "Ticked apps sit at the top of the home screen", favouriteRows(host));
+            }));
+        }
+        if (rows.isEmpty()) {
+            rows.add(SettingRow.note("No apps found on this device."));
+        }
         return rows;
     }
 
@@ -235,6 +291,9 @@ public final class SettingsPanel {
             rows.add(SettingRow.action("Set Sonora as the home screen",
                     () -> Ui.openDefaultLauncherSettings(host)));
         }
+        rows.add(SettingRow.push("System update", "the TV's own update",
+                () -> QuickPanel.openUpdate(host)));
+        rows.add(SettingRow.action("Tidy up again", () -> QuickPanel.tidyUpNow(host)));
         rows.add(SettingRow.action("About Sonora", () -> showAbout(host)));
         if (prefs.technical()) {
             rows.add(SettingRow.action("Run setup again", () -> ToolActivity.open(host, "wizard")));
@@ -249,6 +308,16 @@ public final class SettingsPanel {
 
     private static void open(ToolActivity host, Page page) {
         host.stack().push(page.title, page.subtitle, rowsFor(host, page));
+    }
+
+    /**
+     * Opens the screen saver settings.
+     *
+     * The quick settings point here too: Sonora has its own screen saver, so
+     * that is the one worth changing.
+     */
+    public static void openScreenSaver(ToolActivity host) {
+        host.stack().push(SAVER.title, SAVER.subtitle, saverRows(host));
     }
 
     private static void showAbout(ToolActivity host) {

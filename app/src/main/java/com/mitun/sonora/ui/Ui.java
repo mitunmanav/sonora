@@ -310,6 +310,31 @@ public final class Ui {
 
     private static final Paint BITMAP_PAINT =
             new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
+
+    /**
+     * The control centre mark: three sliders, each with its knob in a
+     * different place. It says "these are the settings" without a word.
+     */
+    public static Bitmap sliders(Context context, int sizePx) {
+        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setColor(0xFFF5F6F8);
+        p.setStrokeWidth(sizePx * 0.075f);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        float inset = sizePx * 0.14f;
+        float span = sizePx - inset * 2f;
+        float[] knobs = {0.66f, 0.32f, 0.56f};
+        for (int i = 0; i < 3; i++) {
+            float y = inset + span * i / 2f;
+            canvas.drawLine(inset, y, inset + span, y, p);
+            p.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(inset + span * knobs[i], y, sizePx * 0.115f, p);
+            p.setStyle(Paint.Style.STROKE);
+        }
+        return bitmap;
+    }
+
     private static final Rect BITMAP_SRC = new Rect();
     private static final RectF BITMAP_DST = new RectF();
 

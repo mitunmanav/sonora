@@ -28,6 +28,9 @@ public final class AppIconView extends View {
     private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sheenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint starPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint starShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path starPath = new Path();
     private int glowSize;
     private final Path clipPath = new Path();
     private final RectF rect = new RectF();
@@ -36,6 +39,7 @@ public final class AppIconView extends View {
     private float sheen;
     private float parallaxX;
     private float parallaxY;
+    private boolean favourite;
     private LinearGradient backgroundGradient;
 
     public AppIconView(Context context) {
@@ -43,6 +47,8 @@ public final class AppIconView extends View {
         setWillNotDraw(false);
         edgePaint.setStyle(Paint.Style.STROKE);
         edgePaint.setStrokeWidth(Math.max(1f, Ui.dpf(context, 0.8f)));
+        starPaint.setColor(Color.WHITE);
+        starShadowPaint.setColor(0x66000000);
         labelPaint.setTypeface(Ui.medium());
         labelPaint.setColor(Color.WHITE);
         labelPaint.setTextAlign(Paint.Align.CENTER);
@@ -63,6 +69,14 @@ public final class AppIconView extends View {
         backgroundGradient = null;
         glowSize = 0;
         invalidate();
+    }
+
+    /** Marks the card as one the user pinned to the top of the home screen. */
+    public void setFavourite(boolean favourite) {
+        if (this.favourite != favourite) {
+            this.favourite = favourite;
+            invalidate();
+        }
     }
 
     /**
@@ -155,7 +169,28 @@ public final class AppIconView extends View {
                 new int[]{0x00FFFFFF, 0x16FFFFFF, 0x00FFFFFF},
                 new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
         edgePaint.setColor(0x24FFFFFF);
+        // The star that marks a pinned app, drawn as a path so it never
+        // depends on a font having the character.
+        float radius = h * 0.085f;
+        buildStar(w - radius - h * 0.10f, radius + h * 0.10f, radius);
         backgroundGradient = null;
+    }
+
+    /** A five-pointed star, drawn from the outside in. */
+    private void buildStar(float cx, float cy, float radius) {
+        starPath.reset();
+        for (int i = 0; i < 10; i++) {
+            double angle = Math.PI / 5 * i - Math.PI / 2;
+            float r = (i % 2 == 0) ? radius : radius * 0.44f;
+            float x = cx + (float) (Math.cos(angle) * r);
+            float y = cy + (float) (Math.sin(angle) * r);
+            if (i == 0) {
+                starPath.moveTo(x, y);
+            } else {
+                starPath.lineTo(x, y);
+            }
+        }
+        starPath.close();
     }
 
     @Override
@@ -196,6 +231,15 @@ public final class AppIconView extends View {
                 Math.max(1f, h * 0.185f - edgePaint.getStrokeWidth() / 2f),
                 Math.max(1f, h * 0.185f - edgePaint.getStrokeWidth() / 2f), edgePaint);
         canvas.restore();
+
+        if (favourite) {
+            // A soft shadow under the star, so it reads on light artwork too.
+            canvas.save();
+            canvas.translate(0, Ui.dpf(getContext(), 1.5f));
+            canvas.drawPath(starPath, starShadowPaint);
+            canvas.restore();
+            canvas.drawPath(starPath, starPaint);
+        }
     }
 
     private void drawGeneratedCard(Canvas canvas, int w, int h) {
