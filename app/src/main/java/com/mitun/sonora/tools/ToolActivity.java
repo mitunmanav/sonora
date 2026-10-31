@@ -24,7 +24,7 @@ import com.mitun.sonora.ui.Ui;
  * the activity and its views are the whole footprint.
  */
 public final class ToolActivity extends Activity {
-    /** "settings" (the default) or "tools". */
+    /** "settings" (the default), "tools" or "wizard". */
     public static final String EXTRA_SCREEN = "screen";
     private static final int REQUEST_PICK_WALLPAPER = 41;
 
@@ -32,6 +32,8 @@ public final class ToolActivity extends Activity {
     private ScreenStack stack;
     private Prefs prefs;
     private View choiceOverlay;
+    /** Set while the first-run setup is on screen. */
+    private SetupWizard wizard;
 
     public static void open(Context context, String screen) {
         Intent intent = new Intent(context, ToolActivity.class);
@@ -61,7 +63,10 @@ public final class ToolActivity extends Activity {
         setContentView(root);
 
         String screen = getIntent().getStringExtra(EXTRA_SCREEN);
-        if ("tools".equals(screen)) {
+        if ("wizard".equals(screen)) {
+            wizard = new SetupWizard(this);
+            wizard.start();
+        } else if ("tools".equals(screen)) {
             ToolsPanel.show(this);
         } else {
             SettingsPanel.show(this);
@@ -122,7 +127,11 @@ public final class ToolActivity extends Activity {
                 } catch (SecurityException ignored) {
                 }
                 prefs.setWallpaper(-1, uri.toString());
-                SettingsPanel.refresh(this);
+                if (wizard != null) {
+                    wizard.refreshCurrent();
+                } else {
+                    SettingsPanel.refresh(this);
+                }
             }
         }
     }
@@ -155,6 +164,10 @@ public final class ToolActivity extends Activity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             Ui.immersive(this);
+            // A screen that was built while the activity was starting could not
+            // take the focus, so the window getting it is the moment to ask
+            // again. Without this the D-pad has nowhere to go.
+            stack.focusTop();
         }
     }
 }

@@ -31,6 +31,8 @@ public final class ShareActivity extends Activity {
 
     private FileServer server;
     private File shared;
+    private File root;
+    private TextView address;
 
     public static void start(Context context, File file) {
         Intent intent = new Intent(context, ShareActivity.class);
@@ -46,18 +48,22 @@ public final class ShareActivity extends Activity {
         String path = getIntent().getStringExtra(EXTRA_PATH);
         shared = path == null ? FileServer.appFolder(this) : new File(path);
 
-        File root = shared.isDirectory() ? shared : shared.getParentFile();
+        root = shared.isDirectory() ? shared : shared.getParentFile();
         if (root == null) {
             root = FileServer.appFolder(this);
         }
         server = new FileServer();
-        int port = -1;
+        setContentView(build(startServer()));
+    }
+
+    /** Starts the server and returns the port it listens on. */
+    private int startServer() {
         try {
-            port = server.start(root);
+            return server.start(root);
         } catch (Exception e) {
             Ui.toast(this, "This TV could not open a port for sharing");
+            return -1;
         }
-        setContentView(build(port));
     }
 
     private View build(int port) {
@@ -82,7 +88,7 @@ public final class ShareActivity extends Activity {
         subtitle.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 28));
         column.addView(subtitle);
 
-        TextView address = new TextView(this);
+        address = new TextView(this);
         address.setText(port > 0 ? server.address() : "No address available");
         address.setTextColor(Color.WHITE);
         address.setTextSize(38);
@@ -128,6 +134,27 @@ public final class ShareActivity extends Activity {
             return true;
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // The screen came back: the server was stopped when it went away.
+        if (server != null && !server.isRunning()) {
+            int port = startServer();
+            if (address != null) {
+                address.setText(port > 0 ? server.address() : "No address available");
+            }
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        // Nothing keeps listening once the user has left this screen.
+        if (server != null) {
+            server.stop();
+        }
+        super.onStop();
     }
 
     @Override

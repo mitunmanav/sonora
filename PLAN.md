@@ -154,7 +154,9 @@ com.mitun.sonora
 - [x] File manager, LAN share, optional browser with a local ad blocker
 - [x] Design foundations: `Motion` (hand-written spring), `Type` (type scale)
 - [x] Design pass: springs in the launcher, materials, reduced motion
-- [ ] First-run setup wizard
+- [x] First-run setup wizard, in two modes
+- [x] Settings rebuilt as an index of short screens
+- [x] Tooling: the lists, the picker, the LAN server, the app manager
 - [ ] Verify the tools end to end on the TV
 
 ## 5. What this session did
@@ -242,6 +244,8 @@ TV, it's going to set it up": wallpaper -> grid -> clock -> screen saver ->
 offer to become the default launcher. Runs once, skippable, never blocks.
 `Prefs.welcomeSeen()` is already there for it.
 
+*(done - see section 8)*
+
 ## 7. Session: launcher only (no TV connected)
 
 Scope: the launcher and the shared `ui` package. The tools, the wizard and
@@ -323,3 +327,60 @@ anything else gets the key.
 `Spring` is pure maths, so it is tested without a device: a critical spring
 never overshoots, a springy one does, a re-aimed spring keeps its speed and
 still arrives, and a long stall cannot make it explode.
+
+
+## 8. Session: the wizard, the settings, the tooling
+
+### G1. The first-run setup
+`tools/SetupWizard.java` walks the user through the setup once: the mode,
+the wallpaper, the clock, the screen saver, the home screen role. It runs
+once, BACK walks back through it, and it never blocks the launcher. Each
+screen says where it is ("Step 2 of 5"), because a setup that does not say
+where you are is a setup the user has to guess their way through.
+
+### G2. Two modes
+`Prefs.mode()` is `Default` or `Technical`. Default shows the settings that
+matter to anybody, in plain words. Technical shows all of them: apps per row,
+seconds, reduce motion, the app order, the setup guide. The mode is picked in
+the setup and can be changed in Settings.
+
+### G3. The settings are an index now
+One long list of twenty rows was too much to read, so Settings is an index:
+Home Screen, Clock, Screen Saver, Apps, Tools, System. Every screen holds a
+handful of rows. The technical rows only exist in technical mode.
+
+### G4. The focus works
+A screen that was built while the activity was starting could not take the
+focus, so the D-pad went nowhere and OK did nothing. The stack asks again
+when the window gets the focus, and a rebuilt screen keeps the row the user
+was on and where it was scrolled to.
+
+### G5. The lists work
+The rows of the app manager and the file manager were focusable, which stops
+a `ListView` from ever reporting a click: OK did nothing in both panels. The
+list holds the focus now, the selection is drawn for it, and the filters sit
+above the list instead of inside it.
+
+### G6. The picker opens on the value it shows
+`ChoiceOverlay` never took the selected index, so every picker opened on the
+first option: OK silently changed the setting.
+
+### G7. The LAN server
+It kept listening after the user left the share screen, which broke the "no
+background processes" rule. It stops in `onStop` now. The path check was a
+prefix test with no separator, so a folder that merely started with the same
+name could be served; the separator is there now. Names are URL-decoded and
+the listing is URL-encoded, and a picture is served as a picture.
+
+### G8. The app manager
+The row said "Enabled" but showed the hidden state, and never updated. It
+says "Hidden from home screen" now and the screen is rebuilt after the tap.
+`CHANGE_COMPONENT_ENABLED_STATE` was never declared, so hiding an app was
+refused by the system: it is declared now, and so is
+`KILL_BACKGROUND_PROCESSES` for force stop.
+
+### G9. The device panel
+`getRunningAppProcesses()` can return null and took the panel down with it.
+The process list is read off the UI thread now, because it is a binder call
+per app. "Refresh" refreshes the screen instead of throwing the stack away,
+and the numbers are read again instead of coming from the cache.

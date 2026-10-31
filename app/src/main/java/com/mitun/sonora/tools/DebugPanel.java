@@ -31,6 +31,17 @@ public final class DebugPanel {
     }
 
     public static void show(ToolActivity host) {
+        SystemInfo.invalidate();
+        host.stack().showOrPush("Device", "What this TV is and what it is doing", rows(host));
+    }
+
+    /** Rebuilds the device screen with the numbers as they are now. */
+    private static void refresh(ToolActivity host) {
+        SystemInfo.invalidate();
+        host.stack().refresh("Device", "What this TV is and what it is doing", rows(host));
+    }
+
+    private static List<SettingRow> rows(ToolActivity host) {
         SystemInfo info = SystemInfo.get(host);
         List<SettingRow> rows = new ArrayList<>();
 
@@ -49,7 +60,7 @@ public final class DebugPanel {
         rows.add(SettingRow.value("Native heap", SystemInfo.bytes(SystemInfo.nativeHeap())));
         rows.add(SettingRow.value("System memory", SystemInfo.bytes(info.availableMemory)
                 + " free of " + SystemInfo.bytes(info.totalMemory)));
-        rows.add(SettingRow.action("Refresh", () -> show(host)));
+        rows.add(SettingRow.action("Refresh", () -> refresh(host)));
 
         rows.add(SettingRow.header("Storage"));
         rows.add(SettingRow.value("Internal storage", storage(host, Environment.getDataDirectory())));
@@ -66,21 +77,45 @@ public final class DebugPanel {
         rows.add(SettingRow.push("Battery", "charge and power state", () -> showBattery(host)));
         rows.add(SettingRow.push("Network", "addresses and connectivity",
                 () -> showNetwork(host)));
-        rows.add(SettingRow.push("Recent log", "the last " + LOG_LINES + " lines",
+        rows.add(SettingRow.push("Sonora's log", "the last " + LOG_LINES + " lines",
                 () -> showLog(host)));
         rows.add(SettingRow.push("Self check", "is this device set up well",
                 () -> showSelfCheck(host)));
-
-        host.stack().show("Device", "What this TV is and what it is doing", rows);
+        return rows;
     }
 
     private static void showProcesses(ToolActivity host) {
+        final String title = "Processes";
+        final String subtitle = "Everything running right now";
+        List<SettingRow> reading = new ArrayList<>();
+        reading.add(SettingRow.value("Reading", "…"));
+        host.stack().push(title, subtitle, reading);
+        // Asking the system for every process is a binder call each time. On a
+        // slow stick that is long enough to be an ANR, so it happens off the
+        // UI thread and the screen fills in when it is done.
+        new Thread(() -> {
+            final List<SettingRow> rows = processRows(host);
+            host.runOnUiThread(() -> {
+                if (host.isFinishing() || host.isDestroyed()) {
+                    return;
+                }
+                host.stack().refresh(title, subtitle, rows);
+            });
+        }, "sonora-processes").start();
+    }
+
+    private static List<SettingRow> processRows(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
         List<ActivityManager.RunningAppProcessInfo> processes = new ArrayList<>();
         ActivityManager manager = (ActivityManager)
                 host.getSystemService(Context.ACTIVITY_SERVICE);
         if (manager != null) {
-            processes.addAll(manager.getRunningAppProcesses());
+            List<ActivityManager.RunningAppProcessInfo> running =
+                    manager.getRunningAppProcesses();
+            // It can be null when there is nothing to report.
+            if (running != null) {
+                processes.addAll(running);
+            }
         }
         int[] pids = new int[processes.size()];
         for (int i = 0; i < processes.size(); i++) {
@@ -107,7 +142,7 @@ public final class DebugPanel {
                     ? memory[i].getTotalPrivateDirty() : 0;
             rows.add(SettingRow.value(processes.get(i).processName, SystemInfo.bytes(bytes)));
         }
-        host.stack().push("Processes", "Everything running right now", rows);
+        return rows;
     }
 
     private static void showBattery(ToolActivity host) {
@@ -206,7 +241,7 @@ public final class DebugPanel {
         scroller.addView(text, new android.widget.ScrollView.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
-        host.stack().pushContent("Recent log", "The last " + LOG_LINES + " lines", scroller);
+        host.stack().pushContent("Sonora's log", "The last " + LOG_LINES + " lines", scroller);
 
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();
@@ -245,9 +280,31 @@ public final class DebugPanel {
         rows.add(SettingRow.value("App heap",
                 SystemInfo.bytes(heapUsed) + " of " + SystemInfo.bytes(info.javaHeapLimit)));
         rows.add(SettingRow.value("Low RAM device", info.lowRam ? "Yes" : "No"));
-        rows.add(SettingRow.value("Screen saver",
-                host.prefs().screensaverDelaySec() > 0 ? "On" : "Off"));
+        rows.add(SettingRow.value("Screen saver", screenSaverState(host)));
         host.stack().push("Self check", "How this device is set up", rows);
+    }
+
+    /**
+     * The screen saver is really running when Sonora is the one the TV shows.
+     * The in-app saver is on its own timer, so the two are reported apart.
+     */
+    private static String screenSaverState(ToolActivity host) {
+        if (host.prefs().screensaverDelaySec() <= 0) {
+            return "Off";
+        }
+        return dreamSelected(host) ? "On, and set as the TV's screen saver"
+                : "On in Sonora, not set as the TV's screen saver";
+    }
+
+    /** True when the TV's own screen saver is Sonora. */
+    private static boolean dreamSelected(android.content.Context context) {
+        try {
+            String components = android.provider.Settings.Secure.getString(
+                    context.getContentResolver(), "screensaver_components");
+            return components != null && components.contains(context.getPackageName());
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private static String storage(Context context, java.io.File path) {

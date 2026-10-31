@@ -25,6 +25,9 @@ public final class ChoiceOverlay extends FrameLayout {
                          Callback callback) {
         super(context);
         this.callback = callback;
+        // The focus has to start on the option that is ticked. Opening on the
+        // first one and OK-ing it would silently change the setting.
+        this.selected = selectedIndex;
         // Heavy dim: a modal task pushes the screen behind it back.
         setBackgroundColor(0xF7000000);
 
@@ -62,10 +65,11 @@ public final class ChoiceOverlay extends FrameLayout {
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
         line.setPadding(Ui.dp(context, 22), Ui.dp(context, 12), Ui.dp(context, 22), Ui.dp(context, 12));
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(Ui.dpf(context, 12));
-        background.setColor(0x00FFFFFF);
-        line.setBackground(background);
+        // The same material as the rows behind it, so the picker belongs to
+        // the screen it came from.
+        GlassDrawable material = new GlassDrawable(context, 12f, 1f);
+        material.setAlpha(0);
+        line.setBackground(material);
         line.setFocusable(true);
 
         TextView label = new TextView(context);
@@ -84,8 +88,8 @@ public final class ChoiceOverlay extends FrameLayout {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         line.setOnFocusChangeListener((v, focused) -> {
-            GradientDrawable bg = (GradientDrawable) v.getBackground();
-            bg.setColor(focused ? 0x33FFFFFF : 0x00FFFFFF);
+            GlassDrawable bg = (GlassDrawable) v.getBackground();
+            bg.setAlpha(focused ? 255 : 0);
         });
         line.setOnClickListener(v -> {
             selected = list.indexOfChild(v);
