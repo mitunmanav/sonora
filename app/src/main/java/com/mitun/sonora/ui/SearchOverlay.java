@@ -204,7 +204,6 @@ public final class SearchOverlay extends FrameLayout {
                 return;
             }
             focusField();
-            raiseKeyboard();
         });
     }
 
@@ -298,6 +297,9 @@ public final class SearchOverlay extends FrameLayout {
 
     private void focusField() {
         field.requestFocus();
+        if (!noKeyboard) {
+            raiseKeyboard();
+        }
     }
 
     private void raiseKeyboard() {
@@ -342,8 +344,13 @@ public final class SearchOverlay extends FrameLayout {
                 }
             }
             if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                // Up always comes back to the field.
-                focusField();
+                // Up always comes back to the field, unless there is no
+                // keyboard to type in - then it would be a dead end.
+                if (noKeyboard) {
+                    focusFirstResult();
+                } else {
+                    focusField();
+                }
                 return true;
             }
             if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
