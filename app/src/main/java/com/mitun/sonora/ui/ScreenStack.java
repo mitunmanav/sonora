@@ -78,17 +78,23 @@ public final class ScreenStack extends FrameLayout {
         }
     }
 
-    /** Rebuilds the top screen in place, keeping its position in the stack. */
-    public void refresh() {
+    /**
+     * Replaces the top screen with a freshly built one, keeping its place in
+     * the stack. Use it when a value shown in the screen has changed.
+     */
+    public void refresh(String title, String subtitle, List<SettingRow> rows) {
         if (stack.isEmpty()) {
             return;
         }
-        Screen screen = stack.get(stack.size() - 1);
         int index = stack.size() - 1;
-        removeView(screen.view);
-        screen.rows.clear();
-        stack.remove(index);
+        Screen old = stack.remove(index);
+        removeView(old.view);
+        Screen screen = new Screen(title, subtitle);
+        screen.rows.addAll(rows);
+        screen.view = buildScreen(screen);
+        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         stack.add(index, screen);
+        focusTop();
     }
 
     /** Pops the top screen. Returns false when the stack was already empty. */

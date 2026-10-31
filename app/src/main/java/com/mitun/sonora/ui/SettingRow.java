@@ -22,7 +22,8 @@ public final class SettingRow {
     public static final int ACTION = 2;
     public static final int TOGGLE = 3;
     public static final int PUSH = 4;
-    public static final int DANGER = 3 + 100;
+    /** A destructive action: drawn in the warning colour. */
+    public static final int DANGER = 5;
 
     private final String title;
     private final int type;
@@ -104,7 +105,7 @@ public final class SettingRow {
 
         TextView label = new TextView(context);
         label.setText(title);
-        label.setTextColor(Color.WHITE);
+        label.setTextColor(type == DANGER ? 0xFFFF6B6B : Color.WHITE);
         label.setTextSize(19);
         label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         line.addView(label, new LinearLayout.LayoutParams(0,
@@ -135,7 +136,9 @@ public final class SettingRow {
         line.setOnFocusChangeListener((v, focused) -> {
             GradientDrawable bg = (GradientDrawable) v.getBackground();
             bg.setColor(focused ? 0x33FFFFFF : 0x00FFFFFF);
-            labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            if (type != DANGER) {
+                labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            }
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());
