@@ -97,7 +97,7 @@ public final class SettingsOverlay extends FrameLayout {
         Context context = getContext();
         header(context, "Home Screen");
         row(context, "wallpaper", "Wallpaper", wallpaperName());
-        row(context, "columns", "Apps per row", String.valueOf(prefs.columns()));
+        row(context, "columns", "Apps per row", columnsName());
         row(context, "labels", "App names", labelName());
         row(context, "clock24", "24-hour clock", prefs.clock24() ? "On" : "Off");
         row(context, "show_date", "Show date", prefs.showDate() ? "On" : "Off");
@@ -186,6 +186,17 @@ public final class SettingsOverlay extends FrameLayout {
             return "Photo";
         }
         return com.mitun.sonora.Scenes.ALL.get(prefs.wallpaper()).name;
+    }
+
+    private String columnsName() {
+        int stored = prefs.columns();
+        if (stored == 0) {
+            // "Auto" - report the count the current screen actually gets.
+            int widthDp = Math.round(getContext().getResources().getDisplayMetrics().widthPixels
+                    / getContext().getResources().getDisplayMetrics().density);
+            return "Auto (" + com.mitun.sonora.Grid.resolve(widthDp, 0).columns + ")";
+        }
+        return String.valueOf(stored);
     }
 
     private String labelName() {
