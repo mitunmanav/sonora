@@ -23,10 +23,12 @@ import android.widget.TextView;
 import com.mitun.sonora.ui.AppTileView;
 import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.GlassDrawable;
+import com.mitun.sonora.ui.GlassIconPill;
 import com.mitun.sonora.ui.GlassPillView;
 import com.mitun.sonora.ui.HeroBackgroundView;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.ScreensaverView;
+import com.mitun.sonora.ui.SearchOverlay;
 import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
@@ -46,17 +48,24 @@ public class HomeActivity extends Activity {
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
     private final List<AppTileView> tiles = new ArrayList<>();
+    /** The apps the user pinned, in the order they pinned them. */
+    private final List<String> favourites = new ArrayList<>();
 
     private FrameLayout root;
     private HeroBackgroundView hero;
     private GlassPillView clockPill;
+    private GlassIconPill quickPill;
     private TextView shelfTitle;
     private TextView shelfSubtitle;
     private LinearLayout grid;
     private ScrollView scroller;
     private FrameLayout overlayHost;
     private View choiceOverlay;
+    private SearchOverlay searchOverlay;
     private ScreensaverView screensaver;
+
+    /** True while the user is arranging the apps with the D-pad. */
+    private boolean editing;
 
     private long lastInteraction;
     private boolean suppressIdle;
@@ -162,10 +171,27 @@ public class HomeActivity extends Activity {
         clockPill = new GlassPillView(this, prefs);
         clockPill.setId(View.generateViewId());
         clockPill.setOnOpenSettings(this::openSettings);
-        FrameLayout.LayoutParams pillParams = new FrameLayout.LayoutParams(
+
+        // The control centre sits to the left of the clock: the TV's own
+        // settings, one tap away.
+        quickPill = new GlassIconPill(this, Ui.sliders(this, Ui.dp(this, 22)),
+                "Quick settings");
+        quickPill.setId(View.generateViewId());
+        quickPill.setOnOpen(this::openQuickSettings);
+
+        LinearLayout pills = new LinearLayout(this);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        quickParams.rightMargin = Ui.dp(this, 10);
+        pills.addView(quickPill, quickParams);
+        pills.addView(clockPill, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        shelf.addView(pills, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.END);
-        shelf.addView(clockPill, pillParams);
+                Gravity.TOP | Gravity.END));
 
         // The icon grid is anchored to the bottom of the screen, the way tvOS
         // floats it over the artwork. It only scrolls when the list outgrows
@@ -208,60 +234,102 @@ public class HomeActivity extends Activity {
                 result = new ArrayList<>();
             }
             final List<AppEntry> loaded = result;
-            final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(), prefs.hidden());
+            final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(),
+                    prefs.hidden(), prefs.favourites());
             runOnUiThread(() -> {
+                favourites.clear();
+                favourites.addAll(prefs.favourites());
                 appEntries = ordered.toArray(new AppEntry[0]);
                 buildGrid();
             });
         }, "sonora-apps").start();
     }
 
+    /** Puts the apps back in order after the user changed the order or a pin. */
+    private void applyOrder() {
+        favourites.clear();
+        favourites.addAll(prefs.favourites());
+        appEntries = AppOrdering.order(Arrays.asList(appEntries), prefs.order(),
+                prefs.hidden(), favourites).toArray(new AppEntry[0]);
+        buildGrid();
+    }
+
     private void buildGrid() {
-        grid.removeAllViews();
         tiles.clear();
 
         Grid.Metrics metrics = gridMetrics();
-        int columns = metrics.columns;
-        int tileWidth = Ui.dp(this, metrics.tileWidthDp);
-        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
-        int gap = Ui.dp(this, metrics.gapDp);
         boolean labels = prefs.labels() != Prefs.LABELS_OFF;
         int labelHeight = labels ? Ui.dp(this, 22) : 0;
+        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
 
         AppEntry[] all = new AppEntry[appEntries.length + 1];
         System.arraycopy(appEntries, 0, all, 0, appEntries.length);
         all[appEntries.length] = new AppEntry("Settings", getPackageName(), null,
                 settingsIcon(), null, 0xFF4A505C, true);
 
+        for (AppEntry entry : all) {
+            AppTileView tile = new AppTileView(this, tileHeight, labelHeight, prefs);
+            tile.setId(View.generateViewId());
+            tile.setEntry(entry);
+            tile.setFavourite(isFavourite(entry));
+            tile.setFocusListener(this::onTileFocused);
+            tile.setOnClickListener(v -> launch((AppTileView) v));
+            tile.setOnLongClickListener(v -> {
+                showAppMenu((AppTileView) v);
+                return true;
+            });
+            tiles.add(tile);
+        }
+
+        layoutRows();
+
+        if (!tiles.isEmpty()) {
+            // The grid is not laid out yet, so the focus has to wait for it.
+            // Asking now leaves the focus on whichever tile the framework
+            // picks instead of the first one.
+            restoreFocus();
+        }
+        // The grid now matches these settings, so a later resume that finds
+        // the same key knows there is nothing to rebuild.
+        gridKey = prefs.gridKey();
+        updateShelf(appEntries.length > 0 ? appEntries[0] : null);
+    }
+
+    /**
+     * Puts the tiles into their rows.
+     *
+     * The tiles are reused rather than rebuilt, so arranging the apps does
+     * not throw the artwork away or restart the animation that is running.
+     */
+    private void layoutRows() {
+        grid.removeAllViews();
+        Grid.Metrics metrics = gridMetrics();
+        int columns = metrics.columns;
+        int tileWidth = Ui.dp(this, metrics.tileWidthDp);
+        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
+        int gap = Ui.dp(this, metrics.gapDp);
+
         if (appEntries.length == 0) {
             grid.addView(emptyStateView(), new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            return;
         }
 
-        for (int start = 0; start < all.length; start += columns) {
+        for (int start = 0; start < tiles.size(); start += columns) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setClipChildren(false);
             row.setClipToPadding(false);
-            int end = Math.min(all.length, start + columns);
+            int end = Math.min(tiles.size(), start + columns);
             for (int i = start; i < end; i++) {
-                AppTileView tile = new AppTileView(this, tileHeight, labelHeight, prefs);
-                tile.setId(View.generateViewId());
-                tile.setEntry(all[i]);
-                tile.setFocusListener(this::onTileFocused);
-                tile.setOnClickListener(v -> launch((AppTileView) v));
-                tile.setOnLongClickListener(v -> {
-                    showAppMenu((AppTileView) v);
-                    return true;
-                });
+                AppTileView tile = tiles.get(i);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(tileWidth,
-                        tileHeight + labelHeight);
+                        tileHeight + (tile.labelSpace() ? Ui.dp(this, 22) : 0));
                 params.rightMargin = gap;
                 row.addView(tile, params);
-                tiles.add(tile);
             }
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, tileHeight + labelHeight);
+                    ViewGroup.LayoutParams.MATCH_PARENT, tileHeight + Ui.dp(this, 22));
             rowParams.bottomMargin = Ui.dp(this, 16);
 
             if (start == 0) {
@@ -285,16 +353,6 @@ public class HomeActivity extends Activity {
                 grid.addView(row, rowParams);
             }
         }
-        if (!tiles.isEmpty()) {
-            // The grid is not laid out yet, so the focus has to wait for it.
-            // Asking now leaves the focus on whichever tile the framework
-            // picks instead of the first one.
-            restoreFocus();
-        }
-        // The grid now matches these settings, so a later resume that finds
-        // the same key knows there is nothing to rebuild.
-        gridKey = prefs.gridKey();
-        updateShelf(appEntries.length > 0 ? appEntries[0] : null);
     }
 
     /**
@@ -411,8 +469,15 @@ public class HomeActivity extends Activity {
             return;
         }
         shelfTitle.setText(entry.label);
-        shelfSubtitle.setText(entry.settings ? "Press OK to open Sonora settings"
-                : "Hold OK for options");
+        if (editing) {
+            shelfSubtitle.setText("Arranging — move with the arrows, BACK to finish");
+        } else if (entry.settings) {
+            shelfSubtitle.setText("Press OK to open Sonora settings");
+        } else if (isFavourite(entry)) {
+            shelfSubtitle.setText("Pinned to the top");
+        } else {
+            shelfSubtitle.setText("Hold OK for options");
+        }
     }
 
     private void launch(AppTileView tile) {
@@ -435,8 +500,13 @@ public class HomeActivity extends Activity {
             return;
         }
         suppressIdle = true;
-        String[] options = {"Open " + entry.label, "Move to front", "Move to end",
-                "Hide from Home", "App info"};
+        boolean favourite = isFavourite(entry);
+        String[] options = {"Open " + entry.label,
+                favourite ? "Remove from Favourites" : "Add to Favourites",
+                "Search apps",
+                "Edit Home Screen",
+                "Hide from Home",
+                "App info"};
         ChoiceOverlay overlay = new ChoiceOverlay(this, entry.label, options, -1, index -> {
             dismissChoice();
             switch (index) {
@@ -444,15 +514,18 @@ public class HomeActivity extends Activity {
                     entry.launch(this);
                     break;
                 case 1:
-                    move(entry, 0);
+                    toggleFavourite(entry);
                     break;
                 case 2:
-                    move(entry, appEntries.length - 1);
+                    openSearch();
                     break;
                 case 3:
-                    hide(entry);
+                    startEditing();
                     break;
                 case 4:
+                    hide(entry);
+                    break;
+                case 5:
                     try {
                         Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                 Uri.parse("package:" + entry.packageName));
@@ -471,14 +544,24 @@ public class HomeActivity extends Activity {
         overlay.focusSelected();
     }
 
-    private void move(AppEntry entry, int index) {
-        List<AppEntry> list = new ArrayList<>(Arrays.asList(appEntries));
-        list.remove(entry);
-        index = Math.max(0, Math.min(list.size(), index));
-        list.add(index, entry);
-        appEntries = list.toArray(new AppEntry[0]);
-        prefs.setOrder(AppOrdering.saveOrder(list));
-        buildGrid();
+    /** True when the user pinned this app to the top of the home screen. */
+    private boolean isFavourite(AppEntry entry) {
+        return entry != null && entry.packageName != null
+                && favourites.contains(entry.packageName);
+    }
+
+    /** Pins an app to the top of the home screen, or unpins it. */
+    private void toggleFavourite(AppEntry entry) {
+        boolean was = isFavourite(entry);
+        List<String> list = new ArrayList<>(prefs.favourites());
+        if (was) {
+            list.remove(entry.packageName);
+        } else {
+            list.add(0, entry.packageName);
+        }
+        prefs.setFavourites(list);
+        applyOrder();
+        Ui.toast(this, was ? entry.label + " unpinned" : entry.label + " pinned to the top");
     }
 
     private void hide(AppEntry entry) {
@@ -487,6 +570,123 @@ public class HomeActivity extends Activity {
         prefs.setHidden(hidden);
         loadApps();
         Ui.toast(this, entry.label + " hidden");
+    }
+
+    // --- Arranging the apps -------------------------------------------------
+
+    /** Starts arranging the apps with the D-pad. */
+    private void startEditing() {
+        editing = true;
+        updateShelf(focusedEntry());
+    }
+
+    private void endEditing() {
+        editing = false;
+        updateShelf(focusedEntry());
+    }
+
+    private AppEntry focusedEntry() {
+        View focused = getCurrentFocus();
+        if (focused instanceof AppTileView) {
+            return ((AppTileView) focused).entry();
+        }
+        return appEntries.length > 0 ? appEntries[0] : null;
+    }
+
+    /**
+     * Moves the focused app one step, while the user is arranging the apps.
+     *
+     * @return true when the key was used for arranging.
+     */
+    private boolean editMove(int key) {
+        View focused = getCurrentFocus();
+        int index = tiles.indexOf(focused);
+        // The Settings tile is not an app, so it stays where it is.
+        if (index < 0 || index >= appEntries.length) {
+            return false;
+        }
+        int columns = gridMetrics().columns;
+        int row = index / columns;
+        int column = index % columns;
+        int target;
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                target = column > 0 ? index - 1 : -1;
+                break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                target = (column + 1 < columns && index + 1 < appEntries.length) ? index + 1 : -1;
+                break;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                target = row > 0 ? index - columns : -1;
+                break;
+            default:
+                target = (index + columns < appEntries.length) ? index + columns : -1;
+                break;
+        }
+        if (target < 0) {
+            // At the edge of the grid: the key is used, nothing moves.
+            return true;
+        }
+        moveTile(index, target);
+        return true;
+    }
+
+    /** Moves one app to another place in the grid and remembers it. */
+    private void moveTile(int from, int to) {
+        List<AppEntry> list = new ArrayList<>(Arrays.asList(appEntries));
+        AppEntry moved = list.remove(from);
+        list.add(to, moved);
+        appEntries = list.toArray(new AppEntry[0]);
+
+        AppTileView tile = tiles.remove(from);
+        tiles.add(to, tile);
+
+        prefs.setOrder(AppOrdering.saveOrder(list));
+        layoutRows();
+        // The tile that moved keeps the focus, so the user can keep moving it.
+        focusedPackage = moved.packageName;
+        restoreFocus();
+    }
+
+    // --- Searching ----------------------------------------------------------
+
+    /** Opens the local search: the names of the apps on this TV, nothing else. */
+    private void openSearch() {
+        if (searchOverlay != null) {
+            return;
+        }
+        suppressIdle = true;
+        Grid.Metrics metrics = gridMetrics();
+        List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
+        searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
+                Ui.dp(this, metrics.tileHeightDp), new SearchOverlay.Listener() {
+            @Override
+            public void onPicked(AppEntry entry) {
+                closeSearch();
+                if (entry != null && !entry.launch(HomeActivity.this)) {
+                    Ui.toast(HomeActivity.this, "Could not open " + entry.label);
+                }
+            }
+
+            @Override
+            public void onClosed() {
+                closeSearch();
+            }
+        });
+        overlayHost.addView(searchOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        searchOverlay.start();
+    }
+
+    private void closeSearch() {
+        if (searchOverlay == null) {
+            return;
+        }
+        searchOverlay.close();
+        overlayHost.removeView(searchOverlay);
+        searchOverlay = null;
+        suppressIdle = false;
+        restoreFocus();
     }
 
     private void openSettings() {
@@ -500,6 +700,16 @@ public class HomeActivity extends Activity {
         }
     }
 
+    /** The control centre: the TV's own settings, one tap away. */
+    private void openQuickSettings() {
+        try {
+            startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "quick"));
+        } catch (RuntimeException e) {
+            Ui.toast(this, "Could not open the quick settings");
+        }
+    }
+
     private void showOverlay(View overlay) {
         if (choiceOverlay != null) {
             overlayHost.removeView(choiceOverlay);
@@ -510,11 +720,21 @@ public class HomeActivity extends Activity {
     }
 
     private void dismissChoice() {
-        if (choiceOverlay != null) {
-            overlayHost.removeView(choiceOverlay);
-            choiceOverlay = null;
-            // The overlay had the focus, and removing it leaves nothing
-            // focused, so the tile the user came from gets it back.
+        if (choiceOverlay == null) {
+            suppressIdle = false;
+            return;
+        }
+        final View overlay = choiceOverlay;
+        choiceOverlay = null;
+        if (overlay instanceof ChoiceOverlay) {
+            // The picker leaves the way it came, and the tile the user came
+            // from gets the focus back when it is gone.
+            ((ChoiceOverlay) overlay).dismiss(() -> {
+                overlayHost.removeView(overlay);
+                restoreFocus();
+            });
+        } else {
+            overlayHost.removeView(overlay);
             restoreFocus();
         }
         suppressIdle = false;
@@ -625,6 +845,20 @@ public class HomeActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             lastInteraction = System.currentTimeMillis();
+            // The remote's search key opens Sonora's own search: the names of
+            // the apps on this TV, with nothing sent anywhere.
+            if (prefs.searchKey() && isSearchKey(event.getKeyCode())) {
+                if (searchOverlay == null) {
+                    openSearch();
+                }
+                return true;
+            }
+            // While the apps are being arranged, OK means "done".
+            if (editing && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER
+                    || event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                endEditing();
+                return true;
+            }
         }
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
             // BACK is a breadcrumb, never a toggle and never a dialog.
@@ -642,6 +876,13 @@ public class HomeActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if (editing) {
+                        // While arranging, the arrows move the app itself.
+                        if (editMove(event.getKeyCode())) {
+                            return true;
+                        }
+                        break;
+                    }
                     // Only the grid is driven from here. An overlay or the
                     // screen saver moves its own focus, and it can only do
                     // that if the key reaches it.
@@ -656,6 +897,13 @@ public class HomeActivity extends Activity {
         // Everything else must reach the focused view: swallowing it here is
         // what kills the D-pad inside the overlays.
         return super.dispatchKeyEvent(event);
+    }
+
+    /** The keys a remote sends when the user asks for a search. */
+    private static boolean isSearchKey(int code) {
+        return code == KeyEvent.KEYCODE_SEARCH
+                || code == KeyEvent.KEYCODE_ASSIST
+                || code == KeyEvent.KEYCODE_VOICE_ASSIST;
     }
 
     /**
@@ -693,6 +941,14 @@ public class HomeActivity extends Activity {
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
+                quickPill.requestFocus();
+            }
+            return true;
+        }
+        if (focused == quickPill) {
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
+                tiles.get(0).requestFocus();
+            } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 clockPill.requestFocus();
             }
             return true;
@@ -700,6 +956,8 @@ public class HomeActivity extends Activity {
         if (focused == clockPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
                 tiles.get(0).requestFocus();
+            } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
+                quickPill.requestFocus();
             }
             return true;
         }
@@ -712,8 +970,16 @@ public class HomeActivity extends Activity {
             hideScreensaver();
             return true;
         }
+        if (searchOverlay != null) {
+            closeSearch();
+            return true;
+        }
         if (choiceOverlay != null) {
             dismissChoice();
+            return true;
+        }
+        if (editing) {
+            endEditing();
             return true;
         }
         int focusedIndex = -1;

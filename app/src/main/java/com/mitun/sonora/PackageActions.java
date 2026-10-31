@@ -79,6 +79,27 @@ public final class PackageActions {
         }
     }
 
+    /**
+     * Turns a whole package off for this user.
+     *
+     * This is what "pm disable-user" does, and it is how the apps that were
+     * turned off are turned off again after a system update puts them back.
+     */
+    public static Result setPackageEnabled(Context context, String packageName, boolean enabled) {
+        PackageManager pm = context.getPackageManager();
+        try {
+            pm.setApplicationEnabledSetting(packageName,
+                    enabled ? PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+                            : PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                    PackageManager.DONT_KILL_APP);
+            return new Result(true, enabled ? "Restored" : "Turned off");
+        } catch (SecurityException e) {
+            return new Result(false, "This device does not allow it");
+        } catch (RuntimeException e) {
+            return new Result(false, "Could not change this app");
+        }
+    }
+
     /** Opens the system uninstall confirmation for a package. */
     public static Result requestUninstall(Activity activity, String packageName, String label) {
         try {

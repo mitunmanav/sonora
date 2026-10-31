@@ -27,6 +27,8 @@ public final class SettingRow {
     public static final int CHOICE = 6;
     /** A line of explanation. It is never focused and never takes an action. */
     public static final int NOTE = 7;
+    /** A row that can be ticked. The tick is the whole answer. */
+    public static final int CHECK = 8;
 
     private final String title;
     private final int type;
@@ -80,6 +82,13 @@ public final class SettingRow {
     public static SettingRow note(String text) {
         SettingRow row = new SettingRow(text, NOTE, null);
         row.value = text;
+        return row;
+    }
+
+    /** A row with a tick in it. */
+    public static SettingRow check(String title, boolean checked, Runnable action) {
+        SettingRow row = new SettingRow(title, CHECK, action);
+        row.value = checked ? "✓" : "";
         return row;
     }
 
