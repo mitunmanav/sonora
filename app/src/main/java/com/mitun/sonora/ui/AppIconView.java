@@ -21,6 +21,9 @@ import com.mitun.sonora.AppEntry;
  * canvas draws on one hardware-accelerated view.
  */
 public final class AppIconView extends View {
+    /** The corner radius as a fraction of the card height, measured from tvOS. */
+    private static final float RADIUS = 0.17f;
+
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bitmapPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final TextPaint labelPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -28,6 +31,7 @@ public final class AppIconView extends View {
     private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sheenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint starPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint starShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path starPath = new Path();
@@ -36,6 +40,7 @@ public final class AppIconView extends View {
     private final RectF rect = new RectF();
     private final RectF artRect = new RectF();
     private final RectF edgeRect = new RectF();
+    private final RectF shadowRect = new RectF();
     private AppEntry entry;
     private float sheen;
     private float parallaxX;
@@ -57,7 +62,7 @@ public final class AppIconView extends View {
         setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override
             public void getOutline(View v, android.graphics.Outline outline) {
-                float radius = Math.min(v.getWidth(), v.getHeight()) * 0.185f;
+                float radius = Math.min(v.getWidth(), v.getHeight()) * RADIUS;
                 outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
             }
         });
@@ -138,6 +143,9 @@ public final class AppIconView extends View {
             @Override
             public void set(float value) {
                 sheen = value;
+                // The rim brightens with the light, so a focused card separates
+                // from its neighbours even on artwork with a busy edge.
+                edgePaint.setColor(Ui.alpha(Color.WHITE, 0.16f + 0.42f * value));
                 invalidate();
             }
         };
@@ -149,7 +157,7 @@ public final class AppIconView extends View {
             // which is already lit carries on from where the light is.
             Motion.springCustom(this, 2, 1f, Motion.DAMPING_CRITICAL, 0.55f,
                     sheenValue());
-            setElevation(Ui.dpf(getContext(), 22f));
+            setElevation(Ui.dpf(getContext(), 14f));
         } else {
             Motion.springCustom(this, 2, 0f, Motion.DAMPING_CRITICAL, 0.35f,
                     sheenValue());
@@ -162,14 +170,14 @@ public final class AppIconView extends View {
         super.onSizeChanged(w, h, oldw, oldh);
         rect.set(0, 0, w, h);
         clipPath.reset();
-        clipPath.addRoundRect(rect, h * 0.185f, h * 0.185f, Path.Direction.CW);
+        clipPath.addRoundRect(rect, h * RADIUS, h * RADIUS, Path.Direction.CW);
         highlightPaint.setShader(new LinearGradient(0, 0, 0, h,
                 new int[]{0x22FFFFFF, 0x00FFFFFF, 0x05000000, 0x22FFFFFF},
                 new float[]{0f, 0.28f, 0.82f, 1f}, Shader.TileMode.CLAMP));
         sheenPaint.setShader(new LinearGradient(0, 0, w * 0.55f, h,
-                new int[]{0x00FFFFFF, 0x16FFFFFF, 0x00FFFFFF},
+                new int[]{0x00FFFFFF, 0x10FFFFFF, 0x00FFFFFF},
                 new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
-        edgePaint.setColor(0x24FFFFFF);
+        edgePaint.setColor(Ui.alpha(Color.WHITE, 0.16f));
         // The star that marks a pinned app, drawn as a path so it never
         // depends on a font having the character.
         float radius = h * 0.085f;
@@ -204,6 +212,10 @@ public final class AppIconView extends View {
         if (w == 0 || h == 0) {
             return;
         }
+        // A broad, soft shadow under the lifted card. Elevation alone draws a
+        // tight contact shadow that disappears against a dark dock; this is
+        // what makes the focused icon look like it is floating above the bar.
+        drawFocusShadow(canvas, w, h);
         canvas.save();
         canvas.clipPath(clipPath);
 
@@ -216,7 +228,7 @@ public final class AppIconView extends View {
         }
 
         // Glass finish: a soft highlight, a hairline edge and a focus-only sheen.
-        canvas.drawRoundRect(rect, h * 0.185f, h * 0.185f, highlightPaint);
+        canvas.drawRoundRect(rect, h * RADIUS, h * RADIUS, highlightPaint);
         if (sheen > 0f) {
             float band = w * 0.55f;
             float x = -band + sheen * (w + band * 2f);
@@ -227,7 +239,7 @@ public final class AppIconView extends View {
         }
         float inset = edgePaint.getStrokeWidth() / 2f;
         edgeRect.set(inset, inset, w - inset, h - inset);
-        float edgeRadius = Math.max(1f, h * 0.185f - inset);
+        float edgeRadius = Math.max(1f, h * RADIUS - inset);
         canvas.drawRoundRect(edgeRect, edgeRadius, edgeRadius, edgePaint);
         canvas.restore();
 
@@ -238,6 +250,22 @@ public final class AppIconView extends View {
             canvas.drawPath(starPath, starShadowPaint);
             canvas.restore();
             canvas.drawPath(starPath, starPaint);
+        }
+    }
+
+    private void drawFocusShadow(Canvas canvas, int w, int h) {
+        if (sheen <= 0.01f) {
+            return;
+        }
+        float radius = h * RADIUS;
+        // Four layers, widest first: a soft falloff for a card lifted off a
+        // dark surface, at the cost of a few draws while focus settles.
+        for (int i = 3; i >= 0; i--) {
+            float spread = Ui.dpf(getContext(), 1.5f + i * 5f);
+            float drop = Ui.dpf(getContext(), 2f + i * 2f);
+            shadowPaint.setColor(Ui.alpha(Color.BLACK, 0.11f * (1f - i * 0.22f) * sheen));
+            shadowRect.set(-spread, -spread + drop, w + spread, h + spread + drop);
+            canvas.drawRoundRect(shadowRect, radius + spread, radius + spread, shadowPaint);
         }
     }
 

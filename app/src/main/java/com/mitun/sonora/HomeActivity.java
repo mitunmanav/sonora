@@ -18,7 +18,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.mitun.sonora.ui.AppTileView;
@@ -45,6 +44,13 @@ import java.util.Set;
  * no networking - so it stays a few hundred KB and draws with the GPU only.
  */
 public class HomeActivity extends Activity {
+    /** Padding inside the glass dock, around the row of icons. */
+    private static final int BAR_PAD_DP = 12;
+    /** The gap between two rows of icons. */
+    private static final int ROW_GAP_DP = 22;
+    /** How much of the next row shows under the dock, cut by the screen edge. */
+    private static final int PEEK_DP = 20;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
@@ -62,7 +68,16 @@ public class HomeActivity extends Activity {
     private TextView shelfTitle;
     private TextView shelfSubtitle;
     private LinearLayout grid;
-    private ScrollView scroller;
+    private FrameLayout dockPort;
+    private View dockBar;
+    private GlassDrawable dockMaterial;
+    private FrameLayout.LayoutParams dockBarParams;
+    private FrameLayout.LayoutParams portParams;
+    private int marginPx;
+    private int barPadPx;
+    private int rowGapPx;
+    private int peekPx;
+    private int rowHeightPx;
     private FrameLayout overlayHost;
     private View choiceOverlay;
     private SearchOverlay searchOverlay;
@@ -77,6 +92,8 @@ public class HomeActivity extends Activity {
     private long lastInteraction;
     private boolean suppressIdle;
     private boolean initialFocusDone;
+    /** How much light the dock glass has caught: nothing at rest, all of it when a row rides in it. */
+    private float dockFocus;
 
     /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
     private Bitmap wallpaperBitmap;
@@ -85,7 +102,6 @@ public class HomeActivity extends Activity {
     /** The key of the newest request, so a decode that is overtaken can be dropped. */
     private String wallpaperRequest = "";
     private Bitmap settingsIcon;
-    private TextView emptyState;
 
     /** The app that had the focus, so a rebuild can put the focus back on it. */
     private String focusedPackage;
@@ -219,25 +235,53 @@ public class HomeActivity extends Activity {
         shelf.addView(pills, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // The icon grid is anchored to the bottom of the screen, the way tvOS
-        // floats it over the artwork. It only scrolls when the list outgrows
-        // the space above it.
-        scroller = new ScrollView(this);
-        scroller.setVerticalScrollBarEnabled(false);
-        scroller.setClipChildren(false);
-        scroller.setClipToPadding(false);
-        scroller.setPadding(margin, Ui.dp(this, 12), margin, Ui.dp(this, 26));
+        // The shelf of apps lives in a strip at the bottom of the screen.
+        //
+        // tvOS 26 puts the focused row of icons inside a fixed pane of glass
+        // and lets the next row peek out of the bottom of the screen. The
+        // rows are one list: moving the focus down slides the list, so the
+        // row that has the focus is always the one in the dock.
+        marginPx = margin;
+        barPadPx = Ui.dp(this, BAR_PAD_DP);
+        rowGapPx = Ui.dp(this, ROW_GAP_DP);
+        peekPx = Ui.dp(this, PEEK_DP);
+
+        // The dock: a fixed pane of glass that the focused row of apps sits
+        // in. The rows slide behind it, the way tvOS keeps the shelf still
+        // while the next row of icons rises into it.
+        dockBar = new View(this);
+        dockMaterial = new GlassDrawable(this, 26f, 1f);
+        dockBar.setBackground(dockMaterial);
+        dockBar.setElevation(Ui.dpf(this, 12f));
+        final float barRadius = Ui.dpf(this, 26f);
+        dockBar.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override
+            public void getOutline(View v, android.graphics.Outline outline) {
+                outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), barRadius);
+            }
+        });
+        dockBarParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM);
+        dockBarParams.leftMargin = marginPx - barPadPx;
+        dockBarParams.rightMargin = marginPx - barPadPx;
+        root.addView(dockBar, dockBarParams);
+
+        // The strip the rows live in. It is as tall as the dock plus the
+        // peek, so the row below the focus is cut off by the screen edge.
+        dockPort = new FrameLayout(this);
+        dockPort.setClipChildren(true);
+        dockPort.setPadding(margin, 0, margin, 0);
+        portParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM);
+        root.addView(dockPort, portParams);
+
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
         grid.setClipChildren(false);
         grid.setClipToPadding(false);
-        scroller.addView(grid, new ScrollView.LayoutParams(
+        dockPort.addView(grid, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        FrameLayout.LayoutParams scrollerParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM);
-        root.addView(scroller, scrollerParams);
+        applyDockMetrics(labelSpacePx(), tileHeightPx());
 
         root.addView(shelf, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -287,10 +331,9 @@ public class HomeActivity extends Activity {
     private void buildGrid() {
         tiles.clear();
 
-        Grid.Metrics metrics = gridMetrics();
-        boolean labels = prefs.labels() != Prefs.LABELS_OFF;
-        int labelHeight = labels ? Ui.dp(this, 22) : 0;
-        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
+        int labelHeight = labelSpacePx();
+        int tileHeight = tileHeightPx();
+        applyDockMetrics(labelHeight, tileHeight);
 
         AppEntry[] all = new AppEntry[appEntries.length + 1];
         System.arraycopy(appEntries, 0, all, 0, appEntries.length);
@@ -330,6 +373,10 @@ public class HomeActivity extends Activity {
      *
      * The tiles are reused rather than rebuilt, so arranging the apps does
      * not throw the artwork away or restart the animation that is running.
+     *
+     * The rows are bare. The glass dock is a fixed pane behind them, so the
+     * focused row always sits in the dock and the row below it peeks out at
+     * the bottom of the screen, the way tvOS shows it.
      */
     private void layoutRows() {
         grid.removeAllViews();
@@ -337,14 +384,6 @@ public class HomeActivity extends Activity {
         int columns = metrics.columns;
         int tileWidth = Ui.dp(this, metrics.tileWidthDp);
         int gap = Ui.dp(this, metrics.gapDp);
-
-        if (appEntries.length == 0) {
-            // The reason there is nothing to show, and the Settings tile
-            // below it: a device with no apps still has to be able to open
-            // Settings.
-            grid.addView(emptyStateView(), new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
 
         for (int start = 0; start < tiles.size(); start += columns) {
             LinearLayout row = new LinearLayout(this);
@@ -363,29 +402,13 @@ public class HomeActivity extends Activity {
             }
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rowParams.bottomMargin = Ui.dp(this, 16);
-
-            if (start == 0) {
-                // The first row sits in a translucent glass bar, the way tvOS 26
-                // floats the app row over the artwork.
-                FrameLayout bar = new FrameLayout(this);
-                bar.setBackground(new GlassDrawable(this, 26f, 1f));
-                bar.setClipChildren(false);
-                bar.setClipToPadding(false);
-                int barPad = Ui.dp(this, 12);
-                bar.setPadding(barPad, barPad, barPad, barPad);
-                bar.addView(row, new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                barParams.leftMargin = -barPad;
-                barParams.rightMargin = -barPad;
-                barParams.bottomMargin = Ui.dp(this, 22) - barPad;
-                grid.addView(bar, barParams);
-            } else {
-                grid.addView(row, rowParams);
-            }
+            rowParams.bottomMargin = rowGapPx;
+            grid.addView(row, rowParams);
         }
+        // The focused row has to start inside the dock, so the list is
+        // padded by the glass padding and slid by whole rows.
+        grid.setPadding(0, barPadPx, 0, 0);
+        scrollToRow(focusedRow(), false);
     }
 
     /**
@@ -429,24 +452,108 @@ public class HomeActivity extends Activity {
         return settingsIcon;
     }
 
-    /** A real empty state, so a device with no apps shows a reason and a hint. */
-    private View emptyStateView() {
-        if (emptyState == null) {
-            emptyState = new TextView(this);
-            emptyState.setTextColor(Color.WHITE);
-            Type.apply(emptyState, Type.BODY);
-            emptyState.setGravity(Gravity.CENTER);
-            emptyState.setPadding(Ui.dp(this, 30), Ui.dp(this, 24), Ui.dp(this, 30), Ui.dp(this, 24));
-        }
-        emptyState.setText(getString(R.string.no_apps));
-        return emptyState;
-    }
-
     /** Grid metrics for the real screen, so a 720p stick and a 4K panel match. */
     private Grid.Metrics gridMetrics() {
         int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels
                 / getResources().getDisplayMetrics().density);
         return Grid.resolve(widthDp, prefs.columns());
+    }
+
+    /** The room the app names take under an icon, if the names are shown. */
+    private int labelSpacePx() {
+        return prefs.labels() == Prefs.LABELS_OFF ? 0 : Ui.dp(this, 22);
+    }
+
+    /** The height of one card, without the name under it. */
+    private int tileHeightPx() {
+        return Ui.dp(this, gridMetrics().tileHeightDp);
+    }
+
+    /**
+     * Sizes the dock and the strip the rows live in.
+     *
+     * The dock is as tall as a row of icons plus the padding around them,
+     * and the strip is the dock plus the peek of the row below it. The two
+     * share a top edge, so the focused row always sits inside the glass.
+     */
+    private void applyDockMetrics(int labelHeight, int tileHeight) {
+        rowHeightPx = tileHeight + labelHeight;
+        int barHeight = rowHeightPx + barPadPx * 2;
+        int portHeight = barHeight + peekPx + rowGapPx - barPadPx;
+        dockBarParams.height = barHeight;
+        // The dock sits above the peek, so the next row shows under it.
+        dockBarParams.bottomMargin = peekPx + rowGapPx - barPadPx;
+        dockBar.setLayoutParams(dockBarParams);
+        portParams.height = portHeight;
+        dockPort.setLayoutParams(portParams);
+    }
+
+    /** The distance from one row of icons to the next. */
+    private int rowStridePx() {
+        return rowHeightPx + rowGapPx;
+    }
+
+    /**
+     * Brings a row of icons into the dock.
+     *
+     * The rows are one list that slides behind the fixed glass, so the row
+     * that has the focus is always the one inside the dock, and the row
+     * below it peeks out at the bottom of the screen.
+     */
+    private void scrollToRow(int row, boolean animate) {
+        if (grid == null) {
+            return;
+        }
+        float target = -row * (float) rowStridePx();
+        if (!animate || Motion.isReduced(this)) {
+            Motion.set(grid, Motion.TRANSLATION_Y, target);
+        } else {
+            Motion.spring(grid, Motion.TRANSLATION_Y, target,
+                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
+        }
+    }
+
+    /** The row of icons the focus is in. */
+    private int focusedRow() {
+        View focused = getCurrentFocus();
+        int index = focused instanceof AppTileView ? tiles.indexOf(focused) : -1;
+        if (index < 0) {
+            return -1;
+        }
+        return index / Math.max(1, gridMetrics().columns);
+    }
+
+    /**
+     * Makes the dock glass catch the light when a row rides into it, and let
+     * it go when the focus leaves the grid.
+     *
+     * The glass stays dark at rest and brightens under focus, the same way a
+     * tvOS control does. It is a spring, so a focus that moves on before the
+     * glass has settled carries on instead of snapping.
+     */
+    private void dockFocus(float focus) {
+        if (dockFocus == focus) {
+            return;
+        }
+        dockFocus = focus;
+        Motion.springCustom(dockBar, 0, focus, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS, dockFocusValue());
+    }
+
+    private Motion.FloatProperty dockFocusValue() {
+        return new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return dockFocus;
+            }
+
+            @Override
+            public void set(float value) {
+                dockFocus = value;
+                dockMaterial.setFocus(value);
+                dockBar.invalidate();
+            }
+        };
     }
 
     private void onTileFocused(AppTileView tile, AppEntry entry) {
@@ -456,6 +563,14 @@ public class HomeActivity extends Activity {
         hero.setEntry(entry);
         updateShelf(entry);
         focusedPackage = entry.packageName;
+        // The row that has the focus rides in the dock; the rows slide to
+        // put it there, the way tvOS lifts the row into its shelf.
+        int index = tiles.indexOf(tile);
+        if (index >= 0) {
+            scrollToRow(index / Math.max(1, gridMetrics().columns), true);
+        }
+        // The dock glass catches the light once a row is sitting inside it.
+        dockFocus(1f);
         View focused = getCurrentFocus();
         View previous = lastFocused;
         if (previous != null && previous != focused) {
@@ -1014,12 +1129,16 @@ public class HomeActivity extends Activity {
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
+                // Leaving the grid for the top shelf: the dock lets the light go.
+                dockFocus(0f);
                 searchPill.requestFocus();
             }
             return true;
         }
         if (focused == searchPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
+                // Back into the grid: the dock catches the light again.
+                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 quickPill.requestFocus();
@@ -1028,6 +1147,7 @@ public class HomeActivity extends Activity {
         }
         if (focused == quickPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
+                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 clockPill.requestFocus();
@@ -1038,6 +1158,7 @@ public class HomeActivity extends Activity {
         }
         if (focused == clockPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
+                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
                 quickPill.requestFocus();
@@ -1070,7 +1191,10 @@ public class HomeActivity extends Activity {
         if (focused instanceof AppTileView) {
             focusedIndex = tiles.indexOf(focused);
         }
-        if (BackPolicy.atTopLevel(scroller.getScrollY(), focusedIndex,
+        // How far the rows have been slid up out of the dock. It stands in
+        // for the scroll position the grid used to keep.
+        int slid = grid == null ? 0 : Math.abs((int) grid.getTranslationY());
+        if (BackPolicy.atTopLevel(slid, focusedIndex,
                 Ui.isDefaultLauncher(this)) == BackPolicy.SCROLL_TO_TOP) {
             scrollGridToTop();
             return true;
@@ -1104,7 +1228,7 @@ public class HomeActivity extends Activity {
      * never exits the launcher.
      */
     private void scrollGridToTop() {
-        scroller.scrollTo(0, 0);
+        scrollToRow(0, true);
         if (!tiles.isEmpty()) {
             tiles.get(0).requestFocus();
         }
