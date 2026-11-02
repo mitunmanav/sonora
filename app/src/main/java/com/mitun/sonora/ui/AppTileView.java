@@ -19,8 +19,8 @@ public final class AppTileView extends LinearLayout {
     }
 
     /** How far the card leans, in degrees, per step of travel. */
-    private static final float LEAN_X = 2.8f;
-    private static final float LEAN_Y = 2.4f;
+    private static final float LEAN_X = 2.2f;
+    private static final float LEAN_Y = 1.8f;
 
     private final AppIconView icon;
     private final TextView label;
