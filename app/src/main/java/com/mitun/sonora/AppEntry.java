@@ -1,11 +1,9 @@
 package com.mitun.sonora;
 
-import android.app.SearchManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.drawable.Drawable;
 
 /** One launchable app, with pre-rendered art kept small enough to be cheap. */
 public final class AppEntry {
@@ -45,9 +43,6 @@ public final class AppEntry {
                         .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
                         .setComponent(component);
             }
-            if (intent == null) {
-                intent = context.getPackageManager().getLaunchIntentForPackage(packageName);
-            }
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(intent);
@@ -56,9 +51,5 @@ public final class AppEntry {
         } catch (RuntimeException ignored) {
         }
         return false;
-    }
-
-    public Drawable searchIcon() {
-        return null;
     }
 }

@@ -96,9 +96,10 @@ public class AppOrderingTest {
     @Test
     public void aHiddenAppIsNeverShownEvenWhenItIsPinned() {
         List<AppEntry> apps = Arrays.asList(app("com.alpha", "Alpha"), app("com.beta", "Beta"));
-        List<AppEntry> ordered = AppOrdering.order(apps, "", Collections.emptySet(),
+        List<AppEntry> ordered = AppOrdering.order(apps, "",
+                new HashSet<>(Collections.singletonList("com.beta")),
                 Arrays.asList("com.beta"));
-        assertEquals(Arrays.asList("com.beta", "com.alpha"),
-                Arrays.asList(ordered.get(0).packageName, ordered.get(1).packageName));
+        assertEquals(1, ordered.size());
+        assertEquals("com.alpha", ordered.get(0).packageName);
     }
 }

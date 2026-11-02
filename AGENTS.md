@@ -54,3 +54,17 @@ Rules:
 - **Pure logic lives outside the Activity** and is unit-tested: `Grid`,
   `AppOrdering`, `AppSearch`, `BackPolicy`, `ui/Spring`.
 - **Say what a device cannot do** in the UI. Never ship a fake feature.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles use their default strings, recorded as `Status:` lines. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.

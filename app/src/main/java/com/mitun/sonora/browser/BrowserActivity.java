@@ -31,6 +31,7 @@ import com.mitun.sonora.ui.Ui;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The optional browser.
@@ -250,14 +251,42 @@ public final class BrowserActivity extends Activity {
     }
 
     /** Turns what the user typed into something the WebView can load. */
-    static String normalise(String text) {
-        if (text.contains(" ") || !text.contains(".")) {
-            return "https://duckduckgo.com/?q=" + Uri.encode(text);
+    public static String normalise(String text) {
+        if (text == null) {
+            return "https://duckduckgo.com/";
+        }
+        text = text.trim();
+        if (text.isEmpty()) {
+            return "https://duckduckgo.com/";
         }
         if (text.startsWith("http://") || text.startsWith("https://")) {
             return text;
         }
-        return "https://" + text;
+        if (text.contains("://")) {
+            return text;
+        }
+        if (text.contains(" ")) {
+            return "https://duckduckgo.com/?q=" + encodeQuery(text);
+        }
+        if (text.equalsIgnoreCase("localhost") || text.toLowerCase(Locale.US).startsWith("localhost:")
+                || text.startsWith("[") || text.contains(":")) {
+            return "http://" + text;
+        }
+        if (text.contains(".")) {
+            if (text.matches("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(:\\d+)?(/.*)?$")) {
+                return "http://" + text;
+            }
+            return "https://" + text;
+        }
+        return "https://duckduckgo.com/?q=" + encodeQuery(text);
+    }
+
+    private static String encodeQuery(String text) {
+        try {
+            return java.net.URLEncoder.encode(text, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return text;
+        }
     }
 
     private void hideKeyboard() {

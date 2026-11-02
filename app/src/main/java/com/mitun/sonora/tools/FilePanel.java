@@ -27,8 +27,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * The file manager.
@@ -44,12 +46,14 @@ public final class FilePanel {
 
     /** The file being copied or moved, waiting for a destination. */
     private static File pending;
+    private static boolean isMove;
 
     private FilePanel() {
     }
 
     public static void show(ToolActivity host) {
         pending = null;
+        isMove = false;
         showDirectory(host, FileServer.appFolder(host), "Sonora");
     }
 
@@ -65,6 +69,14 @@ public final class FilePanel {
                 Environment.DIRECTORY_DOWNLOADS);
         if (canList(downloads)) {
             roots.add(downloads);
+        }
+        File[] extDirs = context.getExternalFilesDirs(null);
+        if (extDirs != null) {
+            for (File d : extDirs) {
+                if (d != null && canList(d) && !roots.contains(d)) {
+                    roots.add(d);
+                }
+            }
         }
         return roots.toArray(new File[0]);
     }
@@ -167,11 +179,13 @@ public final class FilePanel {
                     break;
                 case 3:
                     pending = file;
+                    isMove = false;
                     adapter.rebuildToolbar();
                     Ui.toast(host, "Copied. Choose a folder and paste.");
                     break;
                 case 4:
                     pending = file;
+                    isMove = true;
                     adapter.rebuildToolbar();
                     Ui.toast(host, "Ready to move. Choose a folder and paste.");
                     break;
@@ -205,8 +219,14 @@ public final class FilePanel {
                 });
     }
 
-    private static boolean delete(File file) {
-        if (file.isDirectory()) {
+    public static boolean delete(File file) {
+        if (file == null) {
+            return true;
+        }
+        if (!file.exists()) {
+            return file.delete() || !file.exists();
+        }
+        if (file.isDirectory() && !isSymlink(file)) {
             File[] children = file.listFiles();
             if (children != null) {
                 for (File child : children) {
@@ -215,6 +235,51 @@ public final class FilePanel {
             }
         }
         return file.delete();
+    }
+
+    public static boolean isSymlink(File file) {
+        if (file == null) {
+            return false;
+        }
+        try {
+            File abs = file.getAbsoluteFile();
+            File parent = abs.getParentFile();
+            File canon = parent == null ? abs : new File(parent.getCanonicalFile(), abs.getName());
+            return !canon.getCanonicalFile().equals(canon.getAbsoluteFile());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean isSameContent(File a, File b) {
+        if (!a.exists() || !b.exists()) {
+            return false;
+        }
+        if (a.isDirectory() != b.isDirectory()) {
+            return false;
+        }
+        if (a.isFile()) {
+            return a.length() == b.length();
+        }
+        File[] aList = a.listFiles();
+        File[] bList = b.listFiles();
+        if (aList == null || bList == null) {
+            return aList == bList;
+        }
+        if (aList.length != bList.length) {
+            return false;
+        }
+        Map<String, File> bMap = new HashMap<>();
+        for (File bf : bList) {
+            bMap.put(bf.getName(), bf);
+        }
+        for (File af : aList) {
+            File bf = bMap.get(af.getName());
+            if (bf == null || !isSameContent(af, bf)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void rename(ToolActivity host, File file, String name) {
@@ -308,6 +373,11 @@ public final class FilePanel {
             bar.setPadding(Ui.dp(host, 14), Ui.dp(host, 8), Ui.dp(host, 14), Ui.dp(host, 4));
             if (pending != null) {
                 bar.addView(button("Paste here", () -> paste()));
+                bar.addView(button("Cancel", () -> {
+                    pending = null;
+                    isMove = false;
+                    rebuildToolbar();
+                }));
             }
             bar.addView(button("Up", () -> {
                 File parent = dir.getParentFile();
@@ -361,21 +431,40 @@ public final class FilePanel {
                 return;
             }
             final File source = pending;
+            final boolean move = isMove;
             final File target = new File(dir, source.getName());
             if (target.exists()) {
                 Ui.toast(host, "That file is already here");
                 return;
             }
-            // Copying a folder can take a while, so it is not done here.
-            new Thread(() -> {
-                final boolean done = FileServer.copyFile(source, target);
-                if (done && source.getParentFile() != null) {
-                    source.delete();
+            if (source.isDirectory()) {
+                try {
+                    String srcPath = source.getCanonicalPath();
+                    String dstPath = dir.getCanonicalPath();
+                    if (dstPath.equals(srcPath) || dstPath.startsWith(srcPath + File.separator)) {
+                        Ui.toast(host, "Cannot copy or move a folder into itself");
+                        return;
+                    }
+                } catch (Exception ignored) {
                 }
+            }
+            new Thread(() -> {
+                boolean done = false;
+                if (move) {
+                    done = source.renameTo(target);
+                }
+                if (!done) {
+                    done = FileServer.copyFile(source, target);
+                    if (done && move && source.getParentFile() != null && isSameContent(source, target)) {
+                        delete(source);
+                    }
+                }
+                final boolean finalDone = done;
                 host.runOnUiThread(() -> {
                     pending = null;
+                    isMove = false;
                     rebuildToolbar();
-                    Ui.toast(host, done ? "Done" : "This TV would not let it write there");
+                    Ui.toast(host, finalDone ? "Done" : "This TV would not let it write there");
                     reload();
                 });
             }, "sonora-paste").start();

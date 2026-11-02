@@ -124,6 +124,10 @@ public final class ChoiceOverlay extends FrameLayout {
         line.setOnFocusChangeListener((v, focused) -> {
             GlassDrawable bg = (GlassDrawable) v.getBackground();
             bg.setAlpha(focused ? 255 : 0);
+            bg.setFocus(focused ? 1f : 0f);
+            label.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
+            check.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
         });
         line.setOnClickListener(v -> {
             int index = list.indexOfChild(v);

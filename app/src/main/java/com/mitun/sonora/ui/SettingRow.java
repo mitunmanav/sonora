@@ -137,7 +137,15 @@ public final class SettingRow {
         line.setBackground(material);
         line.setFocusable(true);
         line.setFocusableInTouchMode(false);
-        line.setContentDescription(title);
+        String spoken = title;
+        if (type == TOGGLE) {
+            spoken += ", " + value;
+        } else if (type == CHECK) {
+            spoken += value.length() == 0 ? ", not selected" : ", selected";
+        } else if ((type == VALUE || type == CHOICE || type == PUSH) && value.length() > 0) {
+            spoken += ", " + value;
+        }
+        line.setContentDescription(spoken);
 
         TextView label = new TextView(context);
         label.setText(title);
@@ -159,8 +167,9 @@ public final class SettingRow {
         line.addView(valueView, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
 
+        TextView chevron = null;
         if (type == PUSH) {
-            TextView chevron = new TextView(context);
+            chevron = new TextView(context);
             // The arrow points the way the row opens, which is the other way
             // round in a right-to-left language.
             boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
@@ -179,13 +188,25 @@ public final class SettingRow {
 
         final TextView valueText = valueView;
         final TextView labelText = label;
+        final TextView chevronText = chevron;
+        // tvOS lights the whole row under the focus and turns the ink dark.
+        // A dark highlight with white text on it reads as "selected", not as
+        // "where I am", and it disappears over a light wallpaper.
         line.setOnFocusChangeListener((v, focused) -> {
             GlassDrawable bg = (GlassDrawable) v.getBackground();
             bg.setAlpha(focused ? 255 : 0);
-            if (type != DANGER) {
-                labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            bg.setFocus(focused ? 1f : 0f);
+            labelText.setTextColor(type == DANGER
+                    ? (focused ? 0xFF8C1D18 : 0xFFFF6B6B)
+                    : (focused ? 0xFF101C26 : 0xE6FFFFFF));
+            valueText.setTextColor(focused ? 0xCC101C26 : 0xB3FFFFFF);
+            if (chevronText != null) {
+                chevronText.setTextColor(focused ? 0x99101C26 : 0x80FFFFFF);
             }
-            valueText.setTextColor(focused ? 0xE6FFFFFF : 0xB3FFFFFF);
+            // Lift the row, so its small focus scale is not covered by the
+            // row below it.
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+            Motion.scale(v, focused ? 1.02f : 1f, 1f, 0.18f);
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());

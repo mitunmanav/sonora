@@ -132,4 +132,21 @@ public final class AppManager {
         cached = null;
         cachedAt = 0;
     }
+
+    /**
+     * Drops the lazily decoded icons but keeps the package list.
+     *
+     * The manager shows a row per installed package, and each icon is 36 KB
+     * once decoded. Nothing outside that screen needs them, so they do not
+     * outlive it.
+     */
+    public static void trimIcons() {
+        List<Item> local = cached;
+        if (local == null) {
+            return;
+        }
+        for (Item item : local) {
+            item.icon = null;
+        }
+    }
 }

@@ -55,23 +55,35 @@ public final class SettingsPanel {
     }
 
     public static void show(ToolActivity host) {
-        host.stack().show(TITLE, subtitle(host), rootRows(host));
+        host.stack().showContent(TITLE, subtitle(host), homeView(host, 0));
     }
 
     /** Rebuilds the screen the user is on, with the new values. */
     public static void refresh(ToolActivity host) {
         Page page = pageFor(host.stack().topTitle());
         if (page == null) {
-            host.stack().refresh(TITLE, subtitle(host), rootRows(host));
+            // The index is rebuilt in place when the mode changes, so it has
+            // to stay on the category the user was on.
+            View top = host.stack().topContent();
+            int selected = top instanceof SettingsHomeView
+                    ? ((SettingsHomeView) top).selectedCategory() : 0;
+            host.stack().refreshContent(TITLE, subtitle(host), homeView(host, selected));
             return;
         }
         host.stack().refresh(page.title, page.subtitle, rowsFor(host, page));
+        // The index behind the page shows the values this page edits, so it
+        // is rebuilt too; otherwise BACK reveals the values from before.
+        View below = host.stack().topContentBelow();
+        if (below instanceof SettingsHomeView) {
+            int selected = ((SettingsHomeView) below).selectedCategory();
+            host.stack().refreshContentBelow(TITLE, subtitle(host), homeView(host, selected));
+        }
     }
 
     private static String subtitle(ToolActivity host) {
         return host.prefs().technical()
-                ? "Every setting, including the ones you will never touch"
-                : "The settings worth changing";
+                ? "All controls for Sonora and your TV"
+                : "Personalize Sonora and your TV";
     }
 
     private static Page pageFor(String title) {
@@ -121,26 +133,76 @@ public final class SettingsPanel {
         if (SYSTEM == page) {
             return systemRows(host);
         }
-        return rootRows(host);
+        return new ArrayList<>();
     }
 
-    private static List<SettingRow> rootRows(ToolActivity host) {
+    private static View homeView(ToolActivity host, int initialSelection) {
         Prefs prefs = host.prefs();
-        List<SettingRow> rows = new ArrayList<>();
-        rows.add(SettingRow.push("Quick settings", "Wi-Fi, sound, display, updates",
+        List<SettingsHomeView.Category> categories = new ArrayList<>();
+        categories.add(new SettingsHomeView.Category(QUICK.title,
+                "Open the system settings available on this TV.",
+                detail("System controls", "Provided by your TV"),
                 () -> open(host, QUICK)));
-        rows.add(SettingRow.choice("Mode", Pickers.modeName(prefs),
-                () -> Pickers.mode(host, () -> refresh(host))));
-        rows.add(SettingRow.note("Default keeps the settings short. Technical shows every "
-                + "setting, including the ones you will never touch."));
-        rows.add(SettingRow.push(HOME.title, "picture and apps", () -> open(host, HOME)));
-        rows.add(SettingRow.push(CLOCK.title, "time and date", () -> open(host, CLOCK)));
-        rows.add(SettingRow.push(SAVER.title, "when the TV rests", () -> open(host, SAVER)));
-        rows.add(SettingRow.push(APPS.title, "favourites, hidden apps and order",
+        categories.add(new SettingsHomeView.Category(HOME.title,
+                "Choose Sonora’s wallpaper, app labels, focus effects, and remote search.",
+                new SettingsHomeView.Detail[]{
+                    detail("Wallpaper", Pickers.wallpaperName(prefs)),
+                    detail("App names", Pickers.labelName(prefs)),
+                    detail("Reduce motion", onOff(prefs.reduceMotion())),
+                    detail("Search key", onOff(prefs.searchKey()))},
+                () -> open(host, HOME)));
+
+        SettingsHomeView.Detail[] clockDetails = prefs.technical()
+                ? new SettingsHomeView.Detail[]{
+                    detail("24-hour clock", onOff(prefs.clock24())),
+                    detail("Show the date", onOff(prefs.showDate())),
+                    detail("Show seconds", onOff(prefs.showSeconds()))}
+                : new SettingsHomeView.Detail[]{
+                    detail("Clock", Pickers.clockName(prefs)),
+                    detail("Show the date", onOff(prefs.showDate()))};
+        categories.add(new SettingsHomeView.Category(CLOCK.title,
+                "Set the time display shown over your wallpaper.", clockDetails,
+                () -> open(host, CLOCK)));
+
+        List<SettingsHomeView.Detail> saverDetails = new ArrayList<>();
+        saverDetails.add(detail("Start after", Pickers.delayName(prefs)));
+        if (prefs.technical()) {
+            saverDetails.add(detail("Each scene", Pickers.sceneName(prefs)));
+            saverDetails.add(detail("Screen saver clock", Pickers.screensaverClockName(prefs)));
+        }
+        categories.add(new SettingsHomeView.Category(SAVER.title,
+                "Choose when Sonora’s scenes begin and open the TV’s screen saver settings.",
+                saverDetails.toArray(new SettingsHomeView.Detail[0]),
+                () -> open(host, SAVER)));
+        categories.add(new SettingsHomeView.Category(APPS.title,
+                "Choose favourites, hide apps, and manage what is installed.",
+                detail("Favourites", Pickers.favouritesName(prefs)),
+                detail("Hidden apps", Pickers.hiddenName(prefs)),
                 () -> open(host, APPS)));
-        rows.add(SettingRow.push(TOOLS.title, "app manager, files, browser", () -> open(host, TOOLS)));
-        rows.add(SettingRow.push(SYSTEM.title, "home screen and reset", () -> open(host, SYSTEM)));
-        return rows;
+        categories.add(new SettingsHomeView.Category(TOOLS.title,
+                "On-device tools for diagnostics, files, and browsing.",
+                detail("Device", "Information and diagnostics"),
+                detail("Files", "Browse and share"),
+                detail("Browser", "Optional; stays off until opened"),
+                () -> open(host, TOOLS)));
+        categories.add(new SettingsHomeView.Category(SYSTEM.title,
+                "Set Sonora as home, open TV updates, or reset its settings.",
+                detail("Home screen", Ui.isDefaultLauncher(host) ? "Sonora" : "Not set"),
+                detail("System update", "Open the TV’s settings"),
+                () -> open(host, SYSTEM)));
+        categories.add(new SettingsHomeView.Category("Mode",
+                "Default keeps the list focused. Technical adds more controls.",
+                detail("Current mode", Pickers.modeName(prefs)),
+                () -> Pickers.mode(host, () -> refresh(host))));
+        return new SettingsHomeView(host, categories, initialSelection);
+    }
+
+    private static SettingsHomeView.Detail detail(String label, String value) {
+        return new SettingsHomeView.Detail(label, value);
+    }
+
+    private static String onOff(boolean enabled) {
+        return enabled ? "On" : "Off";
     }
 
     private static List<SettingRow> homeRows(ToolActivity host) {
@@ -150,6 +212,13 @@ public final class SettingsPanel {
                 () -> Pickers.wallpaper(host, () -> refresh(host))));
         rows.add(SettingRow.choice("App names", Pickers.labelName(prefs),
                 () -> Pickers.labels(host, () -> refresh(host))));
+        rows.add(SettingRow.toggle("Reduce motion", prefs.reduceMotion(), () -> {
+            prefs.setReduceMotion(!prefs.reduceMotion());
+            // The launcher caches the setting, so it has to be told that it
+            // changed or the next motion keeps animating.
+            Motion.refresh(host);
+            refresh(host);
+        }));
         rows.add(SettingRow.toggle("Search key", prefs.searchKey(), () -> {
             prefs.setSearchKey(!prefs.searchKey());
             refresh(host);
@@ -159,13 +228,6 @@ public final class SettingsPanel {
         if (prefs.technical()) {
             rows.add(SettingRow.choice("Apps per row", Pickers.columnsName(host),
                     () -> Pickers.columns(host, () -> refresh(host))));
-            rows.add(SettingRow.toggle("Reduce motion", prefs.reduceMotion(), () -> {
-                prefs.setReduceMotion(!prefs.reduceMotion());
-                // The launcher caches the setting, so it has to be told that it
-                // changed or the next motion keeps animating.
-                Motion.refresh(host);
-                refresh(host);
-            }));
         }
         return rows;
     }
@@ -315,12 +377,22 @@ public final class SettingsPanel {
         if (prefs.technical()) {
             rows.add(SettingRow.action("Run setup again", () -> ToolActivity.open(host, "wizard")));
         }
-        rows.add(SettingRow.danger("Reset all settings", () -> {
-            prefs.reset();
-            Ui.toast(host, "Settings reset");
-            refresh(host);
-        }));
+        rows.add(SettingRow.danger("Reset all settings", () -> confirmReset(host)));
         return rows;
+    }
+
+    /** Resetting cannot be undone, so it asks first, with Cancel focused. */
+    private static void confirmReset(ToolActivity host) {
+        host.choose("Reset all settings?",
+                new String[]{"Reset everything", "Cancel"}, 1, index -> {
+                    if (index != 0) {
+                        return;
+                    }
+                    host.prefs().reset();
+                    Motion.refresh(host);
+                    Ui.toast(host, "Settings reset");
+                    refresh(host);
+                });
     }
 
     private static void open(ToolActivity host, Page page) {

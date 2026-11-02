@@ -10,6 +10,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A tiny HTTP server for pulling files off the TV.
@@ -25,6 +30,7 @@ public final class FileServer {
 
     private ServerSocket socket;
     private Thread thread;
+    private ExecutorService pool;
     private volatile boolean running;
     private File root;
     private int port;
@@ -36,6 +42,10 @@ public final class FileServer {
         socket = new ServerSocket(0);
         port = socket.getLocalPort();
         running = true;
+        pool = new ThreadPoolExecutor(
+                2, 4, 30L, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(16),
+                new ThreadPoolExecutor.AbortPolicy());
         thread = new Thread(this::acceptLoop, "sonora-share");
         thread.setDaemon(true);
         thread.start();
@@ -50,6 +60,10 @@ public final class FileServer {
             } catch (IOException ignored) {
             }
             socket = null;
+        }
+        if (pool != null) {
+            pool.shutdownNow();
+            pool = null;
         }
     }
 
@@ -82,11 +96,23 @@ public final class FileServer {
                     return;
                 }
                 Socket client = listener.accept();
-                Thread worker = new Thread(() -> handle(client), "sonora-share-client");
-                // The server dies with the screen, so a client that hangs on
-                // must not keep the process alive.
-                worker.setDaemon(true);
-                worker.start();
+                client.setSoTimeout(15000);
+                ExecutorService p = pool;
+                if (p != null && !p.isShutdown()) {
+                    try {
+                        p.execute(() -> handle(client));
+                    } catch (RejectedExecutionException e) {
+                        try {
+                            client.close();
+                        } catch (IOException ignored) {
+                        }
+                    }
+                } else {
+                    try {
+                        client.close();
+                    } catch (IOException ignored) {
+                    }
+                }
             } catch (IOException e) {
                 if (running) {
                     // A single failed connection must not kill the server.
@@ -331,13 +357,21 @@ public final class FileServer {
      * missing. A folder that cannot be copied says so instead of pretending.
      */
     public static boolean copyFile(File source, File destination) {
+        if (source == null || destination == null || !source.exists()) {
+            return false;
+        }
         try {
+            if (source.isDirectory()) {
+                String srcPath = source.getCanonicalPath();
+                String dstPath = destination.getCanonicalPath();
+                if (dstPath.equals(srcPath) || dstPath.startsWith(srcPath + File.separator)) {
+                    return false;
+                }
+                return copyFolder(source, destination);
+            }
             File parent = destination.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
                 return false;
-            }
-            if (source.isDirectory()) {
-                return copyFolder(source, destination);
             }
             try (InputStream in = new BufferedInputStream(new FileInputStream(source));
                  OutputStream out = new BufferedOutputStream(new FileOutputStream(destination))) {
@@ -346,8 +380,9 @@ public final class FileServer {
                 while ((read = in.read(buffer)) != -1) {
                     out.write(buffer, 0, read);
                 }
+                out.flush();
             }
-            return true;
+            return destination.exists() && destination.length() == source.length();
         } catch (IOException e) {
             return false;
         }

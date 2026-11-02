@@ -141,6 +141,10 @@ public final class Pickers {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
+                if (!"Apps".equals(host.stack().topTitle())) {
+                    // The user left the Apps screen while the list was read.
+                    return;
+                }
                 if (names.isEmpty()) {
                     Ui.toast(host, "No hidden apps");
                     return;

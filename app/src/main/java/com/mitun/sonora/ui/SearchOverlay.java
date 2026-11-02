@@ -274,15 +274,15 @@ public final class SearchOverlay extends FrameLayout {
             }
         }
 
-        if (noKeyboard) {
-            note.setText("This TV has no keyboard. Use the remote to browse the apps.");
-            note.setVisibility(VISIBLE);
-        } else if (shown == 0) {
+        if (shown == 0) {
             // Nothing to show, and the reason why: a TV with no apps at all
             // is not the same as a search that found nothing.
             note.setText(query.trim().isEmpty()
                     ? "There are no apps on this TV to search."
                     : "No apps match \"" + query.trim() + "\"");
+            note.setVisibility(VISIBLE);
+        } else if (noKeyboard) {
+            note.setText("This TV has no keyboard. Use the remote to browse the apps.");
             note.setVisibility(VISIBLE);
         } else if (matches.size() > shown) {
             // The results are capped, so the user is told what is not there.

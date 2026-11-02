@@ -8,6 +8,7 @@ import android.view.View;
 import com.mitun.sonora.Prefs;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -82,6 +83,11 @@ public final class Motion {
             }
             float dt = (frameTimeNanos - lastNanos) / 1_000_000_000f;
             lastNanos = frameTimeNanos;
+            if (dt <= 0f) {
+                dt = 0.016f;
+            } else if (dt > 0.064f) {
+                dt = 0.064f;
+            }
             boolean busy = false;
             for (int i = 0; i < tracks.length; i++) {
                 Track track = tracks[i];
@@ -106,12 +112,13 @@ public final class Motion {
                 Choreographer.getInstance().postFrameCallback(frame);
             } else {
                 running = false;
+                lastNanos = 0L;
             }
         }
     }
 
-    private static final Map<View, Runner> runners = new WeakHashMap<>();
-    private static Boolean reduced;
+    private static final Map<View, Runner> runners = Collections.synchronizedMap(new WeakHashMap<>());
+    private static volatile Boolean reduced;
 
     private Motion() {
     }

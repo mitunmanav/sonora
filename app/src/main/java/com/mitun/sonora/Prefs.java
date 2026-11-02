@@ -12,6 +12,7 @@ import java.util.Set;
 /** All user choices in one tiny place. */
 public final class Prefs {
     private static final String FILE = "sonora";
+    private static final Object EPOCH_LOCK = new Object();
     public static final int LABELS_OFF = 0;
     public static final int LABELS_FOCUSED = 1;
     public static final int LABELS_ALL = 2;
@@ -241,8 +242,25 @@ public final class Prefs {
      * without the user having to restart anything.
      */
     public String gridKey() {
-        return columns() + "|" + labels() + "|" + order() + "|" + hidden().hashCode()
+        return columns() + "|" + labels() + "|" + order() + "|" + sortedHidden()
                 + "|" + appsEpoch() + "|" + sp.getString("favourites", "");
+    }
+
+    private String sortedHidden() {
+        Set<String> set = hidden();
+        if (set.isEmpty()) {
+            return "";
+        }
+        List<String> list = new ArrayList<>(set);
+        Collections.sort(list);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append(list.get(i));
+        }
+        return sb.toString();
     }
 
     /**
@@ -255,7 +273,9 @@ public final class Prefs {
     }
 
     public void bumpAppsEpoch() {
-        sp.edit().putInt("apps_epoch", appsEpoch() + 1).apply();
+        synchronized (EPOCH_LOCK) {
+            sp.edit().putInt("apps_epoch", appsEpoch() + 1).apply();
+        }
     }
 
     public void setWelcomeSeen(boolean value) {

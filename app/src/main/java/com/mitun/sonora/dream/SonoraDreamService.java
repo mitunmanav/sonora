@@ -36,7 +36,7 @@ public class SonoraDreamService extends DreamService {
             view.stop();
         }
         view = new ScreensaverView(this);
-        view.setSceneDurationMs(prefs.screensaverSceneSec());
+        view.setSceneDurationSec(prefs.screensaverSceneSec());
         // "Always" shows the place from the first frame. "On input" waits for
         // the user to press OK, and "never" never shows it.
         view.setShowOverlay(prefs.screensaverClock() == 1);
