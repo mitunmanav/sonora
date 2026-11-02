@@ -13,6 +13,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -30,6 +31,7 @@ import com.mitun.sonora.ui.Ui;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The optional browser.
@@ -71,13 +73,51 @@ public final class BrowserActivity extends Activity {
         prefs = new Prefs(this);
         adBlock = new AdBlock(this);
         adBlock.setEnabled(prefs.browserAdBlock());
-        setContentView(build());
+        try {
+            setContentView(build());
+        } catch (RuntimeException | Error e) {
+            // A TV with no web engine has no WebView to make. The screen says
+            // so rather than taking the whole app down with it.
+            releaseWeb();
+            setContentView(noWebView());
+            return;
+        }
         if (savedInstanceState == null) {
             web.loadUrl("about:blank");
             web.loadDataWithBaseURL(null, START_PAGE, "text/html", "utf-8", null);
         } else {
             web.restoreState(savedInstanceState);
         }
+    }
+
+    /** What the screen says when the TV has no web engine at all. */
+    private View noWebView() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Ui.NIGHT);
+        TextView text = new TextView(this);
+        text.setText("This TV has no web browser.\n\n"
+                + "Sonora's browser needs the system's web engine, and this "
+                + "device does not have one. Nothing else in Sonora is affected.");
+        text.setTextColor(Color.WHITE);
+        text.setTextSize(18);
+        text.setGravity(Gravity.CENTER);
+        text.setPadding(Ui.dp(this, 40), Ui.dp(this, 40), Ui.dp(this, 40), Ui.dp(this, 40));
+        root.addView(text, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        return root;
+    }
+
+    /** Frees the WebView and takes it out of the tree. */
+    private void releaseWeb() {
+        if (web == null) {
+            return;
+        }
+        if (web.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) web.getParent()).removeView(web);
+        }
+        web.destroy();
+        web = null;
     }
 
     private View build() {
@@ -94,6 +134,14 @@ public final class BrowserActivity extends Activity {
 
         address = new EditText(this);
         address.setSingleLine(true);
+        address.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        address.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+                go();
+                return true;
+            }
+            return false;
+        });
         address.setTextColor(Color.WHITE);
         address.setHintTextColor(0x80FFFFFF);
         address.setHint("Type an address");
@@ -126,6 +174,8 @@ public final class BrowserActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setSupportZoom(false);
+        // A page must not be able to read the TV's files.
+        settings.setAllowFileAccess(false);
         web.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view,
@@ -201,14 +251,42 @@ public final class BrowserActivity extends Activity {
     }
 
     /** Turns what the user typed into something the WebView can load. */
-    static String normalise(String text) {
-        if (text.contains(" ") || !text.contains(".")) {
-            return "https://duckduckgo.com/?q=" + Uri.encode(text);
+    public static String normalise(String text) {
+        if (text == null) {
+            return "https://duckduckgo.com/";
+        }
+        text = text.trim();
+        if (text.isEmpty()) {
+            return "https://duckduckgo.com/";
         }
         if (text.startsWith("http://") || text.startsWith("https://")) {
             return text;
         }
-        return "https://" + text;
+        if (text.contains("://")) {
+            return text;
+        }
+        if (text.contains(" ")) {
+            return "https://duckduckgo.com/?q=" + encodeQuery(text);
+        }
+        if (text.equalsIgnoreCase("localhost") || text.toLowerCase(Locale.US).startsWith("localhost:")
+                || text.startsWith("[") || text.contains(":")) {
+            return "http://" + text;
+        }
+        if (text.contains(".")) {
+            if (text.matches("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(:\\d+)?(/.*)?$")) {
+                return "http://" + text;
+            }
+            return "https://" + text;
+        }
+        return "https://duckduckgo.com/?q=" + encodeQuery(text);
+    }
+
+    private static String encodeQuery(String text) {
+        try {
+            return java.net.URLEncoder.encode(text, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return text;
+        }
     }
 
     private void hideKeyboard() {
@@ -286,7 +364,7 @@ public final class BrowserActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
             if (event.getAction() == KeyEvent.ACTION_UP) {
-                if (web.canGoBack()) {
+                if (web != null && web.canGoBack()) {
                     web.goBack();
                 } else {
                     finish();
@@ -300,31 +378,32 @@ public final class BrowserActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        web.saveState(outState);
+        if (web != null) {
+            web.saveState(outState);
+        }
     }
 
     @Override
     protected void onPause() {
-        web.onPause();
+        if (web != null) {
+            web.onPause();
+        }
         super.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        web.onResume();
+        if (web != null) {
+            web.onResume();
+        }
     }
 
     @Override
     protected void onDestroy() {
-        if (web != null) {
-            // A destroyed WebView that is still in the tree keeps the
-            // activity alive with it.
-            if (web.getParent() instanceof android.view.ViewGroup) {
-                ((android.view.ViewGroup) web.getParent()).removeView(web);
-            }
-            web.destroy();
-        }
+        // A destroyed WebView that is still in the tree keeps the activity
+        // alive with it.
+        releaseWeb();
         super.onDestroy();
     }
 }

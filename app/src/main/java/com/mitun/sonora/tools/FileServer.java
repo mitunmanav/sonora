@@ -1,9 +1,5 @@
 package com.mitun.sonora.tools;
 
-import android.os.Environment;
-
-import com.mitun.sonora.ui.Ui;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -12,9 +8,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A tiny HTTP server for pulling files off the TV.
@@ -25,9 +25,12 @@ import java.net.Socket;
  */
 public final class FileServer {
     private static final int BUFFER = 16384;
+    /** A request line longer than this is not a request, it is an attack. */
+    private static final int MAX_REQUEST_LINE = 8192;
 
     private ServerSocket socket;
     private Thread thread;
+    private ExecutorService pool;
     private volatile boolean running;
     private File root;
     private int port;
@@ -39,6 +42,10 @@ public final class FileServer {
         socket = new ServerSocket(0);
         port = socket.getLocalPort();
         running = true;
+        pool = new ThreadPoolExecutor(
+                2, 4, 30L, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(16),
+                new ThreadPoolExecutor.AbortPolicy());
         thread = new Thread(this::acceptLoop, "sonora-share");
         thread.setDaemon(true);
         thread.start();
@@ -53,6 +60,10 @@ public final class FileServer {
             } catch (IOException ignored) {
             }
             socket = null;
+        }
+        if (pool != null) {
+            pool.shutdownNow();
+            pool = null;
         }
     }
 
@@ -85,7 +96,23 @@ public final class FileServer {
                     return;
                 }
                 Socket client = listener.accept();
-                new Thread(() -> handle(client), "sonora-share-client").start();
+                client.setSoTimeout(15000);
+                ExecutorService p = pool;
+                if (p != null && !p.isShutdown()) {
+                    try {
+                        p.execute(() -> handle(client));
+                    } catch (RejectedExecutionException e) {
+                        try {
+                            client.close();
+                        } catch (IOException ignored) {
+                        }
+                    }
+                } else {
+                    try {
+                        client.close();
+                    } catch (IOException ignored) {
+                    }
+                }
             } catch (IOException e) {
                 if (running) {
                     // A single failed connection must not kill the server.
@@ -105,18 +132,21 @@ public final class FileServer {
                 return;
             }
             String[] parts = request.split(" ");
-            String path = parts.length > 1 ? parts[1] : "/";
-            int query = path.indexOf('?');
-            if (query >= 0) {
-                path = path.substring(0, query);
-            }
+            String path = requestPath(parts);
             OutputStream out = new BufferedOutputStream(client.getOutputStream());
-            if ("GET".equalsIgnoreCase(parts[0]) && serve(path, out)) {
+            if (path == null) {
+                // A line of nothing but spaces is not a request, and anything
+                // on the network can send one.
+                writeError(out, 400);
+                out.flush();
+                return;
+            }
+            if (parts.length > 0 && "GET".equalsIgnoreCase(parts[0]) && serve(path, out)) {
                 return;
             }
             writeError(out, 404);
             out.flush();
-        } catch (IOException ignored) {
+        } catch (IOException | RuntimeException ignored) {
         } finally {
             try {
                 client.close();
@@ -125,7 +155,39 @@ public final class FileServer {
         }
     }
 
-    private String readLine(InputStream in) throws IOException {
+    /**
+     * The path a request asks for, or null when the request is not one.
+     *
+     * The query string is not part of the path.
+     */
+    static String requestPath(String[] parts) {
+        if (parts.length == 0) {
+            return null;
+        }
+        String path = parts.length > 1 ? parts[1] : "/";
+        int query = path.indexOf('?');
+        return query >= 0 ? path.substring(0, query) : path;
+    }
+
+    /**
+     * The path with the escapes undone, or null when the escapes are broken.
+     */
+    static String decodePath(String path) {
+        try {
+            return java.net.URLDecoder.decode(path, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * One line of the request, or null when there is none.
+     *
+     * A line longer than any real request is not read: the socket timeout
+     * only bounds a read that blocks, and a client that keeps sending would
+     * otherwise fill the memory on its own.
+     */
+    static String readLine(InputStream in) throws IOException {
         StringBuilder sb = new StringBuilder();
         int c;
         while ((c = in.read()) != -1) {
@@ -133,6 +195,9 @@ public final class FileServer {
                 break;
             }
             if (c != '\r') {
+                if (sb.length() >= MAX_REQUEST_LINE) {
+                    return null;
+                }
                 sb.append((char) c);
             }
         }
@@ -143,13 +208,24 @@ public final class FileServer {
     private boolean serve(String path, OutputStream out) throws IOException {
         String relative = path.startsWith("/") ? path.substring(1) : path;
         if (relative.endsWith("/")) {
-            relative = relative + "index.html";
+            // A folder with an index of its own is served as that page; every
+            // other folder is listed, or the links in the listing are dead.
+            File candidate = new File(root, relative);
+            if (new File(candidate, "index.html").isFile()) {
+                relative = relative + "index.html";
+            } else {
+                relative = relative.substring(0, relative.length() - 1);
+            }
         }
         // A name with a space arrives as %20, and the folder has to be found.
-        try {
-            relative = java.net.URLDecoder.decode(relative, "UTF-8");
-        } catch (java.io.UnsupportedEncodingException ignored) {
+        String decoded = decodePath(relative);
+        if (decoded == null) {
+            // A broken escape is not a path. It simply does not exist.
+            writeError(out, 400);
+            out.flush();
+            return true;
         }
+        relative = decoded;
         File file = new File(root, relative);
         // Never serve anything outside the shared directory. The separator
         // matters: without it a folder that merely starts with the same name
@@ -208,7 +284,10 @@ public final class FileServer {
 
     private void writeHeaders(OutputStream out, int code, String type, long length)
             throws IOException {
-        String status = code == 200 ? "200 OK" : code == 403 ? "403 Forbidden" : "404 Not Found";
+        String status = code == 200 ? "200 OK"
+                : code == 403 ? "403 Forbidden"
+                : code == 400 ? "400 Bad Request"
+                : "404 Not Found";
         String head = "HTTP/1.1 " + status + "\r\n"
                 + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + length + "\r\n"
@@ -278,13 +357,21 @@ public final class FileServer {
      * missing. A folder that cannot be copied says so instead of pretending.
      */
     public static boolean copyFile(File source, File destination) {
+        if (source == null || destination == null || !source.exists()) {
+            return false;
+        }
         try {
+            if (source.isDirectory()) {
+                String srcPath = source.getCanonicalPath();
+                String dstPath = destination.getCanonicalPath();
+                if (dstPath.equals(srcPath) || dstPath.startsWith(srcPath + File.separator)) {
+                    return false;
+                }
+                return copyFolder(source, destination);
+            }
             File parent = destination.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
                 return false;
-            }
-            if (source.isDirectory()) {
-                return copyFolder(source, destination);
             }
             try (InputStream in = new BufferedInputStream(new FileInputStream(source));
                  OutputStream out = new BufferedOutputStream(new FileOutputStream(destination))) {
@@ -293,8 +380,9 @@ public final class FileServer {
                 while ((read = in.read(buffer)) != -1) {
                     out.write(buffer, 0, read);
                 }
+                out.flush();
             }
-            return true;
+            return destination.exists() && destination.length() == source.length();
         } catch (IOException e) {
             return false;
         }
@@ -322,6 +410,12 @@ public final class FileServer {
         if (external != null) {
             return external;
         }
-        return new File(Environment.getDataDirectory(), "sonora");
+        // Without external storage the app's own folder inside its sandbox is
+        // the one place it can always read and write. It exists, and it needs
+        // no permission.
+        File folder = new File(context.getFilesDir(), "sonora");
+        //noinspection ResultOfMethodCallIgnored
+        folder.mkdirs();
+        return folder;
     }
 }

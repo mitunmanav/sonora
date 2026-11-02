@@ -99,6 +99,12 @@ public final class DebugPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
+                if (!title.equals(host.stack().topTitle())) {
+                    // The user pressed BACK while the list was being read, so
+                    // the screen on top is another one. Rebuilding it with
+                    // these rows would replace the wrong screen.
+                    return;
+                }
                 host.stack().refresh(title, subtitle, rows);
             });
         }, "sonora-processes").start();
@@ -110,11 +116,14 @@ public final class DebugPanel {
         ActivityManager manager = (ActivityManager)
                 host.getSystemService(Context.ACTIVITY_SERVICE);
         if (manager != null) {
-            List<ActivityManager.RunningAppProcessInfo> running =
-                    manager.getRunningAppProcesses();
-            // It can be null when there is nothing to report.
-            if (running != null) {
-                processes.addAll(running);
+            try {
+                List<ActivityManager.RunningAppProcessInfo> running =
+                        manager.getRunningAppProcesses();
+                // It can be null when there is nothing to report.
+                if (running != null) {
+                    processes.addAll(running);
+                }
+            } catch (RuntimeException ignored) {
             }
         }
         int[] pids = new int[processes.size()];
@@ -217,7 +226,7 @@ public final class DebugPanel {
     private static String wifiName(Context context) {
         try {
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager)
-                    context.getSystemService(Context.WIFI_SERVICE);
+                    context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifi == null || !wifi.isWifiEnabled()) {
                 return "Off";
             }

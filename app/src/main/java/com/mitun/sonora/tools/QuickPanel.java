@@ -55,6 +55,14 @@ public final class QuickPanel {
                 () -> SettingsPanel.openScreenSaver(host)));
         rows.add(SettingRow.push("Apps", "disable and uninstall",
                 () -> AppPanel.show(host)));
+        rows.add(SettingRow.push("Background apps", "Stop apps in Android settings",
+                () -> openFirst(host,
+                        new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS),
+                        new Intent(Settings.ACTION_APPLICATION_SETTINGS),
+                        new Intent(Settings.ACTION_SETTINGS))));
+        rows.add(SettingRow.note("Android does not give launchers a clear-all control. Use "
+                + "the TV's Recents screen, if available, to dismiss recent apps; Android settings "
+                + "can stop apps one at a time."));
         rows.add(SettingRow.push("System update", "",
                 () -> openUpdate(host)));
         rows.add(SettingRow.action("Tidy up again", () -> tidyUpNow(host)));
@@ -118,7 +126,8 @@ public final class QuickPanel {
      */
     private static String wifiName(Context context) {
         try {
-            WifiManager wifi = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+            WifiManager wifi = (WifiManager) context.getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
             if (wifi == null) {
                 return "";
             }

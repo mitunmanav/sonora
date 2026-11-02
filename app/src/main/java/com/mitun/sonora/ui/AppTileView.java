@@ -56,8 +56,9 @@ public final class AppTileView extends LinearLayout {
         label.setSingleLine(true);
         label.setEllipsize(TextUtils.TruncateAt.END);
         label.setAlpha(0.82f);
+        label.setMinHeight(labelSpace);
         LayoutParams labelParams = new LayoutParams(LayoutParams.MATCH_PARENT,
-                labelSpace > 0 ? labelSpace : 0);
+                labelSpace > 0 ? LayoutParams.WRAP_CONTENT : 0);
         labelParams.topMargin = Ui.dp(context, 5);
         addView(label, labelParams);
         // A label only shows for the focused tile in that mode, so the ones
