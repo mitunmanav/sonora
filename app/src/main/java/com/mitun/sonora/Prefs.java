@@ -54,7 +54,7 @@ public final class Prefs {
     }
 
     public int labels() {
-        return Math.max(0, Math.min(2, sp.getInt("labels", LABELS_FOCUSED)));
+        return Math.max(0, Math.min(2, sp.getInt("labels", LABELS_OFF)));
     }
 
     public void setLabels(int mode) {

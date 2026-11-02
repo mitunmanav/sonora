@@ -3,6 +3,8 @@ package com.mitun.sonora.ui;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.text.Editable;
 import android.text.TextUtils;
@@ -80,13 +82,25 @@ public final class SearchOverlay extends FrameLayout {
         top.setClipChildren(false);
 
         // The field: a glass pill with the magnifying glass that means search
-        // on the left, the way tvOS puts it.
+        // on the left, the way tvOS puts it. The pill catches the light under
+        // focus, so it reads as a button you can press.
         LinearLayout pill = new LinearLayout(context);
         pill.setOrientation(LinearLayout.HORIZONTAL);
         pill.setGravity(Gravity.CENTER_VERTICAL);
         pill.setClipChildren(false);
-        pill.setBackground(new GlassDrawable(context, 26f, 1f));
+        final GlassDrawable pillMaterial = new GlassDrawable(context, 26f, 1f);
+        pill.setBackground(pillMaterial);
         pill.setPadding(Ui.dp(context, 20), Ui.dp(context, 6), Ui.dp(context, 20), Ui.dp(context, 6));
+        pill.setFocusable(true);
+        pill.setFocusableInTouchMode(false);
+        // The glass catches the light under focus, so the field reads as a
+        // button you can press. The tint of the mark and the hint follow the
+        // glass once both exist (wired below after they are created).
+        pill.setOnFocusChangeListener((v, focused) -> {
+            pillMaterial.setAlpha(focused ? 255 : 0);
+            pillMaterial.setFocus(focused ? 1f : 0f);
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+        });
 
         ImageView glyph = new ImageView(context);
         glyph.setImageBitmap(Ui.magnifier(context, Ui.dp(context, 22)));
@@ -127,6 +141,32 @@ public final class SearchOverlay extends FrameLayout {
         });
         pill.addView(field, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // The glass and the ink materialize together under focus: the pill
+        // alpha, rim light, the mark tint and the hint all spring, so a fast
+        // D-pad move never snaps the field into view.
+        final float[] pillFocus = {0f};
+        final ImageView pillGlyph = glyph;
+        final TextView pillField = field;
+        pill.setOnFocusChangeListener((v, focused) -> {
+            Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
+                        @Override
+                        public float get() {
+                            return pillFocus[0];
+                        }
+
+                        @Override
+                        public void set(float value) {
+                            pillFocus[0] = value;
+                            pillMaterial.setAlpha(Math.round(255f * value));
+                            pillMaterial.setFocus(value);
+                            int ink = Ui.lerpColor(0x99F5F6F8, 0xFF0A0D12, value);
+                            pillGlyph.setColorFilter(new PorterDuffColorFilter(ink, PorterDuff.Mode.SRC_IN));
+                            pillField.setHintTextColor(Ui.lerpColor(0x8CFFFFFF, 0xCC101C26, value));
+                        }
+                    });
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+        });
         top.addView(pill, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
