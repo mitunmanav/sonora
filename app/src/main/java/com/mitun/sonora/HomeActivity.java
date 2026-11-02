@@ -649,12 +649,14 @@ public class HomeActivity extends Activity {
         }
         suppressIdle = true;
         boolean favourite = isFavourite(entry);
+        // Google TV's verified order: Open · Move · Favourites · Info · Uninstall.
+        // "Edit Home Screen" is merged into Move, which starts arrange mode on
+        // this app; "Search apps" is redundant now that the search pill opens it.
         String[] options = {"Open " + entry.label,
+                "Move",
                 favourite ? "Remove from Favourites" : "Add to Favourites",
-                "Search apps",
-                "Edit Home Screen",
-                "Hide from Home",
-                "App info"};
+                "App info",
+                "Uninstall"};
         ChoiceOverlay overlay = new ChoiceOverlay(this, entry.label, options, -1, index -> {
             dismissChoice();
             switch (index) {
@@ -664,18 +666,15 @@ public class HomeActivity extends Activity {
                     }
                     break;
                 case 1:
-                    toggleFavourite(entry);
-                    break;
-                case 2:
-                    openSearch();
-                    break;
-                case 3:
+                    // Arrange mode starts on this app so it is already the one
+                    // the user is moving.
+                    focusedPackage = entry.packageName;
                     startEditing();
                     break;
-                case 4:
-                    hide(entry);
+                case 2:
+                    toggleFavourite(entry);
                     break;
-                case 5:
+                case 3:
                     try {
                         Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                 Uri.parse("package:" + entry.packageName));
@@ -685,6 +684,9 @@ public class HomeActivity extends Activity {
                         Ui.toast(this, "No app info screen");
                     }
                     break;
+                case 4:
+                    uninstall(entry);
+                    break;
                 default:
                     break;
             }
@@ -692,6 +694,19 @@ public class HomeActivity extends Activity {
         });
         showOverlay(overlay);
         overlay.focusSelected();
+    }
+
+    /** Asks the system to uninstall the app, with the user's confirmation. */
+    private void uninstall(AppEntry entry) {
+        PackageActions.Result result = PackageActions.requestUninstall(this,
+                entry.packageName, entry.label);
+        Ui.toast(this, result.message);
+        if (result.ok) {
+            // The app may be gone when we come back; drop the cache so the
+            // grid is rebuilt from the real list.
+            AppRepository.invalidate();
+            prefs.bumpAppsEpoch();
+        }
     }
 
     /** True when the user pinned this app to the top of the home screen. */
