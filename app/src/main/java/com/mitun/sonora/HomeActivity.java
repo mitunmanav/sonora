@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -48,6 +49,8 @@ public class HomeActivity extends Activity {
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
     private final List<AppTileView> tiles = new ArrayList<>();
+    /** Set when the artwork was dropped to free memory, so it is read again. */
+    private boolean artworkDropped;
     /** The apps the user pinned, in the order they pinned them. */
     private final List<String> favourites = new ArrayList<>();
 
@@ -88,6 +91,7 @@ public class HomeActivity extends Activity {
     private String focusedPackage;
     /** A fingerprint of the settings the grid was built from. */
     private String gridKey = "";
+    private long appsLoadGeneration;
 
     private final Runnable idleWatcher = new Runnable() {
         @Override
@@ -153,7 +157,9 @@ public class HomeActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // Top shelf: the focused app's title, plus the clock pill on the right.
-        FrameLayout shelf = new FrameLayout(this);
+        LinearLayout shelf = new LinearLayout(this);
+        shelf.setOrientation(LinearLayout.HORIZONTAL);
+        shelf.setGravity(Gravity.CENTER_VERTICAL);
         shelf.setClipChildren(false);
         shelf.setPadding(margin, Ui.dp(this, 34), margin, 0);
 
@@ -162,15 +168,18 @@ public class HomeActivity extends Activity {
         shelfTitle = new TextView(this);
         shelfTitle.setTextColor(Color.WHITE);
         Type.apply(shelfTitle, Type.TITLE);
+        shelfTitle.setSingleLine(true);
+        shelfTitle.setEllipsize(TextUtils.TruncateAt.END);
         titles.addView(shelfTitle);
         shelfSubtitle = new TextView(this);
         shelfSubtitle.setTextColor(0xB3FFFFFF);
         Type.apply(shelfSubtitle, Type.CAPTION);
+        shelfSubtitle.setSingleLine(true);
+        shelfSubtitle.setEllipsize(TextUtils.TruncateAt.END);
         shelfSubtitle.setPadding(0, Ui.dp(this, 6), 0, 0);
         titles.addView(shelfSubtitle);
-        shelf.addView(titles, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.START));
+        shelf.addView(titles, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         clockPill = new GlassPillView(this, prefs);
         clockPill.setId(View.generateViewId());
@@ -196,18 +205,19 @@ public class HomeActivity extends Activity {
         pills.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        searchParams.rightMargin = Ui.dp(this, 10);
+        // An end margin, so the gap is on the side the next button is on in
+        // a right-to-left language too.
+        searchParams.setMarginEnd(Ui.dp(this, 10));
         pills.addView(searchPill, searchParams);
         LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        quickParams.rightMargin = Ui.dp(this, 10);
+        quickParams.setMarginEnd(Ui.dp(this, 10));
         pills.addView(quickPill, quickParams);
         pills.addView(clockPill, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        shelf.addView(pills, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.END));
+        shelf.addView(pills, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // The icon grid is anchored to the bottom of the screen, the way tvOS
         // floats it over the artwork. It only scrolls when the list outgrows
@@ -241,6 +251,7 @@ public class HomeActivity extends Activity {
     }
 
     private void loadApps() {
+        final long gen = ++appsLoadGeneration;
         final int tileWidthPx = Ui.dp(this, gridMetrics().tileWidthDp);
         new Thread(() -> {
             List<AppEntry> result;
@@ -253,12 +264,15 @@ public class HomeActivity extends Activity {
             final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(),
                     prefs.hidden(), prefs.favourites());
             runOnUiThread(() -> {
+                if (isFinishing() || gen != appsLoadGeneration) {
+                    return;
+                }
                 favourites.clear();
                 favourites.addAll(prefs.favourites());
                 appEntries = ordered.toArray(new AppEntry[0]);
                 buildGrid();
             });
-        }, "sonora-apps").start();
+        }, "sonora-apps-" + gen).start();
     }
 
     /** Puts the apps back in order after the user changed the order or a pin. */
@@ -322,13 +336,14 @@ public class HomeActivity extends Activity {
         Grid.Metrics metrics = gridMetrics();
         int columns = metrics.columns;
         int tileWidth = Ui.dp(this, metrics.tileWidthDp);
-        int tileHeight = Ui.dp(this, metrics.tileHeightDp);
         int gap = Ui.dp(this, metrics.gapDp);
 
         if (appEntries.length == 0) {
+            // The reason there is nothing to show, and the Settings tile
+            // below it: a device with no apps still has to be able to open
+            // Settings.
             grid.addView(emptyStateView(), new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            return;
         }
 
         for (int start = 0; start < tiles.size(); start += columns) {
@@ -340,12 +355,14 @@ public class HomeActivity extends Activity {
             for (int i = start; i < end; i++) {
                 AppTileView tile = tiles.get(i);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(tileWidth,
-                        tileHeight + (tile.labelSpace() ? Ui.dp(this, 22) : 0));
-                params.rightMargin = gap;
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+                // The gap goes on the end side, so the row is the same in a
+                // right-to-left language.
+                params.setMarginEnd(gap);
                 row.addView(tile, params);
             }
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, tileHeight + Ui.dp(this, 22));
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rowParams.bottomMargin = Ui.dp(this, 16);
 
             if (start == 0) {
@@ -527,7 +544,9 @@ public class HomeActivity extends Activity {
             dismissChoice();
             switch (index) {
                 case 0:
-                    entry.launch(this);
+                    if (!entry.launch(this)) {
+                        Ui.toast(this, "Could not open " + entry.label);
+                    }
                     break;
                 case 1:
                     toggleFavourite(entry);
@@ -635,9 +654,11 @@ public class HomeActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_UP:
                 target = row > 0 ? index - columns : -1;
                 break;
-            default:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
                 target = (index + columns < appEntries.length) ? index + columns : -1;
                 break;
+            default:
+                return false;
         }
         if (target < 0) {
             // At the edge of the grid: the key is used, nothing moves.
@@ -649,6 +670,12 @@ public class HomeActivity extends Activity {
 
     /** Moves one app to another place in the grid and remembers it. */
     private void moveTile(int from, int to) {
+        if (from < 0 || from >= appEntries.length || to < 0 || to >= appEntries.length || from == to) {
+            return;
+        }
+        if (from >= tiles.size() || to >= tiles.size()) {
+            return;
+        }
         List<AppEntry> list = new ArrayList<>(Arrays.asList(appEntries));
         AppEntry moved = list.remove(from);
         list.add(to, moved);
@@ -757,8 +784,8 @@ public class HomeActivity extends Activity {
     }
 
     private void dismissChoice() {
+        suppressIdle = false;
         if (choiceOverlay == null) {
-            suppressIdle = false;
             return;
         }
         final View overlay = choiceOverlay;
@@ -834,8 +861,15 @@ public class HomeActivity extends Activity {
         if (screensaver != null) {
             return;
         }
+        // The wallpaper is invisible under the screen saver, which holds two
+        // screen-sized scenes of its own. Letting it go keeps the peak at two
+        // full-screen bitmaps instead of three.
+        wallpaperRequest = "";
+        wallpaperBitmap = null;
+        wallpaperKey = null;
+        hero.release();
         screensaver = new ScreensaverView(this);
-        screensaver.setSceneDurationMs(prefs.screensaverSceneSec());
+        screensaver.setSceneDurationSec(prefs.screensaverSceneSec());
         screensaver.setShowOverlay(prefs.screensaverClock() == 1);
         root.addView(screensaver, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -871,6 +905,8 @@ public class HomeActivity extends Activity {
         root.removeView(screensaver);
         screensaver = null;
         lastInteraction = System.currentTimeMillis();
+        // It was released when the screen saver came up.
+        applyWallpaper();
         restoreFocus();
         // The watcher stops when the screen saver comes up, so it has to
         // start again now that it is gone.
@@ -1083,11 +1119,15 @@ public class HomeActivity extends Activity {
         // only seen when the launcher comes back. The grid is rebuilt when
         // something that changes it has changed; the wallpaper has its own
         // key, so it is checked every time.
-        if (gridChanged()) {
+        if (gridChanged() || artworkDropped) {
+            // The artwork was dropped to free memory, so the list has to be
+            // read again even when nothing about the grid has changed.
+            artworkDropped = false;
             loadApps();
         }
         applyWallpaper();
         clockPill.refresh();
+        SystemInfo.invalidate();
         Motion.refresh(this);
         if (screensaver != null) {
             hideScreensaver();
@@ -1119,6 +1159,8 @@ public class HomeActivity extends Activity {
         // The grid is sized from the live screen, so a resize or a density
         // change has to rebuild it. The artwork is cached at the size of the
         // old tile, so the cache goes too.
+        SystemInfo.invalidate();
+        Motion.refresh(this);
         AppRepository.invalidate();
         loadApps();
         // The wallpaper is sized for the screen, so it goes as well.
@@ -1137,6 +1179,11 @@ public class HomeActivity extends Activity {
             wallpaperBitmap = null;
             wallpaperKey = null;
             hero.release();
+            // The artwork of every app is the other thing worth holding on
+            // to. It is dropped and read again, so the old pixels are gone
+            // before the new ones are made.
+            AppRepository.invalidate();
+            artworkDropped = true;
         }
     }
 

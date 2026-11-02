@@ -81,7 +81,13 @@ public final class AppManager {
                 continue;
             }
             ApplicationInfo app = info.applicationInfo;
-            String label = info.applicationInfo != null ? info.applicationInfo.loadLabel(pm).toString() : null;
+            if (app == null) {
+                // A package with no application info cannot be shown, and
+                // touching it would kill the thread it is loaded on.
+                continue;
+            }
+            CharSequence name = app.loadLabel(pm);
+            String label = name == null ? null : name.toString();
             if (label == null || label.length() == 0) {
                 label = info.packageName;
             }
@@ -89,8 +95,15 @@ public final class AppManager {
             boolean updated = (app.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
             ComponentName launcher = launcherComponent(pm, info.packageName);
             boolean hasEntry = launcher != null;
-            boolean hidden = hasEntry && pm.getComponentEnabledSetting(launcher)
-                    == PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+            boolean hidden = false;
+            if (hasEntry) {
+                try {
+                    hidden = pm.getComponentEnabledSetting(launcher)
+                            == PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+                } catch (RuntimeException e) {
+                    hidden = false;
+                }
+            }
             out.add(new Item(info.packageName, label, system, updated,
                     app.enabled, hasEntry,
                     info.firstInstallTime, info.versionCode, info.versionName));
@@ -118,5 +131,22 @@ public final class AppManager {
     public static void invalidate() {
         cached = null;
         cachedAt = 0;
+    }
+
+    /**
+     * Drops the lazily decoded icons but keeps the package list.
+     *
+     * The manager shows a row per installed package, and each icon is 36 KB
+     * once decoded. Nothing outside that screen needs them, so they do not
+     * outlive it.
+     */
+    public static void trimIcons() {
+        List<Item> local = cached;
+        if (local == null) {
+            return;
+        }
+        for (Item item : local) {
+            item.icon = null;
+        }
     }
 }

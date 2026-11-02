@@ -20,6 +20,8 @@ public final class ChoiceOverlay extends FrameLayout {
     private final LinearLayout list;
     private final LinearLayout column;
     private final Callback callback;
+    /** How many rows are real options, as opposed to a message. */
+    private int optionCount;
     private int selected = -1;
 
     public ChoiceOverlay(Context context, String title, String[] options, int selectedIndex,
@@ -27,8 +29,11 @@ public final class ChoiceOverlay extends FrameLayout {
         super(context);
         this.callback = callback;
         // The focus has to start on the option that is ticked. Opening on the
-        // first one and OK-ing it would silently change the setting.
-        this.selected = selectedIndex;
+        // first one and OK-ing it would silently change the setting. A value
+        // that is not on the list (a wallpaper that is a photo, a stale
+        // preference) ticks nothing, and the focus falls on the first row.
+        this.selected = (selectedIndex >= 0 && selectedIndex < options.length)
+                ? selectedIndex : -1;
         // Heavy dim: a modal task pushes the screen behind it back.
         setBackgroundColor(0xF7000000);
 
@@ -56,8 +61,14 @@ public final class ChoiceOverlay extends FrameLayout {
 
         addView(column, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+        optionCount = options.length;
         for (int i = 0; i < options.length; i++) {
-            addOption(context, options[i], i == selectedIndex);
+            addOption(context, options[i], i == selected);
+        }
+        if (options.length == 0) {
+            // A picker with no options would be a modal the remote cannot
+            // use, so it says there is nothing to choose.
+            addOption(context, "There is nothing to choose", false);
         }
 
         // The picker arrives: it grows out of the place it came from rather
@@ -113,9 +124,18 @@ public final class ChoiceOverlay extends FrameLayout {
         line.setOnFocusChangeListener((v, focused) -> {
             GlassDrawable bg = (GlassDrawable) v.getBackground();
             bg.setAlpha(focused ? 255 : 0);
+            bg.setFocus(focused ? 1f : 0f);
+            label.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
+            check.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
         });
         line.setOnClickListener(v -> {
-            selected = list.indexOfChild(v);
+            int index = list.indexOfChild(v);
+            if (index < 0 || index >= optionCount) {
+                // The "nothing to choose" row is a message, not an option.
+                return;
+            }
+            selected = index;
             if (callback != null) {
                 callback.onPicked(selected);
             }
@@ -125,7 +145,9 @@ public final class ChoiceOverlay extends FrameLayout {
     }
 
     public void focusSelected() {
-        int index = selected >= 0 ? selected : 0;
+        // The row that is ticked, or the first row when nothing is ticked:
+        // a picker with no focus is a picker the remote cannot use.
+        int index = (selected >= 0 && selected < list.getChildCount()) ? selected : 0;
         if (index < list.getChildCount()) {
             list.getChildAt(index).requestFocus();
         }

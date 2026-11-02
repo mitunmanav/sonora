@@ -137,7 +137,15 @@ public final class SettingRow {
         line.setBackground(material);
         line.setFocusable(true);
         line.setFocusableInTouchMode(false);
-        line.setContentDescription(title);
+        String spoken = title;
+        if (type == TOGGLE) {
+            spoken += ", " + value;
+        } else if (type == CHECK) {
+            spoken += value.length() == 0 ? ", not selected" : ", selected";
+        } else if ((type == VALUE || type == CHOICE || type == PUSH) && value.length() > 0) {
+            spoken += ", " + value;
+        }
+        line.setContentDescription(spoken);
 
         TextView label = new TextView(context);
         label.setText(title);
@@ -153,31 +161,52 @@ public final class SettingRow {
         valueView.setGravity(Gravity.END);
         valueView.setMaxLines(1);
         valueView.setEllipsize(TextUtils.TruncateAt.END);
+        // A value is a technical thing: an address, a package name, a path.
+        // It stays in reading order even in a right-to-left language.
+        valueView.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG_LTR);
         line.addView(valueView, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
 
+        TextView chevron = null;
         if (type == PUSH) {
-            TextView chevron = new TextView(context);
-            chevron.setText("›");
+            chevron = new TextView(context);
+            // The arrow points the way the row opens, which is the other way
+            // round in a right-to-left language.
+            boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
+                    == View.LAYOUT_DIRECTION_RTL;
+            chevron.setText(rtl ? "‹" : "›");
             chevron.setTextColor(0x80FFFFFF);
             chevron.setTextSize(22);
             chevron.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             // The chevron needs air, or it reads as part of the text beside it.
-            chevronParams.leftMargin = Ui.dp(context, 14);
+            // A start margin is mirrored with the row; a left margin is not.
+            chevronParams.setMarginStart(Ui.dp(context, 14));
             line.addView(chevron, chevronParams);
         }
 
         final TextView valueText = valueView;
         final TextView labelText = label;
+        final TextView chevronText = chevron;
+        // tvOS lights the whole row under the focus and turns the ink dark.
+        // A dark highlight with white text on it reads as "selected", not as
+        // "where I am", and it disappears over a light wallpaper.
         line.setOnFocusChangeListener((v, focused) -> {
             GlassDrawable bg = (GlassDrawable) v.getBackground();
             bg.setAlpha(focused ? 255 : 0);
-            if (type != DANGER) {
-                labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            bg.setFocus(focused ? 1f : 0f);
+            labelText.setTextColor(type == DANGER
+                    ? (focused ? 0xFF8C1D18 : 0xFFFF6B6B)
+                    : (focused ? 0xFF101C26 : 0xE6FFFFFF));
+            valueText.setTextColor(focused ? 0xCC101C26 : 0xB3FFFFFF);
+            if (chevronText != null) {
+                chevronText.setTextColor(focused ? 0x99101C26 : 0x80FFFFFF);
             }
-            valueText.setTextColor(focused ? 0xE6FFFFFF : 0xB3FFFFFF);
+            // Lift the row, so its small focus scale is not covered by the
+            // row below it.
+            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+            Motion.scale(v, focused ? 1.02f : 1f, 1f, 0.18f);
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());

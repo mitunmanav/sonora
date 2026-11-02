@@ -13,6 +13,9 @@ import android.view.View;
 
 import com.mitun.sonora.Scenes;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 /**
  * The screen saver: full-bleed aerial stills with a very slow drift, crossfaded
  * into each other. Two bitmaps are alive at a time, so the memory cost stays
@@ -33,6 +36,13 @@ public final class ScreensaverView extends View {
     private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix matrix = new Matrix();
     private final RectF dest = new RectF();
+
+    private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "sonora-screensaver-decode");
+        t.setDaemon(true);
+        return t;
+    });
+    private volatile boolean loadingNext;
 
     private Bitmap current;
     private Bitmap next;
@@ -63,8 +73,12 @@ public final class ScreensaverView extends View {
         this.listener = listener;
     }
 
-    public void setSceneDurationMs(int seconds) {
+    public void setSceneDurationSec(int seconds) {
         sceneDurationMs = Math.max(10, seconds) * 1000;
+    }
+
+    public void setSceneDurationMs(int ms) {
+        sceneDurationMs = Math.max(10000, ms);
     }
 
     public void setShowOverlay(boolean show) {
@@ -76,57 +90,89 @@ public final class ScreensaverView extends View {
         running = true;
         if (current == null) {
             currentIndex = -1;
-            showNextScene();
+            showNextScene(1);
         }
         postInvalidateOnAnimation();
     }
 
     public void stop() {
         running = false;
+        current = null;
+        next = null;
     }
 
     /** Called when the user asks for a different location. */
     public void nextScene() {
-        showNextScene();
+        showNextScene(1);
     }
 
     public void previousScene() {
-        panDirection = -1f;
-        showNextScene();
+        showNextScene(-1);
     }
 
-    private void showNextScene() {
-        if (current == null) {
-            int index = (currentIndex + 1) % Scenes.ALL.size();
-            Bitmap bitmap = load(index);
-            if (bitmap == null) {
-                return;
-            }
-            current = bitmap;
-            currentIndex = index;
-            sceneStartedAt = System.currentTimeMillis();
-            progress = 0f;
-            fadeStart = 0;
-            if (listener != null) {
-                listener.onSceneChanged(index);
-            }
-        } else {
-            nextIndex = (currentIndex + 1) % Scenes.ALL.size();
-            Bitmap bitmap = load(nextIndex);
-            if (bitmap == null) {
-                return;
-            }
-            next = bitmap;
-            fadeStart = System.currentTimeMillis();
+    /**
+     * Moves to the next scene, forwards or backwards.
+     * Decodes the scene on a background thread so frame rate is never stalled.
+     *
+     * @param step 1 for the next scene, -1 for the one before this one.
+     */
+    private void showNextScene(int step) {
+        int count = Scenes.ALL.size();
+        if (count == 0 || loadingNext) {
+            return;
         }
-        invalidate();
+        final int targetIndex = wrap(currentIndex + step, count);
+        final float direction = step < 0 ? -1f : 1f;
+        loadingNext = true;
+        decodeExecutor.execute(() -> {
+            final Bitmap bitmap = load(targetIndex);
+            post(() -> {
+                loadingNext = false;
+                if (!running) {
+                    return;
+                }
+                panDirection = direction;
+                if (bitmap == null) {
+                    // A scene that will not decode must not be tried again on
+                    // every frame: wait for the next turn instead.
+                    sceneStartedAt = System.currentTimeMillis();
+                    return;
+                }
+                if (current == null) {
+                    current = bitmap;
+                    currentIndex = targetIndex;
+                    sceneStartedAt = System.currentTimeMillis();
+                    progress = 0f;
+                    fadeStart = 0;
+                    if (listener != null) {
+                        listener.onSceneChanged(targetIndex);
+                    }
+                } else {
+                    nextIndex = targetIndex;
+                    next = bitmap;
+                    fadeStart = System.currentTimeMillis();
+                }
+                invalidate();
+            });
+        });
+    }
+
+    /** The index after the current one, wrapping round at both ends. */
+    public static int wrap(int index, int count) {
+        return ((index % count) + count) % count;
     }
 
     private Bitmap load(int index) {
         Scenes.Scene scene = Scenes.ALL.get(index);
         int width = Math.max(1280, getResources().getDisplayMetrics().widthPixels);
         int height = Math.max(720, getResources().getDisplayMetrics().heightPixels);
-        return Ui.decodeScene(getResources(), scene.res, width, height);
+        try {
+            return Ui.decodeScene(getResources(), scene.res, width, height);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A TV with little memory can refuse the decode. The saver says so
+            // rather than taking the whole app down with it.
+            return null;
+        }
     }
 
     @Override
@@ -163,8 +209,8 @@ public final class ScreensaverView extends View {
         if (running) {
             long elapsed = System.currentTimeMillis() - sceneStartedAt;
             progress = Math.min(1f, elapsed / (float) sceneDurationMs);
-            if (elapsed > sceneDurationMs && next == null) {
-                showNextScene();
+            if (elapsed > sceneDurationMs && next == null && !loadingNext) {
+                showNextScene(1);
             }
             postInvalidateDelayed(FRAME_MS);
         }
@@ -188,7 +234,8 @@ public final class ScreensaverView extends View {
                     new float[]{0f, 1f}, Shader.TileMode.CLAMP));
         }
         canvas.drawRect(0, h * 0.72f, w, h, scrimPaint);
-        if (!showOverlay) {
+        if (!showOverlay || current == null) {
+            // Nothing is loaded, so there is no scene to name.
             return;
         }
         Scenes.Scene scene = Scenes.ALL.get(Math.max(0, currentIndex));
@@ -205,6 +252,9 @@ public final class ScreensaverView extends View {
     @Override
     protected void onDetachedFromWindow() {
         running = false;
+        current = null;
+        next = null;
+        decodeExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }
 }

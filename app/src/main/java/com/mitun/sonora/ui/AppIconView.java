@@ -35,6 +35,7 @@ public final class AppIconView extends View {
     private final Path clipPath = new Path();
     private final RectF rect = new RectF();
     private final RectF artRect = new RectF();
+    private final RectF edgeRect = new RectF();
     private AppEntry entry;
     private float sheen;
     private float parallaxX;
@@ -224,12 +225,10 @@ public final class AppIconView extends View {
             canvas.drawRect(0, 0, band, h, sheenPaint);
             canvas.restore();
         }
-        canvas.drawRoundRect(new RectF(edgePaint.getStrokeWidth() / 2f,
-                        edgePaint.getStrokeWidth() / 2f,
-                        w - edgePaint.getStrokeWidth() / 2f,
-                        h - edgePaint.getStrokeWidth() / 2f),
-                Math.max(1f, h * 0.185f - edgePaint.getStrokeWidth() / 2f),
-                Math.max(1f, h * 0.185f - edgePaint.getStrokeWidth() / 2f), edgePaint);
+        float inset = edgePaint.getStrokeWidth() / 2f;
+        edgeRect.set(inset, inset, w - inset, h - inset);
+        float edgeRadius = Math.max(1f, h * 0.185f - inset);
+        canvas.drawRoundRect(edgeRect, edgeRadius, edgeRadius, edgePaint);
         canvas.restore();
 
         if (favourite) {

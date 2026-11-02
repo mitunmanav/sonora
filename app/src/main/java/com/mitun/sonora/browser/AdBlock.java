@@ -69,26 +69,25 @@ public final class AdBlock {
             return false;
         }
         String lower = url.toLowerCase(Locale.US);
+        String host = hostOf(lower);
+        if (host.length() > 0) {
+            // A blocked host blocks its subdomains too, the way a hosts file does.
+            String domain = host;
+            while (domain.length() > 0) {
+                if (hosts.contains(domain)) {
+                    return true;
+                }
+                int dot = domain.indexOf('.');
+                if (dot < 0) {
+                    break;
+                }
+                domain = domain.substring(dot + 1);
+            }
+        }
         for (String fragment : fragments) {
             if (lower.contains(fragment)) {
                 return true;
             }
-        }
-        String host = hostOf(lower);
-        if (host.length() == 0) {
-            return false;
-        }
-        // A blocked host blocks its subdomains too, the way a hosts file does.
-        String domain = host;
-        while (domain.length() > 0) {
-            if (hosts.contains(domain)) {
-                return true;
-            }
-            int dot = domain.indexOf('.');
-            if (dot < 0) {
-                break;
-            }
-            domain = domain.substring(dot + 1);
         }
         return false;
     }
@@ -98,13 +97,24 @@ public final class AdBlock {
         int start = scheme < 0 ? 0 : scheme + 3;
         int end = url.indexOf('/', start);
         String host = end < 0 ? url.substring(start) : url.substring(start, end);
-        int colon = host.indexOf(':');
-        if (colon >= 0) {
-            host = host.substring(0, colon);
-        }
+        // The userinfo comes first: "user:pass@ads.example" is the host
+        // ads.example, not "user".
         int at = host.indexOf('@');
         if (at >= 0) {
             host = host.substring(at + 1);
+        }
+        // A query or a fragment is not part of the host.
+        int cut = host.indexOf('?');
+        if (cut < 0) {
+            cut = host.indexOf('#');
+        }
+        if (cut >= 0) {
+            host = host.substring(0, cut);
+        }
+        // And the port is not part of it either.
+        int colon = host.indexOf(':');
+        if (colon >= 0) {
+            host = host.substring(0, colon);
         }
         return host;
     }
