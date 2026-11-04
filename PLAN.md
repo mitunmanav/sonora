@@ -653,3 +653,20 @@ settings rows, pickers and the pills read like tvOS controls.
   than the general 80pt HIG safe area, because the measured home screen is the
   thing being replicated and 80dp would drop the six-column layout on a 960dp
   Android TV canvas.
+
+### I8. The hint footer was noise, and it clipped the settings list
+Every stack screen carried a bottom line ("OK to select · BACK to go back").
+tvOS shows no such footer, and the HIG writing guidance says not to explain
+standard remote behaviour. It also took the height the eight settings rows
+needed: the last row sat half under it. The footer is gone and the index now
+fits without clipping. Verified on the TV at 960x540dp.
+
+### I9. Cancelling a picker lost the focus
+Removing the focused picker makes Android focus-search the screen behind it.
+That search found a row on the screen *under* the top one, so the code's
+"something already has focus, leave it" check dropped the user on the wrong
+screen with no visible focus. The activity now records the stack depth when a
+picker opens: a cancel restores the row that opened it, while a pick that
+pushes a screen keeps that screen's own focus. Verified on the TV: BACK from
+the clock picker returns to the Clock row, picking a value returns to the
+rebuilt row, and BACK from the Clock page returns to the Clock category.

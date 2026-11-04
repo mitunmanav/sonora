@@ -36,6 +36,8 @@ public final class ToolActivity extends Activity {
     private View choiceOverlay;
     /** The row that had the focus before a picker took it. */
     private View stackFocus;
+    /** The stack depth at that moment, so a pushed screen keeps its focus. */
+    private int stackDepthAtChoice;
     /** Set while the first-run setup is on screen. */
     private SetupWizard wizard;
     /** The package an uninstall was asked for, so the result can be reported. */
@@ -97,6 +99,7 @@ public final class ToolActivity extends Activity {
         // remembered: cancelling must not leave the remote with nothing to
         // move to.
         stackFocus = stack.findFocus();
+        stackDepthAtChoice = stack.depth();
         ChoiceOverlay overlay = new ChoiceOverlay(this, title, options, selected, index -> {
             dismissChoice();
             if (callback != null) {
@@ -129,19 +132,22 @@ public final class ToolActivity extends Activity {
         }
     }
 
-    /** Gives the list back the focus the picker took from it. */
+    /**
+     * Gives the list back the focus the picker took from it.
+     *
+     * Removing a focused overlay makes Android focus-search the screen behind
+     * it, which can land on a different row. The row that opened the picker
+     * is still there after a cancel, so it takes the focus back. A choice that
+     * opens a screen changes the stack depth; that screen keeps its own focus.
+     */
     private void restoreStackFocus() {
         View target = stackFocus;
         stackFocus = null;
-        View already = stack.findFocus();
-        if (already != null && already != target) {
-            // A choice that opens or rebuilds a screen has already put the
-            // focus where it belongs.
-            return;
-        }
-        if (target != null && target.isFocusable() && target.isAttachedToWindow()) {
+        boolean sameScreen = stack.depth() == stackDepthAtChoice;
+        stackDepthAtChoice = -1;
+        if (sameScreen && target != null && target.isFocusable() && target.isAttachedToWindow()) {
             target.requestFocus();
-        } else {
+        } else if (stack.findFocus() == null) {
             // The screen was rebuilt while the picker was open.
             stack.focusTop();
         }
