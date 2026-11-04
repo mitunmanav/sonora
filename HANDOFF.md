@@ -1,3 +1,5 @@
+> **This is the older handoff (last touched before 2026-11-04). The current, exhaustive tvOS 1:1 handoff is [`HANDOFF-2026-11-04.md`](HANDOFF-2026-11-04.md). Read that one first.**
+
 # HANDOFF — Sonora
 
 Everything needed to start cold. Copy the block below the line into the new
