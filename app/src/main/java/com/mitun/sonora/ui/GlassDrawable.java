@@ -126,10 +126,12 @@ public final class GlassDrawable extends Drawable {
         underPaint.setShader(new LinearGradient(0, under.top, 0, under.bottom,
                 new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.40f * tint)},
                 new float[]{0f, 1f}, Shader.TileMode.CLAMP));
-        // The same lens with the light on it.
+        // The same lens with the light on it. The fill is almost opaque white:
+        // Apple's focused control is a white surface with dark ink, not a grey
+        // gradient.
         litPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.WHITE, 0.95f), adjust(Color.WHITE, 0.86f),
-                        adjust(Color.WHITE, 0.66f)},
+                new int[]{adjust(Color.WHITE, 0.99f), adjust(Color.WHITE, 0.97f),
+                        adjust(Color.WHITE, 0.93f)},
                 new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
         applyAlphas();
     }

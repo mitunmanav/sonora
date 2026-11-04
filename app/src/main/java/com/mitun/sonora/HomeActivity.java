@@ -70,7 +70,6 @@ public class HomeActivity extends Activity {
     private LinearLayout grid;
     private FrameLayout dockPort;
     private View dockBar;
-    private GlassDrawable dockMaterial;
     private FrameLayout.LayoutParams dockBarParams;
     private FrameLayout.LayoutParams portParams;
     private int marginPx;
@@ -92,8 +91,8 @@ public class HomeActivity extends Activity {
     private long lastInteraction;
     private boolean suppressIdle;
     private boolean initialFocusDone;
-    /** How much light the dock glass has caught: nothing at rest, all of it when a row rides in it. */
-    private float dockFocus;
+    /** True while the search and quick-settings buttons are showing. */
+    private boolean shelfToolsShown = true;
 
     /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
     private Bitmap wallpaperBitmap;
@@ -200,6 +199,11 @@ public class HomeActivity extends Activity {
         clockPill = new GlassPillView(this, prefs);
         clockPill.setId(View.generateViewId());
         clockPill.setOnOpenSettings(this::openSettings);
+        clockPill.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                setShelfTools(true);
+            }
+        });
 
         // Search comes first in the row. This TV's remote has no search key
         // and its voice key is swallowed by the system, so without a button
@@ -215,6 +219,11 @@ public class HomeActivity extends Activity {
                 "Quick settings");
         quickPill.setId(View.generateViewId());
         quickPill.setOnOpen(this::openQuickSettings);
+        // tvOS keeps only the clock and the profile in the top row. The extra
+        // buttons materialise when the user reaches that row, so at rest the
+        // screen matches the reference and the controls are still one press
+        // away.
+        setShelfTools(false);
 
         LinearLayout pills = new LinearLayout(this);
         pills.setOrientation(LinearLayout.HORIZONTAL);
@@ -250,9 +259,10 @@ public class HomeActivity extends Activity {
         // in. The rows slide behind it, the way tvOS keeps the shelf still
         // while the next row of icons rises into it.
         dockBar = new View(this);
-        dockMaterial = new GlassDrawable(this, 26f, 1f);
+        GlassDrawable dockMaterial = new GlassDrawable(this, 26f, 1f);
         dockBar.setBackground(dockMaterial);
-        dockBar.setElevation(Ui.dpf(this, 12f));
+        // The glass sits behind the icons. Elevation would paint it over them.
+        dockBar.setElevation(0f);
         final float barRadius = Ui.dpf(this, 26f);
         dockBar.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override
@@ -408,6 +418,13 @@ public class HomeActivity extends Activity {
         // The focused row has to start inside the dock, so the list is
         // padded by the glass padding and slid by whole rows.
         grid.setPadding(0, barPadPx, 0, 0);
+        // The strip is shorter than the list so the next row peeks out. The
+        // list itself must keep its full height, or the rows below the fold
+        // measure to zero and can never take focus.
+        int rows = (tiles.size() + columns - 1) / columns;
+        FrameLayout.LayoutParams gridParams = (FrameLayout.LayoutParams) grid.getLayoutParams();
+        gridParams.height = barPadPx + rows * (rowHeightPx + rowGapPx);
+        grid.setLayoutParams(gridParams);
         scrollToRow(focusedRow(), false);
     }
 
@@ -523,39 +540,6 @@ public class HomeActivity extends Activity {
         return index / Math.max(1, gridMetrics().columns);
     }
 
-    /**
-     * Makes the dock glass catch the light when a row rides into it, and let
-     * it go when the focus leaves the grid.
-     *
-     * The glass stays dark at rest and brightens under focus, the same way a
-     * tvOS control does. It is a spring, so a focus that moves on before the
-     * glass has settled carries on instead of snapping.
-     */
-    private void dockFocus(float focus) {
-        if (dockFocus == focus) {
-            return;
-        }
-        dockFocus = focus;
-        Motion.springCustom(dockBar, 0, focus, Motion.DAMPING_CRITICAL,
-                Motion.RESPONSE_FOCUS, dockFocusValue());
-    }
-
-    private Motion.FloatProperty dockFocusValue() {
-        return new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return dockFocus;
-            }
-
-            @Override
-            public void set(float value) {
-                dockFocus = value;
-                dockMaterial.setFocus(value);
-                dockBar.invalidate();
-            }
-        };
-    }
-
     private void onTileFocused(AppTileView tile, AppEntry entry) {
         if (entry == null) {
             return;
@@ -563,14 +547,13 @@ public class HomeActivity extends Activity {
         hero.setEntry(entry);
         updateShelf(entry);
         focusedPackage = entry.packageName;
+        setShelfTools(false);
         // The row that has the focus rides in the dock; the rows slide to
         // put it there, the way tvOS lifts the row into its shelf.
         int index = tiles.indexOf(tile);
         if (index >= 0) {
             scrollToRow(index / Math.max(1, gridMetrics().columns), true);
         }
-        // The dock glass catches the light once a row is sitting inside it.
-        dockFocus(1f);
         View focused = getCurrentFocus();
         View previous = lastFocused;
         if (previous != null && previous != focused) {
@@ -613,18 +596,46 @@ public class HomeActivity extends Activity {
     private void updateShelf(AppEntry entry) {
         if (entry == null) {
             shelfTitle.setText("Sonora");
-            shelfSubtitle.setText("No apps yet — open Settings to add some");
+            setSubtitle("No apps yet — open Settings to add some");
             return;
         }
         shelfTitle.setText(entry.label);
         if (editing) {
-            shelfSubtitle.setText("Arranging — move with the arrows, BACK to finish");
+            setSubtitle("Arranging — move with the arrows, BACK to finish");
         } else if (entry.settings) {
-            shelfSubtitle.setText("Press OK to open Sonora settings");
+            setSubtitle("Press OK to open Sonora settings");
         } else if (isFavourite(entry)) {
-            shelfSubtitle.setText("Pinned to the top");
+            setSubtitle("Pinned to the top");
         } else {
-            shelfSubtitle.setText("Hold OK for options");
+            setSubtitle(null);
+        }
+    }
+
+    /** The hint under the title. Hidden when there is nothing worth saying. */
+    private void setSubtitle(String text) {
+        shelfSubtitle.setText(text == null ? "" : text);
+        shelfSubtitle.setVisibility(text == null ? View.GONE : View.VISIBLE);
+    }
+
+    /**
+     * Reveals the search and quick-settings buttons only while the top row has
+     * the focus. tvOS keeps that corner to the clock and the profile; the
+     * controls are still one UP press away.
+     */
+    private void setShelfTools(boolean show) {
+        if (searchPill == null || quickPill == null || show == shelfToolsShown) {
+            return;
+        }
+        shelfToolsShown = show;
+        for (View view : new View[]{searchPill, quickPill}) {
+            view.setFocusable(show);
+            view.setClickable(show);
+            if (!view.isAttachedToWindow()) {
+                view.setAlpha(show ? 1f : 0f);
+                continue;
+            }
+            Motion.spring(view, Motion.ALPHA, show ? 1f : 0f,
+                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
         }
     }
 
@@ -1125,35 +1136,18 @@ public class HomeActivity extends Activity {
             }
             int columns = gridMetrics().columns;
             int row = index / columns;
-            int column = index % columns;
-            int target = -1;
-            switch (key) {
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    target = column > 0 ? index - 1 : -1;
-                    break;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    target = (column + 1 < columns && index + 1 < tiles.size()) ? index + 1 : -1;
-                    break;
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    target = row > 0 ? index - columns : -1;
-                    break;
-                default:
-                    target = (index + columns < tiles.size()) ? index + columns : -1;
-                    break;
-            }
+            int target = Grid.moveTarget(index, columns, tiles.size(), key);
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
-                // Leaving the grid for the top shelf: the dock lets the light go.
-                dockFocus(0f);
-                searchPill.requestFocus();
+                // Leaving the grid for the top shelf. The clock is the only
+                // control there at rest; it reveals the rest of the row.
+                clockPill.requestFocus();
             }
             return true;
         }
         if (focused == searchPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                // Back into the grid: the dock catches the light again.
-                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 quickPill.requestFocus();
@@ -1162,7 +1156,6 @@ public class HomeActivity extends Activity {
         }
         if (focused == quickPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 clockPill.requestFocus();
@@ -1173,7 +1166,6 @@ public class HomeActivity extends Activity {
         }
         if (focused == clockPill) {
             if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                dockFocus(1f);
                 tiles.get(0).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
                 quickPill.requestFocus();
