@@ -146,6 +146,13 @@ public final class GlassPillView extends FrameLayout {
         time.setText(new SimpleDateFormat(pattern, Locale.getDefault()).format(new Date()));
         date.setText(new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(new Date()));
         updateDateVisibility();
+        // Screen readers should hear the clock and what opening it does, not
+        // just the word "Settings".
+        String when = time.getText().toString();
+        if (prefs.showDate()) {
+            when += ", " + date.getText();
+        }
+        setContentDescription(when + ". Settings");
     }
 
     @Override

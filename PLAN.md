@@ -590,3 +590,66 @@ the tools activity instead of going back.
 - The artwork of every app is now dropped when the system asks for memory,
   and the old pixels are gone before the new ones are made.
 
+
+## 11. Session: the 1:1 tvOS pass
+
+Reference re-checked against Apple's tvOS 26 Home Screen press image (1960x1102)
+and the HIG pages for Designing for tvOS, Layout, Focus and selection, Motion,
+Materials, Typography, Color, Accessibility, Top Shelf, Remotes, Settings and
+Writing. The device was reachable again at `192.168.68.108:5555`.
+
+### I1. The dock was drawing over its own icons
+`dockBar` had `elevation = 12dp`, so Android painted the glass *after* the app
+cards. Every icon sat under a white sheet when the old focus light turned the
+bar on. The bar now has no elevation: it is the surface the cards sit on, not a
+layer above them. The white "focus" state of the whole dock was removed with
+it; tvOS keeps the dock dark and lights the focused card, not the bar.
+
+### I2. The top-right corner matches the reference at rest
+tvOS 26 has one capsule there: time plus profile. Sonora had three controls
+(search, quick settings, clock) visible all the time. The two extra controls
+now fade in when the clock takes the focus and fade out when the grid does.
+They stay one UP press away, and the screen at rest is the reference.
+
+### I3. The default subtitle was an instruction, not content
+"Hold OK for options" sat under the app name on every screen. It is gone.
+Contextual hints remain for arranging, pinned apps, the Settings tile and the
+empty state, and the subtitle is `GONE` when there is nothing to say.
+
+### I4. Rows below the fold measured to zero and could not take focus
+The dock strip is deliberately shorter than the list so the next row peeks
+out. A `WRAP_CONTENT` grid inside that fixed-height strip was measured against
+the strip, so the second row and everything below it got height 0. The D-pad
+could never enter row two: DOWN did nothing. The grid now gets its full height
+explicitly (`barPad + rows * rowStride`) and the strip clips it. Verified on
+the TV: DOWN moves the focus into the second row.
+
+### I5. The middle of a row was a D-pad dead end
+LEFT at column 0 and RIGHT at the last column returned no target. `Grid.moveTarget`
+is now pure and tested: LEFT wraps to the previous row's last tile, RIGHT wraps
+to the next row's first tile. The two real ends (first tile LEFT, last tile
+RIGHT) are still ends. `HomeActivity` uses the pure helper instead of its own
+copy of the maths.
+
+### I6. The focused surface is white, not a grey gradient
+HIG's focused control is an opaque white surface with dark ink. The shared lit
+material now resolves to near-white (0.99 -> 0.93) instead of 0.95 -> 0.66, so
+settings rows, pickers and the pills read like tvOS controls.
+
+### I7. Smaller HIG fixes
+- `HomeActivity` has `stateNotNeeded="true"`, like Google's launcher.
+- The clock's content description now reads the time (and date when shown)
+  before "Settings", so TalkBack says something useful.
+- The row focus scale, sheen, lean and dock slide remain springs, and reduced
+  motion still degrades them to a static state.
+
+### What is still deliberately unlike tvOS
+- The top-left title is the focused app's name, because a launcher has no
+  editorial Top Shelf content to show instead.
+- The long-press menu and the settings sub-pages are Sonora's own patterns;
+  tvOS does not define a launcher context menu or a pixel spec for its Settings
+  app. They use the same type, glass and focus language.
+- The grid keeps the measured 2.8% side margin from the tvOS 26 render rather
+  than the general 80pt HIG safe area, because the measured home screen is the
+  thing being replicated and 80dp would drop the six-column layout on a 960dp
+  Android TV canvas.

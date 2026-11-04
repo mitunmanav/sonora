@@ -81,6 +81,40 @@ public final class Grid {
     }
 
     /**
+     * Pure: the tile a D-pad key moves to from {@code index}, or -1 when the
+     * edge is reached. Moving off the last column wraps to the next row, so
+     * the middle columns are never a dead end.
+     */
+    public static int moveTarget(int index, int columns, int count, int keyCode) {
+        if (index < 0 || columns < 1 || index >= count) {
+            return -1;
+        }
+        // KeyEvent key codes, kept as numbers so this class stays Android-free.
+        // 21 LEFT, 22 RIGHT, 19 UP, 20 DOWN.
+        int row = index / columns;
+        int column = index % columns;
+        switch (keyCode) {
+            case 21:
+                if (column > 0) {
+                    return index - 1;
+                }
+                return row > 0 ? Math.min(row * columns - 1, count - 1) : -1;
+            case 22:
+                if (column + 1 < columns && index + 1 < count) {
+                    return index + 1;
+                }
+                int nextRow = (row + 1) * columns;
+                return nextRow < count ? nextRow : -1;
+            case 19:
+                return row > 0 ? index - columns : -1;
+            case 20:
+                return index + columns < count ? index + columns : -1;
+            default:
+                return -1;
+        }
+    }
+
+    /**
      * Honours a stored column count. A stored value of zero means "fit to the
      * screen", which is the default.
      */

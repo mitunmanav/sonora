@@ -83,6 +83,43 @@ public class GridTest {
     }
 
     @Test
+    public void focusWrapsBetweenRowsInsteadOfStoppingAtTheColumnEdge() {
+        // Six columns, twelve tiles. Leaving the last column enters the next
+        // row; leaving the first column steps back to the previous row.
+        assertEquals(6, Grid.moveTarget(5, 6, 12, 22));
+        assertEquals(5, Grid.moveTarget(6, 6, 12, 21));
+        assertEquals(12, Grid.moveTarget(11, 6, 18, 22));
+        assertEquals(11, Grid.moveTarget(12, 6, 18, 21));
+        // The first and last tile are the only real ends of the grid.
+        assertEquals(-1, Grid.moveTarget(0, 6, 12, 21));
+        assertEquals(-1, Grid.moveTarget(11, 6, 12, 22));
+    }
+
+    @Test
+    public void focusHandlesAPartialLastRow() {
+        assertEquals(6, Grid.moveTarget(5, 6, 8, 22));
+        assertEquals(5, Grid.moveTarget(6, 6, 8, 21));
+        assertEquals(7, Grid.moveTarget(1, 6, 8, 20));
+        assertEquals(-1, Grid.moveTarget(7, 6, 8, 22));
+        assertEquals(-1, Grid.moveTarget(2, 6, 8, 20));
+    }
+
+    @Test
+    public void focusStaysInTheColumnWhenMovingUpAndDown() {
+        assertEquals(0, Grid.moveTarget(6, 6, 13, 19));
+        assertEquals(6, Grid.moveTarget(0, 6, 13, 20));
+        assertEquals(-1, Grid.moveTarget(0, 6, 13, 19));
+        assertEquals(-1, Grid.moveTarget(6, 6, 12, 20));
+    }
+
+    @Test
+    public void focusIgnoresAbsurdInput() {
+        assertEquals(-1, Grid.moveTarget(-1, 6, 12, 22));
+        assertEquals(-1, Grid.moveTarget(12, 6, 12, 22));
+        assertEquals(-1, Grid.moveTarget(2, 0, 12, 22));
+    }
+
+    @Test
     public void survivesAbsurdScreenSizes() {
         assertTrue(Grid.compute(1).tileWidthDp >= 1);
         assertTrue(Grid.compute(100000).columns <= Grid.MAX_COLUMNS);
