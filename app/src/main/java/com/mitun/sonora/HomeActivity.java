@@ -734,12 +734,12 @@ public class HomeActivity extends Activity {
     private void updateShelf(AppEntry entry) {
         if (entry == null) {
             shelfTitle.setText("Sonora");
-            setSubtitle("No apps yet — open Settings to add some");
+            setSubtitle("No apps yet. Open Settings to add some");
             return;
         }
         shelfTitle.setText(entry.label);
         if (editing) {
-            setSubtitle("Arranging — move with the arrows, BACK to finish");
+            setSubtitle("Arranging. Move with the arrows, BACK to finish");
         } else if (entry.settings) {
             setSubtitle("Press OK to open Sonora settings");
         } else if (isFavourite(entry)) {
