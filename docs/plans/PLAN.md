@@ -804,3 +804,86 @@ Two measurements on `master` @ `7ce7058`-era build, same TV:
 
 Still open: overdraw audit, `tvlauncher` re-enablement quirk, Files/browser pass,
 FrameMetrics self-tuning, port `bench.py`/`perf-ab.md` into `scripts/`.
+
+## 17. Session: debloat tool in settings
+
+Added a Debloat screen under Settings → Apps: a curated list of common Android TV
+bloatware packages with On/Off toggles. Turning an app off uses
+`PackageActions.setPackageEnabled` (disable-user), then invalidates
+`AppRepository`/`AppManager` and bumps the apps epoch so the home grid drops it.
+Package state is read on a background thread and the screen fills in via
+`refreshSettings`, same pattern as Favourites. Warnings are shown before the two
+risky rows (Google TV Launcher, Google Play Services).
+
+The first cut was a custom `DebloatView` pushed full-bleed; it did not compile
+(`SettingRow` is a row model, not a `View`) and its `Debloat` page was never
+linked into the settings index. Replaced with `DebloatPanel`, a row-provider in
+the `AppPanel`/`DebugPanel` style, reached from the Apps page.
+
+Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.
+TV untouched.
+
+## 18. Session: Google TV parity batch, part 1
+
+Working from `docs/research/GOOGLE-TV-TEARDOWN.md` §6 (Tier 1 + Tier 2 approved).
+
+Done and building:
+
+- Quick settings gained Keyboard, Date & time and Language rows. The three
+  `com.android.tv.settings` activities were verified present on the TV
+  (`inputmethod.KeyboardActivity`, `system.DateTimeActivity`,
+  `system.LanguageActivity`); each row falls back to generic Settings.
+- The screen saver overlay now draws a large clock above the place name,
+  respecting the 12/24-hour setting. It invalidates once a minute, only while
+  the overlay is showing — the drift clock is untouched.
+- A round glass search pill (`GlyphPillView`, new) sits beside the clock on the
+  top shelf. This remote has no search key, so the pill is the visible way in.
+  UP from the first row now lands on the pill; UP again opens Control Center;
+  DOWN returns to the grid. The pill is fed by the same glass bake as the dock
+  and clock (frost and bent-lens paths both updated).
+- `android.intent.action.ALL_APPS` is handled: the grid is the all-apps screen,
+  so the intent scrolls it to the top.
+
+Already done before this session (verified in code): the long-press menu order
+(Open · Move · Favourites · Info · Uninstall) and uninstall via
+`PackageActions.requestUninstall`.
+
+Skipped: "Previews on/off" — Sonora has no content previews to toggle; the hero
+is a still and Reduce motion already covers animation. A fake toggle would
+violate the no-fake-features rule.
+
+Still open: ADD_APP_LINK approval dialog (needs the extras contract from the
+launcher dex), Apps/Games order split, icon polish pass, setup-guide clarity.
+
+Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.
+
+## 19. Session: icon polish pass
+
+Redrew every hand-drawn mark toward the tvOS 26 look: `ui/Glyph` (17 marks) and
+`files-core/Marks` (14 marks), all still authored as `Path` geometry on a 24-unit
+grid — no Apple assets, per the rules.
+
+Notable fixes, not just nudges:
+
+- STAR was a ten-point burst; it is now a five-point star.
+- HOME was a monitor-with-windows shape; it is now a house outline with a door.
+- DELETE was a skewed bin with an X; it is now a proper trash can (lid, handle,
+  body, two ribs).
+- WIFI arcs were elliptical and off-centre; they are now three concentric circular
+  arcs sharing the dot's centre.
+- SOUND waves were flat ellipses; they are now concentric `)` arcs.
+- GEAR teeth were 12 sharp notches; now 8 rounded teeth from a smooth sampled
+  radius profile.
+- APPS/GRID squares unified (same geometry in both apps); LIST/MORE/DRIVE dots are
+  now solid discs (radius 0.9 with the 1.8 stroke fills them).
+- MOVIES is now a clapperboard (striped slab + body) instead of a divided frame.
+- DISPLAY gained a proper stand; MIC gained its base line; HIDDEN's pupil and eye
+  proportions corrected.
+
+`FileIcon` (the file-type artwork: folder gradient, page) was left alone — it is
+not an Apple-style mark.
+
+Verified: `:app` + `:files` compile, `:app:testDebugUnitTest` +
+`:files-core:testDebugUnitTest` pass, `codegraph sync` run. Geometry bounds-checked
+against the 24-grid in a matplotlib harness. Not seen on the TV — icon look is
+unverified on-device; check Control Center, Settings rows, Files sidebar/toolbar.
