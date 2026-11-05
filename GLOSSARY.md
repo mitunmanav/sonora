@@ -17,6 +17,9 @@ synonyms.
 - **Glass / lens** — the translucent material (`GlassDrawable`,
   `GlassLens`): dark lens at rest, near-white when focused. "Baking" a
   lens renders it once to a bitmap instead of blending every draw.
+- **Focus glass** — the floating rim-and-shadow slab that travels to the
+  focused card (`FocusGlassView`), so a focus change never repaints the
+  card itself.
 - **Screen stack** — the push/pop list navigation every tool screen uses
   (`ScreenStack`); screens slide in from the right.
 - **Picker** — a `ChoiceOverlay` list for choosing one value; pickers

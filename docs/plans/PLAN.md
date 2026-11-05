@@ -706,3 +706,61 @@ A cleanup pass followed on 2026-11-05:
 
 Unit tests and debug/release builds for all three modules pass after the
 cleanup.
+
+## 13. Session: launcher benchmark, Sonora vs stock Google TV
+
+A controlled A/B on the owner's Mi TV Stick, recorded in
+`docs/perf/2026-11-05.md`. New `performance-optimization` worktree at
+`../aerial-performance`; the `app-perf` build from `2c6e17a` was installed over
+the older APK for the Sonora run.
+
+Protocol, identical for both launchers: reboot, 60 s settle, system
+`/proc/meminfo` + launcher `dumpsys meminfo`, then force-stop, cold start,
+`gfxinfo reset`, the same 12-key DPAD walk. Two clean Google TV runs, one clean
+Sonora run (raw dumps kept under `docs/perf/2026-11-05/`).
+
+Results: Sonora ~40 MB PSS, ~897 MiB MemAvailable, 2.7% deadline misses; the
+stock launcher ~181 MB idle growing to ~275–288 MB after navigation, ~803–823
+MiB available, 6–8% misses. Against the Oct 31 pre-debloat record (~688 MiB
+available, ~298 MB launcher PSS, ~250 MB swap), the debloat alone is worth
+~115–135 MiB and Sonora roughly doubles that headroom again.
+
+Two things worth remembering:
+
+- `pm disable-user com.google.android.tvlauncher` no longer survives a reboot
+  once `set-home-activity` had pointed HOME at it — the package comes back
+  `enabled=1` during boot and steals focus despite the HOME role and preferred
+  activity both naming Sonora. Not yet isolated (suspects: `tvrecommendations`,
+  `katniss`, or leftover preferred-activity state). The disable holds until the
+  next reboot; the TV is left on Sonora's home screen.
+- The stick's LAN IP moved to `192.168.68.104` (mDNS `_adb._tcp`); `.108` still
+  pings but refuses adb. `scripts/tv.sh` honours `SONORA_TV`.
+
+## 14. Session: focus glass and the screensaver rewrite
+
+Continued on the `performance-optimization` worktree (`aerial-performance`).
+The focus-glass work from `/home/mitun/aerial` was committed there as `22776c7`
+and cherry-picked here as `fc7e555`: `ui/FocusGlassView` carries the rim and
+shadow as one hardware-layered slab that springs between cards, `AppIconView`
+dropped its per-card shadow/lift drawing, and `HomeActivity` positions the slab
+by accumulating translations up to the root.
+
+Then the biggest remaining invalidation came out: `ScreensaverView` is now a
+`FrameLayout` of two `SceneView` children plus a static `OverlayView`
+(`c4bfde4`). The Ken Burns drift is `setScale`/`setTranslationX` on the scene
+views — RenderNode properties, no redraw — the crossfade is view alpha, and
+the scrim/captions redraw only on scene or overlay changes. Same 33/50 ms
+cadence, same 1.04→1.10 zoom, same 2200 ms fade, same decode-on-background-
+thread flow; the public API is unchanged. One deliberate visual fix: the old
+canvas paints never set a text colour (default black on a dark scrim); the
+overlay now draws white title and 72% white credit.
+
+Verified: `:app:testDebugUnitTest`, `:files-core:testDebugUnitTest`,
+`:app:assembleDebug`, `:app:assembleRelease`, `:files:assembleRelease` all
+pass. Not verified: anything on the TV — focus-glass alignment, the fade and
+drift on-device, and the LOW-tier frame cost are all still owed a look when TV
+access is allowed again.
+
+Still open, in order: FrameMetrics self-tuning (`DeviceTier.degrade` on a
+rolling jank window), porting cleanyourtv's `bench.py`/`perf-ab.md` into
+`scripts/`, then the Files/browser suite pass.

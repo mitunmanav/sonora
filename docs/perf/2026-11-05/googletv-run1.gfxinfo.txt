@@ -1,0 +1,58 @@
+Applications Graphics Acceleration Info:
+Uptime: 126212 Realtime: 126212
+
+** Graphics info for pid 3518 [com.google.android.tvlauncher] **
+
+Stats since: 102667343090ns
+Total frames rendered: 367
+Janky frames: 92 (25.07%)
+50th percentile: 8ms
+90th percentile: 29ms
+95th percentile: 57ms
+99th percentile: 200ms
+Number Missed Vsync: 8
+Number High input latency: 185
+Number Slow UI thread: 13
+Number Slow bitmap uploads: 1
+Number Slow issue draw commands: 12
+Number Frame deadline missed: 23
+HISTOGRAM: 5ms=70 6ms=24 7ms=63 8ms=38 9ms=22 10ms=15 11ms=14 12ms=8 13ms=5 14ms=5 15ms=9 16ms=2 17ms=14 18ms=8 19ms=5 20ms=0 21ms=4 22ms=1 23ms=2 24ms=2 25ms=6 26ms=3 27ms=3 28ms=6 29ms=2 30ms=5 31ms=4 32ms=2 34ms=0 36ms=0 38ms=2 40ms=0 42ms=1 44ms=0 46ms=0 48ms=1 53ms=2 57ms=2 61ms=0 65ms=0 69ms=1 73ms=2 77ms=0 81ms=0 85ms=1 89ms=1 93ms=0 97ms=0 101ms=1 105ms=1 109ms=0 113ms=1 117ms=0 121ms=1 125ms=1 129ms=0 133ms=1 150ms=2 200ms=1 250ms=1 300ms=1 350ms=0 400ms=0 450ms=0 500ms=0 550ms=1 600ms=0 650ms=0 700ms=0 750ms=0 800ms=0 850ms=0 900ms=0 950ms=0 1000ms=0 1050ms=0 1100ms=0 1150ms=0 1200ms=0 1250ms=0 1300ms=0 1350ms=0 1400ms=0 1450ms=0 1500ms=0 1550ms=0 1600ms=0 1650ms=0 1700ms=0 1750ms=0 1800ms=0 1850ms=0 1900ms=0 1950ms=0 2000ms=0 2050ms=0 2100ms=0 2150ms=0 2200ms=0 2250ms=0 2300ms=0 2350ms=0 2400ms=0 2450ms=0 2500ms=0 2550ms=0 2600ms=0 2650ms=0 2700ms=0 2750ms=0 2800ms=0 2850ms=0 2900ms=0 2950ms=0 3000ms=0 3050ms=0 3100ms=0 3150ms=0 3200ms=0 3250ms=0 3300ms=0 3350ms=0 3400ms=0 3450ms=0 3500ms=0 3550ms=0 3600ms=0 3650ms=0 3700ms=0 3750ms=0 3800ms=0 3850ms=0 3900ms=0 3950ms=0 4000ms=0 4050ms=0 4100ms=0 4150ms=0 4200ms=0 4250ms=0 4300ms=0 4350ms=0 4400ms=0 4450ms=0 4500ms=0 4550ms=0 4600ms=0 4650ms=0 4700ms=0 4750ms=0 4800ms=0 4850ms=0 4900ms=0 4950ms=0
+50th gpu percentile: 8ms
+90th gpu percentile: 24ms
+95th gpu percentile: 4950ms
+99th gpu percentile: 4950ms
+GPU HISTOGRAM: 1ms=95 2ms=17 3ms=5 4ms=12 5ms=19 6ms=19 7ms=12 8ms=34 9ms=33 10ms=22 11ms=6 12ms=9 13ms=1 14ms=4 15ms=3 16ms=5 17ms=2 18ms=5 19ms=2 20ms=2 21ms=4 22ms=3 23ms=11 24ms=7 25ms=2 4950ms=32
+Font Cache (CPU):
+  Size: 250.96 kB 
+  Glyph Count: 62 
+CPU Caches:
+GPU Caches:
+  Other:
+    Other: 54.28 KB (1 entry)
+  Image:
+    Texture: 42.18 MB (54 entries)
+  Scratch:
+    RenderTarget: 48.27 MB (23 entries)
+    Texture: 2.00 MB (1 entry)
+    Buffer Object: 78.00 KB (2 entries)
+Other Caches:
+                         Current / Maximum
+  Layers Total           0.00 KB (numLayers = 0)
+Total GPU memory usage:
+  97072896 bytes, 92.58 MB (72.88 MB is purgeable)
+
+
+Pipeline=Skia (OpenGL)
+Profile data in ms:
+
+	com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity/android.view.ViewRootImpl@44818a7 (visibility=0)
+View hierarchy:
+
+  com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity/android.view.ViewRootImpl@44818a7
+  663 views, 636.68 kB of render nodes
+
+
+Total ViewRootImpl   : 1
+Total attached Views : 663
+Total RenderNode     : 636.68 kB (used) / 1216.07 kB (capacity)
+
