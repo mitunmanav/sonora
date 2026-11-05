@@ -26,36 +26,23 @@ public final class QuickPanel {
     }
 
     public static void show(ToolActivity host) {
-        host.stack().push("Quick settings", "The TV's own screens, one tap away", rows(host));
+        host.stack().pushSettings("Quick settings", rows(host));
     }
 
     public static List<SettingRow> rows(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.push("Wi-Fi", wifiName(host),
-                () -> openFirst(host,
-                        new Intent(Settings.ACTION_WIFI_SETTINGS),
-                        component("com.android.tv.settings",
-                                "com.android.tv.settings.connectivity.NetworkActivity"))));
+                () -> openWifi(host)));
         rows.add(SettingRow.push("Bluetooth", "",
-                () -> openFirst(host,
-                        new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
-                        component("com.android.tv.settings",
-                                "com.android.tv.settings.accessories.AddAccessoryActivity"))));
+                () -> openBluetooth(host)));
         rows.add(SettingRow.push("Display", "",
-                () -> openFirst(host,
-                        new Intent(Settings.ACTION_DISPLAY_SETTINGS),
-                        component("com.android.tv.settings",
-                                "com.android.tv.settings.device.displaysound.DisplaySoundActivity"))));
+                () -> openDisplay(host)));
         rows.add(SettingRow.push("Sound", "",
-                () -> openFirst(host,
-                        new Intent(Settings.ACTION_SOUND_SETTINGS),
-                        component("com.android.tv.settings",
-                                "com.android.tv.settings.device.displaysound.DisplaySoundActivity"))));
+                () -> openSound(host)));
         rows.add(SettingRow.push("Screen saver", "Sonora's own",
                 () -> SettingsPanel.openScreenSaver(host)));
-        rows.add(SettingRow.push("Apps", "disable and uninstall",
-                () -> AppPanel.show(host)));
-        rows.add(SettingRow.push("Background apps", "Stop apps in Android settings",
+        rows.add(SettingRow.push("Apps", "", () -> AppPanel.show(host)));
+        rows.add(SettingRow.push("Background apps", "",
                 () -> openFirst(host,
                         new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS),
                         new Intent(Settings.ACTION_APPLICATION_SETTINGS),
@@ -70,6 +57,30 @@ public final class QuickPanel {
                 + "the TV's own sponsored launcher back. “Tidy up again” turns them off once "
                 + "more, and leaves everything you use alone."));
         return rows;
+    }
+
+    public static void openWifi(Context context) {
+        openFirst(context, new Intent(Settings.ACTION_WIFI_SETTINGS),
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.connectivity.NetworkActivity"));
+    }
+
+    public static void openBluetooth(Context context) {
+        openFirst(context, new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.accessories.AddAccessoryActivity"));
+    }
+
+    public static void openDisplay(Context context) {
+        openFirst(context, new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.device.displaysound.DisplaySoundActivity"));
+    }
+
+    public static void openSound(Context context) {
+        openFirst(context, new Intent(Settings.ACTION_SOUND_SETTINGS),
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.device.displaysound.DisplaySoundActivity"));
     }
 
     /**
@@ -124,7 +135,7 @@ public final class QuickPanel {
      * not allowed to read it unless it knows where the device is, and a
      * launcher should not ask for that.
      */
-    private static String wifiName(Context context) {
+    public static String wifiName(Context context) {
         try {
             WifiManager wifi = (WifiManager) context.getApplicationContext()
                     .getSystemService(Context.WIFI_SERVICE);

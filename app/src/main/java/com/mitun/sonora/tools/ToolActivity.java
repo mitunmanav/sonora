@@ -5,16 +5,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 
 import com.mitun.sonora.AppManager;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
+import com.mitun.sonora.ui.Glyph;
+import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.ScreenStack;
+import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Ui;
 
 /**
@@ -26,11 +32,16 @@ import com.mitun.sonora.ui.Ui;
  * the activity and its views are the whole footprint.
  */
 public final class ToolActivity extends Activity {
-    /** "settings" (the default), "tools", "quick" or "wizard". */
+    /** "settings" (the default), "tools", "quick", "apps" or "wizard". */
     public static final String EXTRA_SCREEN = "screen";
     private static final int REQUEST_PICK_WALLPAPER = 41;
 
+    private static final String EXTRA_PAGE = "page";
+
     private FrameLayout root;
+    private ImageView mark;
+    private Glyph markGlyph;
+    private int markKind;
     private ScreenStack stack;
     private Prefs prefs;
     private View choiceOverlay;
@@ -54,9 +65,30 @@ public final class ToolActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
+        Theme.load(this);
         Ui.immersive(this);
 
         root = new FrameLayout(this);
+        root.addView(new BackdropView(this), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // The settings pages are transparent on the left, so the mark stays
+        // still while their lists slide over it, and changes with the page.
+        mark = new ImageView(this);
+        markGlyph = new Glyph(Glyph.GEAR);
+        markKind = Glyph.GEAR;
+        markGlyph.setInk(markInk());
+        mark.setImageDrawable(markGlyph);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int markSize = Math.round(screenWidth * 0.24f);
+        FrameLayout.LayoutParams markParams = new FrameLayout.LayoutParams(markSize, markSize,
+                Gravity.START | Gravity.TOP);
+        markParams.setMarginStart(Math.round(screenWidth * 0.155f));
+        markParams.topMargin = Math.round(getResources().getDisplayMetrics().heightPixels * 0.25f);
+        root.addView(mark, markParams);
+
         stack = new ScreenStack(this, new ScreenStack.Listener() {
             @Override
             public void onEmpty() {
@@ -66,10 +98,17 @@ public final class ToolActivity extends Activity {
             @Override
             public void onPushed() {
             }
+
+            @Override
+            public void onTopChanged(String title) {
+                showMark(markFor(title));
+            }
         });
         root.addView(stack, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
+        // The backdrop paints every pixel, so the window has no need to first.
+        getWindow().setBackgroundDrawable(null);
 
         String screen = getIntent().getStringExtra(EXTRA_SCREEN);
         if ("wizard".equals(screen)) {
@@ -79,9 +118,69 @@ public final class ToolActivity extends Activity {
             ToolsPanel.show(this);
         } else if ("quick".equals(screen)) {
             QuickPanel.show(this);
+        } else if ("apps".equals(screen)) {
+            AppPanel.show(this);
         } else {
             SettingsPanel.show(this);
+            String page = getIntent().getStringExtra(EXTRA_PAGE);
+            if (page != null) {
+                SettingsPanel.openPage(this, page);
+            }
         }
+    }
+
+    /**
+     * Builds this screen again on one page of the settings, after a choice that
+     * changes how everything in it is drawn.
+     */
+    void reopenAt(String page) {
+        // After the picker has let go of the focus and its callback has returned.
+        root.post(() -> {
+            setIntent(getIntent().putExtra(EXTRA_PAGE, page));
+            recreate();
+        });
+    }
+
+    private static int markInk() {
+        return Ui.alpha(Theme.ink(), 0.82f);
+    }
+
+    /** The mark beside a page, as tvOS gives each settings page its own picture. */
+    private static int markFor(String title) {
+        switch (title == null ? "" : title) {
+            case "Quick settings":
+                return Glyph.SLIDERS;
+            case "Home Screen":
+                return Glyph.HOME;
+            case "Clock":
+                return Glyph.CLOCK;
+            case "Screen Saver":
+                return Glyph.SAVER;
+            case "Apps":
+                return Glyph.APPS;
+            case "Tools":
+                return Glyph.TOOLS;
+            case "System":
+                return Glyph.INFO;
+            case "Favourites":
+                return Glyph.STAR;
+            default:
+                return Glyph.GEAR;
+        }
+    }
+
+    private void showMark(int kind) {
+        if (kind == markKind) {
+            return;
+        }
+        markKind = kind;
+        markGlyph = new Glyph(kind);
+        markGlyph.setInk(markInk());
+        // A large mark drawn in a light line, the weight tvOS gives a big symbol.
+        markGlyph.setWeight(1.1f);
+        mark.setImageDrawable(markGlyph);
+        mark.setAlpha(0f);
+        Motion.spring(mark, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
     }
 
     public ScreenStack stack() {

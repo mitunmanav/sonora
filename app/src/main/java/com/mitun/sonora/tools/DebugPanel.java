@@ -240,7 +240,7 @@ public final class DebugPanel {
     private static void showLog(ToolActivity host) {
         final android.widget.TextView text = new android.widget.TextView(host);
         text.setText("Reading…");
-        text.setTextColor(0xFFF5F6F8);
+        text.setTextColor(com.mitun.sonora.ui.Theme.ink());
         text.setTypeface(android.graphics.Typeface.MONOSPACE);
         text.setTextSize(11);
         text.setPadding(0, 0, 0, 0);

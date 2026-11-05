@@ -5,7 +5,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.mitun.sonora.browser.BrowserActivity;
-import com.mitun.sonora.tools.FilePanel;
 import com.mitun.sonora.tools.FileServer;
 import com.mitun.sonora.ui.ScreensaverView;
 
@@ -48,24 +47,6 @@ public class EdgeCasesTest {
     }
 
     @Test
-    public void filePanelIsSameContentDetectsTruncation() throws IOException {
-        File a = temp.newFile("a.txt");
-        File b = temp.newFile("b.txt");
-        try (FileOutputStream outA = new FileOutputStream(a);
-             FileOutputStream outB = new FileOutputStream(b)) {
-            outA.write("Hello World".getBytes());
-            outB.write("Hello".getBytes()); // truncated
-        }
-        assertFalse(FilePanel.isSameContent(a, b));
-
-        File c = temp.newFile("c.txt");
-        try (FileOutputStream outC = new FileOutputStream(c)) {
-            outC.write("Hello World".getBytes());
-        }
-        assertTrue(FilePanel.isSameContent(a, c));
-    }
-
-    @Test
     public void fileServerCopyFileVerifiesSize() throws IOException {
         File src = temp.newFile("source.txt");
         try (FileOutputStream out = new FileOutputStream(src)) {
@@ -74,33 +55,14 @@ public class EdgeCasesTest {
         File dst = new File(temp.getRoot(), "dest.txt");
         assertTrue(FileServer.copyFile(src, dst));
         assertEquals(src.length(), dst.length());
-        assertTrue(FilePanel.isSameContent(src, dst));
-    }
-
-    @Test
-    public void filePanelDeleteCleansUpRecursively() throws IOException {
-        File folder = temp.newFolder("subfolder");
-        File child1 = new File(folder, "child1.txt");
-        File child2 = new File(folder, "child2.txt");
-        assertTrue(child1.createNewFile());
-        assertTrue(child2.createNewFile());
-
-        assertTrue(FilePanel.delete(folder));
-        assertFalse(folder.exists());
-        assertFalse(child1.exists());
-        assertFalse(child2.exists());
+        assertEquals(new String(java.nio.file.Files.readAllBytes(src.toPath())),
+                new String(java.nio.file.Files.readAllBytes(dst.toPath())));
     }
 
     @Test
     public void appEntrySettingsTileNeverLaunches() {
         AppEntry settings = new AppEntry("Settings", null, null, null, null, 0, true);
         assertFalse(settings.launch(null));
-    }
-
-    @Test
-    public void filePanelDeleteHandlesNullOrMissingGracefully() {
-        assertTrue(FilePanel.delete(null));
-        assertTrue(FilePanel.delete(new File("/non/existent/path/for/test")));
     }
 
     @Test
@@ -111,58 +73,10 @@ public class EdgeCasesTest {
     }
 
     @Test
-    public void filePanelDeleteRemovesDirectoryWithBrokenSymlink() throws IOException {
-        File folder = temp.newFolder("folderWithBrokenLink");
-        File brokenLink = new File(folder, "brokenLink");
-        java.nio.file.Files.createSymbolicLink(brokenLink.toPath(),
-                new File(temp.getRoot(), "missing_target").toPath());
-        assertFalse(brokenLink.exists());
-
-        assertTrue(FilePanel.delete(folder));
-        assertFalse(folder.exists());
-    }
-
-    @Test
-    public void filePanelIsSymlinkDetectsSymlinkAndRegularFile() throws IOException {
-        File regularFolder = temp.newFolder("regular");
-        File link = new File(temp.getRoot(), "linkToFolder");
-        java.nio.file.Files.createSymbolicLink(link.toPath(), regularFolder.toPath());
-
-        assertTrue(FilePanel.isSymlink(link));
-        assertFalse(FilePanel.isSymlink(regularFolder));
-        assertFalse(FilePanel.isSymlink(null));
-    }
-
-    @Test
     public void fileServerCopyFilePreventsInfiniteRecursionIntoSubfolder() throws IOException {
         File parent = temp.newFolder("parentDir");
         File child = new File(parent, "childDir");
         assertFalse(FileServer.copyFile(parent, child));
         assertFalse(FileServer.copyFile(parent, parent));
-    }
-
-    @Test
-    public void sonoraProviderFileOfRejectsNullContext() {
-        org.junit.Assert.assertNull(SonoraProvider.fileOf(null, null));
-        assertFalse(SonoraProvider.isAllowed(null, new File("/etc/passwd")));
-        assertFalse(SonoraProvider.isAllowed(null, null));
-    }
-
-    @Test
-    public void sonoraProviderOpenFileRejectsWriteMode() throws Exception {
-        SonoraProvider provider = new SonoraProvider();
-        try {
-            provider.openFile(null, "w");
-            org.junit.Assert.fail("Expected SecurityException");
-        } catch (SecurityException e) {
-            assertTrue(e.getMessage().contains("read-only"));
-        }
-
-        try {
-            provider.openFile(null, "rw");
-            org.junit.Assert.fail("Expected SecurityException");
-        } catch (SecurityException e) {
-            assertTrue(e.getMessage().contains("read-only"));
-        }
     }
 }

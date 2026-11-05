@@ -8,13 +8,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.LinearGradient;
-import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -36,7 +31,7 @@ public final class Ui {
     // it is dimmer than the ink but not faint.
     public static final int INK_TERTIARY = 0xB3F5F6F8;
     /** A mark that sits on the glass while it is at rest. */
-    public static final int INK_ON_GLASS = 0x99F5F6F8;
+    public static final int INK_ON_GLASS = 0xE6F5F6F8;
     /** A mark that sits on the glass once it has caught the light. */
     public static final int INK_ON_LIT = 0xFF0A0D12;
     public static final int NIGHT = 0xFF05070B;
@@ -164,6 +159,12 @@ public final class Ui {
     }
 
     public static Bitmap decodeScene(Resources resources, int resId, int reqWidth, int reqHeight) {
+        return decodeScene(resources, resId, reqWidth, reqHeight, Bitmap.Config.ARGB_8888);
+    }
+
+    /** As above. RGB_565 halves a photograph at the cost of some banding in a clear sky. */
+    public static Bitmap decodeScene(Resources resources, int resId, int reqWidth, int reqHeight,
+                                     Bitmap.Config config) {
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
         BitmapFactory.decodeResource(resources, resId, bounds);
@@ -174,9 +175,8 @@ public final class Ui {
         }
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inSampleSize = sample;
-        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        Bitmap result = BitmapFactory.decodeResource(resources, resId, options);
-        return result;
+        options.inPreferredConfig = config;
+        return BitmapFactory.decodeResource(resources, resId, options);
     }
 
     public static Bitmap decodeUri(Resources resources, android.content.ContentResolver resolver,
@@ -287,125 +287,16 @@ public final class Ui {
         return Color.HSVToColor(hsv);
     }
 
-    /** A small gear drawn into a bitmap, used by the settings tile and profile pill. */
-    public static Bitmap gear(Context context, int sizePx, boolean withTile) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        float s = sizePx;
-        if (withTile) {
-            Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-            bg.setShader(new LinearGradient(0, 0, 0, s,
-                    new int[]{0xFF4A505C, 0xFF232731, 0xFF15181F},
-                    new float[]{0f, 0.56f, 1f}, Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(new RectF(0, 0, s, s), s * 0.18f, s * 0.18f, bg);
-        }
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        // The gear is always a white mark. The tile behind it, when it has
-        // one, is drawn below.
-        p.setColor(Color.WHITE);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(s * 0.045f);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        float cx = s / 2f;
-        float cy = s / 2f;
-        float outer = s * 0.31f;
-        float inner = s * 0.12f;
-        canvas.drawCircle(cx, cy, outer, p);
-        canvas.drawCircle(cx, cy, inner, p);
-        for (int i = 0; i < 8; i++) {
-            canvas.save();
-            canvas.rotate(i * 45f, cx, cy);
-            canvas.drawLine(cx, cy - outer + s * 0.01f, cx, cy - outer - s * 0.075f, p);
-            canvas.restore();
-        }
-        return bitmap;
-    }
-
-    private static final Paint BITMAP_PAINT =
-            new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-
-    /**
-     * The control centre mark: three sliders, each with its knob in a
-     * different place. It says "these are the settings" without a word.
-     */
-    public static Bitmap sliders(Context context, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(0xFFF5F6F8);
-        p.setStrokeWidth(sizePx * 0.075f);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        float inset = sizePx * 0.14f;
-        float span = sizePx - inset * 2f;
-        float[] knobs = {0.66f, 0.32f, 0.56f};
-        for (int i = 0; i < 3; i++) {
-            float y = inset + span * i / 2f;
-            canvas.drawLine(inset, y, inset + span, y, p);
-            p.setStyle(Paint.Style.FILL);
-            canvas.drawCircle(inset + span * knobs[i], y, sizePx * 0.115f, p);
-            p.setStyle(Paint.Style.STROKE);
-        }
-        return bitmap;
-    }
-
-    /**
-     * The magnifying glass that means "search".
-     *
-     * Drawn here rather than taken from the platform, so it is the same mark
-     * on every TV and the same family as the sliders and the gear.
-     */
-    public static Bitmap magnifier(Context context, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(0xFFF5F6F8);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(sizePx * 0.085f);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        float s = sizePx;
-        float cx = s * 0.42f;
-        float cy = s * 0.42f;
-        float r = s * 0.26f;
-        canvas.drawCircle(cx, cy, r, p);
-        // The handle, at the angle a magnifying glass is always drawn at.
-        canvas.drawLine(cx + r * 0.72f, cy + r * 0.72f, s * 0.74f, s * 0.74f, p);
-        return bitmap;
-    }
-
-    /**
-     * The microphone that means "speak".
-     *
-     * The capsule, the cradle under it and the stem: the shape everyone reads
-     * as "voice" without reading anything.
-     */
-    public static Bitmap mic(Context context, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(0xFFF5F6F8);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(sizePx * 0.075f);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        float s = sizePx;
-        float cx = s / 2f;
-        canvas.drawRoundRect(cx - s * 0.105f, s * 0.16f, cx + s * 0.105f, s * 0.50f,
-                s * 0.105f, s * 0.105f, p);
-        // The cradle: the lower half of a circle whose arms start level with
-        // the bottom of the capsule.
-        canvas.drawArc(cx - s * 0.21f, s * 0.29f, cx + s * 0.21f, s * 0.71f,
-                0f, 180f, false, p);
-        canvas.drawLine(cx, s * 0.71f, cx, s * 0.84f, p);
-        canvas.drawLine(cx - s * 0.13f, s * 0.84f, cx + s * 0.13f, s * 0.84f, p);
-        return bitmap;
-    }
-
-    private static final Rect BITMAP_SRC = new Rect();
-    private static final RectF BITMAP_DST = new RectF();
     public static void drawCenterCrop(Canvas canvas, Bitmap bitmap, RectF destination, float zoom,
                                       float offsetX, float offsetY) {
         drawCenterCrop(canvas, bitmap, destination, zoom, offsetX, offsetY, 255);
     }
 
+    /**
+     * Allocates on purpose: this runs on the decode threads as well as in onDraw,
+     * and a shared rectangle or paint would be overwritten mid-draw. Nothing calls
+     * it per frame, since a card rounds its artwork with a shader instead.
+     */
     public static void drawCenterCrop(Canvas canvas, Bitmap bitmap, RectF destination, float zoom,
                                       float offsetX, float offsetY, int alpha) {
         if (bitmap == null || bitmap.isRecycled()) {
@@ -418,12 +309,9 @@ public final class Ui {
         float sh = bitmap.getHeight() * scale;
         float left = destination.left - (sw - dw) / 2f + offsetX;
         float top = destination.top - (sh - dh) / 2f + offsetY;
-        BITMAP_SRC.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
-        BITMAP_DST.set(left, top, left + sw, top + sh);
-        int previous = BITMAP_PAINT.getAlpha();
-        BITMAP_PAINT.setAlpha(alpha);
-        canvas.drawBitmap(bitmap, BITMAP_SRC, BITMAP_DST, BITMAP_PAINT);
-        BITMAP_PAINT.setAlpha(previous);
+        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        paint.setAlpha(alpha);
+        canvas.drawBitmap(bitmap, null, new RectF(left, top, left + sw, top + sh), paint);
     }
 
     public static int lerpColor(int a, int b, float t) {
