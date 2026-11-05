@@ -2,6 +2,7 @@ package com.mitun.sonora;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -26,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.mitun.sonora.tools.QuickPanel;
+import com.mitun.sonora.ui.AppSwitcherView;
 import com.mitun.sonora.ui.AppTileView;
 import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
@@ -104,6 +106,10 @@ public class HomeActivity extends Activity {
         }
     };
     private ControlCenter controlCenter;
+    private AppSwitcherView appSwitcher;
+    /** When the TV last sent a HOME signal here; two in a row open the switcher. */
+    private long lastHomeSignalAt;
+    private long lastHomePressAt;
     private FocusGlassView focusGlass;
     private LinearLayout grid;
     private FrameLayout dockPort;
@@ -839,6 +845,90 @@ public class HomeActivity extends Activity {
         }
     }
 
+    // --- App switcher ---------------------------------------------------------
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            onHomeSignal();
+        }
+    }
+
+    /**
+     * One HOME press can arrive twice, once as a key event and once as the
+     * HOME intent for this singleTask activity. Signals closer than 150 ms are
+     * the same press; two presses within 450 ms open the switcher, like the
+     * double-press of the TV button on tvOS.
+     */
+    private void onHomeSignal() {
+        long now = System.currentTimeMillis();
+        if (now - lastHomeSignalAt < 150) {
+            return;
+        }
+        lastHomeSignalAt = now;
+        if (appSwitcher != null) {
+            closeAppSwitcher(null);
+            return;
+        }
+        if (now - lastHomePressAt < 450) {
+            openAppSwitcher();
+        }
+        lastHomePressAt = now;
+    }
+
+    private void openAppSwitcher() {
+        if (appSwitcher != null || screensaver != null) {
+            return;
+        }
+        suppressIdle = true;
+        showChevron(false);
+        List<AppEntry> apps = RecentApps.recent(this);
+        appSwitcher = new AppSwitcherView(this, apps, gridBackdrop.softened(),
+                new AppSwitcherView.Listener() {
+                    @Override
+                    public void onPick(AppEntry entry) {
+                        closeAppSwitcher(() -> {
+                            if (!entry.launch(HomeActivity.this)) {
+                                Ui.toast(HomeActivity.this, "Could not open " + entry.label);
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onCloseApp(String packageName) {
+                        try {
+                            ((android.app.ActivityManager) getSystemService(
+                                    Context.ACTIVITY_SERVICE)).killBackgroundProcesses(packageName);
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+
+                    @Override
+                    public void onDismiss() {
+                        closeAppSwitcher(null);
+                    }
+                });
+        overlayHost.addView(appSwitcher, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        appSwitcher.open();
+    }
+
+    private void closeAppSwitcher(Runnable after) {
+        if (appSwitcher == null) {
+            return;
+        }
+        final AppSwitcherView closing = appSwitcher;
+        appSwitcher = null;
+        suppressIdle = false;
+        restoreFocus();
+        showChevron(true);
+        closing.close(() -> overlayHost.removeView(closing));
+        if (after != null) {
+            after.run();
+        }
+    }
+
     private void openTool(String screen) {
         try {
             startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
@@ -1532,6 +1622,10 @@ public class HomeActivity extends Activity {
         }
         if (controlCenter != null) {
             closeControlCenter(null);
+            return true;
+        }
+        if (appSwitcher != null) {
+            closeAppSwitcher(null);
             return true;
         }
         if (searchOverlay != null) {
