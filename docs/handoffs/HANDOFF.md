@@ -490,7 +490,7 @@ verified on the device** — check the keyboard comes up, that the results rail
 takes the D-pad, and that the mic either opens the assistant or falls back.
 
 **P1 — The strict list, in order.** Every item is evidence-backed (see
-`GOOGLE-TV-TEARDOWN.md` §8-§10); do them in this order:
+`docs/research/GOOGLE-TV-TEARDOWN.md` §8-§10); do them in this order:
 1. **Working uninstall** — done in part: `REQUEST_DELETE_PACKAGES` is
    declared, the system uninstaller is asked, and the result is read back on
    resume ("Uninstalled X" or "X was not uninstalled"). Still to do:

@@ -436,7 +436,7 @@ Read from Apple's own material, not from memory:
 
 ### 9.2 What Google TV does, for the parts tvOS does not cover
 
-From the teardown (`GOOGLE-TV-TEARDOWN.md` §9):
+From the teardown (`docs/research/GOOGLE-TV-TEARDOWN.md` §9):
 - The launcher **never handles the search key**. The system fires
   `ACTION_ASSIST` at the installed assistant.
 - The launcher's own entry point is a **search widget in the system bar**, and
