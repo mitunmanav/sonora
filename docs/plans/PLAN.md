@@ -953,3 +953,28 @@ first). Linked from `README.md` and the `AGENTS.md` layout (CLAUDE.md is a
 symlink, so it reads the same file).
 
 Verified: docs only, no code changed.
+
+## 24. Session: bench.py landed, the focus rim removed
+
+- `scripts/bench.py` + `scripts/perf-ab.md` ported from cleanyourtv — the
+  `.scratch/benchmark-scripts/` effort is delivered and its spec directory
+  removed. bench.py runs the 2026-11-05 protocol unattended: system + app
+  meminfo, force-stop, `am start -W` cold start, gfxinfo reset, the 12-key
+  walk under the tv.sh focus guard, raw dumps to
+  `docs/perf/<date>/<label>-*`.
+- A port bug fixed the same day: `meminfo-app-post` fell through to
+  `/proc/meminfo`, so the first two runs' post-walk "app" dumps are system
+  memory. `scripts/__pycache__/` is gitignored now.
+- `FocusGlassView` dropped the focus rim — tvOS lifts the focused card with
+  a shadow alone, there is no outline. Pad 8→16 dp and the three shadow
+  layers retuned so nothing leaks above the card. The per-card rim stays in
+  `AppIconView` only for hosts without the glass (search results).
+- A/B measured (`docs/perf/2026-11-05.md`, phase0 vs phase1/1b): frame
+  parity — ~0.9% deadline misses and p99 ~23 ms on both sides.
+- The TV went offline mid-session (both known addresses unreachable): the
+  with-rim build is still installed there. Owed when it returns: deploy the
+  rim-less build, eyeball the glass (lit check on the focus shadow), and a
+  phase0b rerun to answer the +8 MB idle-PSS delta recorded in the perf file.
+
+Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, two on-device bench
+runs. Not verified: the look on the TV, phase0b.
