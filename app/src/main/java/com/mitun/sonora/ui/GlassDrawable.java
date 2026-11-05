@@ -1,11 +1,13 @@
 package com.mitun.sonora.ui;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
@@ -37,12 +39,18 @@ public final class GlassDrawable extends Drawable {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint underPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint litPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint backdropPaint = new Paint(
+            Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint veilPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private Bitmap backdrop;
+    private float lens = 1f;
     private final RectF rect = new RectF();
     private final RectF inner = new RectF();
-    private final RectF under = new RectF();
-    private final Path shape = new Path();
+    /** The veil and the sheen are already in the backdrop, so they cost no draw. */
+    private boolean bakedOver;
+    /** Maps the backdrop onto this pane when it is a slice of a bigger picture. */
+    private Matrix sliceMatrix;
     private final float radius;
     private final float tint;
     private final boolean circle;
@@ -93,10 +101,106 @@ public final class GlassDrawable extends Drawable {
         invalidateSelf();
     }
 
+    /**
+     * Shows the wallpaper through the glass instead of the dark lens.
+     *
+     * @param lens what {@link GlassLens} baked for this pane, or null for the
+     *             dark lens
+     * @param veil the shade over it, so a mark on the glass stays readable
+     */
+    public void setBackdrop(Bitmap lens, int veil) {
+        backdrop = lens;
+        sliceMatrix = null;
+        veilPaint.setColor(veil);
+        bakedOver = false;
+        if (lens != null && lens.isMutable() && !rect.isEmpty()) {
+            bakeOver(lens, veil);
+        }
+        applyBackdropShader();
+        applyAlphas();
+        invalidateSelf();
+    }
+
+    /**
+     * Frosts the pane with its share of a picture the size of the screen, usually
+     * the small blurred one. It samples one shared texture, so a pane costs no
+     * bitmap of its own.
+     *
+     * @param region where this pane sits on the screen
+     */
+    public void setFrost(Bitmap picture, int screenWidth, int screenHeight, float zoom,
+                         android.graphics.Rect region, int veil) {
+        backdrop = picture;
+        veilPaint.setColor(veil);
+        bakedOver = false;
+        sliceMatrix = null;
+        if (picture != null) {
+            float scale = Math.max(screenWidth / (float) picture.getWidth(),
+                    screenHeight / (float) picture.getHeight()) * zoom;
+            sliceMatrix = new Matrix();
+            sliceMatrix.setScale(scale, scale);
+            sliceMatrix.postTranslate(
+                    (screenWidth - picture.getWidth() * scale) / 2f - region.left,
+                    (screenHeight - picture.getHeight() * scale) / 2f - region.top);
+        }
+        applyBackdropShader();
+        applyAlphas();
+        invalidateSelf();
+    }
+
+    /**
+     * Paints the veil and the sheen into the pane's own bitmap, so at rest the
+     * whole glass is one textured quad and a stroke rather than four blends over
+     * a fifth of the screen.
+     */
+    private void bakeOver(Bitmap lens, int veil) {
+        Canvas canvas = new Canvas(lens);
+        canvas.drawColor(veil);
+        canvas.scale(lens.getWidth() / rect.width(), lens.getHeight() / rect.height());
+        canvas.translate(-rect.left, -rect.top);
+        highlightPaint.setAlpha(255);
+        canvas.drawRect(rect, highlightPaint);
+        bakedOver = true;
+    }
+
+    /**
+     * How much of the bent wallpaper shows, from none to all. The dock lets it
+     * go as the grid opens over the blurred wallpaper. Only an alpha changes,
+     * so this is a redraw and nothing else.
+     */
+    public void setLens(float lens) {
+        float clamped = Math.max(0f, Math.min(1f, lens));
+        if (clamped == this.lens) {
+            return;
+        }
+        this.lens = clamped;
+        applyAlphas();
+        invalidateSelf();
+    }
+
+    private void applyBackdropShader() {
+        if (backdrop == null || rect.isEmpty()) {
+            backdropPaint.setShader(null);
+            return;
+        }
+        BitmapShader shader = new BitmapShader(backdrop, Shader.TileMode.CLAMP,
+                Shader.TileMode.CLAMP);
+        Matrix matrix = sliceMatrix;
+        if (matrix == null) {
+            matrix = new Matrix();
+            matrix.setScale(rect.width() / backdrop.getWidth(),
+                    rect.height() / backdrop.getHeight());
+            matrix.postTranslate(rect.left, rect.top);
+        }
+        shader.setLocalMatrix(matrix);
+        backdropPaint.setShader(shader);
+    }
+
     @Override
     protected void onBoundsChange(android.graphics.Rect bounds) {
         super.onBoundsChange(bounds);
         rect.set(bounds);
+        applyBackdropShader();
         float stroke = edgePaint.getStrokeWidth();
         inner.set(bounds.left + stroke, bounds.top + stroke,
                 bounds.right - stroke, bounds.bottom - stroke);
@@ -106,26 +210,21 @@ public final class GlassDrawable extends Drawable {
                 new int[]{adjust(Color.BLACK, 0.56f * tint), adjust(Color.BLACK, 0.44f * tint),
                         adjust(Color.BLACK, 0.54f * tint)},
                 new float[]{0f, 0.52f, 1f}, Shader.TileMode.CLAMP));
-        // The light that catches the top of the material. It runs the whole
-        // width: one even wash, not a spotlight, so the dock reads as a slab
-        // of glass rather than a lit patch.
+        // The light that catches the top of the material runs the whole width, one
+        // even wash. The same gradient ends in the underside, which catches no light
+        // and gives the material its edge, so there is no clip and no extra pass.
+        float underAt = Math.max(0.62f,
+                1f - Math.max(2f, stroke * 3f) / Math.max(1, bounds.height()));
         highlightPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
                 new int[]{adjust(Color.WHITE, 0.13f * tint), adjust(Color.WHITE, 0.035f * tint),
-                        Color.TRANSPARENT},
-                new float[]{0f, 0.16f, 0.62f}, Shader.TileMode.CLAMP));
+                        Color.TRANSPARENT, Color.TRANSPARENT, adjust(Color.BLACK, 0.40f * tint)},
+                new float[]{0f, 0.16f, 0.62f, underAt, 1f}, Shader.TileMode.CLAMP));
         // The light catches the top edge, so that is where the rim is
         // brightest. It fades out towards the bottom of the material.
         edgePaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.WHITE, 0.82f * tint), adjust(Color.WHITE, 0.24f * tint),
-                        adjust(Color.WHITE, 0.08f * tint)},
+                new int[]{adjust(Color.WHITE, 0.72f * tint), adjust(Color.WHITE, 0.28f * tint),
+                        adjust(Color.WHITE, 0.24f * tint)},
                 new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
-        // The underside catches no light at all, which is what gives the
-        // material its edge.
-        under.set(bounds.left, bounds.bottom - Math.max(2f, stroke * 3f),
-                bounds.right, bounds.bottom);
-        underPaint.setShader(new LinearGradient(0, under.top, 0, under.bottom,
-                new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.40f * tint)},
-                new float[]{0f, 1f}, Shader.TileMode.CLAMP));
         // The same lens with the light on it. The fill is almost opaque white:
         // Apple's focused control is a white surface with dark ink, not a grey
         // gradient.
@@ -138,13 +237,15 @@ public final class GlassDrawable extends Drawable {
 
     private void applyAlphas() {
         fillPaint.setAlpha(alpha);
+        backdropPaint.setAlpha(Math.round(alpha * lens));
         // The rim of a lit lens is no longer a bright edge: the lens itself is
         // the bright thing now.
         edgePaint.setAlpha(Math.round(alpha * (1f - 0.78f * focus)));
         // The top sheen stays on a lit lens too: it is what keeps the surface
         // reading as glass once it has turned white.
-        highlightPaint.setAlpha(Math.round(alpha * (1f - 0.30f * focus)));
-        underPaint.setAlpha(alpha);
+        float sheen = alpha * (1f - 0.30f * focus);
+        // Once the sheen is baked in, it only has to be drawn as the backdrop fades.
+        highlightPaint.setAlpha(Math.round(bakedOver ? sheen * (1f - lens) : sheen));
         // The lit layer fades in over the dark one.
         litPaint.setAlpha(Math.round(alpha * 0.96f * focus));
     }
@@ -156,21 +257,29 @@ public final class GlassDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
+        if (alpha == 0) {
+            return;
+        }
         float r = circle ? Math.min(rect.width(), rect.height()) / 2f : radius;
         float innerRadius = Math.max(0, r - edgePaint.getStrokeWidth() / 2f);
-        canvas.drawRoundRect(rect, r, r, fillPaint);
+        boolean showsBackdrop = backdrop != null && !backdrop.isRecycled()
+                && backdropPaint.getShader() != null;
+        if (!showsBackdrop) {
+            canvas.drawRoundRect(rect, r, r, fillPaint);
+        } else {
+            if (lens > 0f) {
+                canvas.drawRoundRect(rect, r, r, backdropPaint);
+            }
+            if (!bakedOver) {
+                canvas.drawRoundRect(rect, r, r, veilPaint);
+            }
+        }
         if (focus > 0f) {
             canvas.drawRoundRect(rect, r, r, litPaint);
         }
-        // The shadowed underside, cut to the shape so it does not stick out
-        // past the corners.
-        shape.rewind();
-        shape.addRoundRect(rect, r, r, Path.Direction.CW);
-        canvas.save();
-        canvas.clipPath(shape);
-        canvas.drawRect(under, underPaint);
-        canvas.restore();
-        canvas.drawRoundRect(inner, innerRadius, innerRadius, highlightPaint);
+        if (highlightPaint.getAlpha() > 0) {
+            canvas.drawRoundRect(inner, innerRadius, innerRadius, highlightPaint);
+        }
         canvas.drawRoundRect(inner, innerRadius, innerRadius, edgePaint);
     }
 

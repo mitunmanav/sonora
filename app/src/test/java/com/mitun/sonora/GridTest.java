@@ -13,7 +13,7 @@ public class GridTest {
         for (int width : new int[]{640, 853, 960, 1280, 1920}) {
             Grid.Metrics m = Grid.compute(width);
             float ratio = (float) m.tileWidthDp / width;
-            // The measured tvOS proportion is 14.7%; rounding may nudge it a little.
+            // The measured tvOS proportion is 13.0%; rounding may nudge it a little.
             assertTrue("width " + width + " gave ratio " + ratio,
                     ratio > Grid.ICON_WIDTH_RATIO - 0.02f && ratio < Grid.ICON_WIDTH_RATIO + 0.02f);
         }
@@ -59,6 +59,27 @@ public class GridTest {
             int used = m.tileWidthDp * m.columns + m.gapDp * (m.columns - 1);
             assertTrue("overflow at " + width + ": " + used + " > " + content, used <= content);
         }
+    }
+
+    @Test
+    public void theFirstRowStaysInTheDock() {
+        assertEquals(0f, Grid.scrollFor(0, 700f, 260f), 0.001f);
+    }
+
+    @Test
+    public void anyOtherRowOpensTheGridAndOnlyScrollsPastWhatFits() {
+        assertEquals(-700f, Grid.scrollFor(1, 700f, 260f), 0.001f);
+        assertEquals(-700f, Grid.scrollFor(3, 700f, 260f), 0.001f);
+        assertEquals(-960f, Grid.scrollFor(4, 700f, 260f), 0.001f);
+        assertEquals(-1220f, Grid.scrollFor(5, 700f, 260f), 0.001f);
+    }
+
+    @Test
+    public void openProgressFollowsTheDockAndStopsAtBothEnds() {
+        assertEquals(0f, Grid.openProgress(0f, 700f), 0.001f);
+        assertEquals(0.5f, Grid.openProgress(-350f, 700f), 0.001f);
+        assertEquals(1f, Grid.openProgress(-700f, 700f), 0.001f);
+        assertEquals(1f, Grid.openProgress(-1500f, 700f), 0.001f);
     }
 
     @Test

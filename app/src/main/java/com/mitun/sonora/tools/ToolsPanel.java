@@ -1,6 +1,8 @@
 package com.mitun.sonora.tools;
 
-import android.content.Context;
+import android.content.Intent;
+
+import com.mitun.files.FilesActivity;
 
 import com.mitun.sonora.browser.BrowserActivity;
 import com.mitun.sonora.ui.SettingRow;
@@ -35,12 +37,24 @@ public final class ToolsPanel {
                     new String[]{"Turn it on", "Not now"}, 0, index -> {
                         if (index == 0) {
                             host.prefs().setFilesEnabled(true);
-                            FilePanel.show(host);
+                            startFiles(host);
                         }
                     });
             return;
         }
-        FilePanel.show(host);
+        startFiles(host);
+    }
+
+    /** The same file manager as the standalone Files app, bundled in this one. */
+    private static void startFiles(ToolActivity host) {
+        host.startActivity(new Intent(host, FilesActivity.class)
+                .putExtra(FilesActivity.EXTRA_OWN_FOLDER, FileServer.appFolder(host).getAbsolutePath())
+                .putExtra(FilesActivity.EXTRA_OWN_LABEL, "Sonora")
+                .putExtra(FilesActivity.EXTRA_LIGHT, host.prefs().lightAppearance())
+                .putExtra(FilesActivity.EXTRA_SHARE_CLASS, ShareActivity.class.getName())
+                .putExtra(FilesActivity.EXTRA_SHARE_LABEL, "Share over the Network")
+                .putExtra(FilesActivity.EXTRA_SHARE_PATH, ShareActivity.EXTRA_PATH)
+                .putExtra(FilesActivity.EXTRA_SHARE_NAME, ShareActivity.EXTRA_NAME));
     }
 
     public static void openBrowser(ToolActivity host) {

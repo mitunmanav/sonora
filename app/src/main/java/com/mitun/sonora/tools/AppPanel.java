@@ -18,6 +18,7 @@ import com.mitun.sonora.AppManager;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.ui.SettingRow;
+import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
@@ -178,14 +179,14 @@ public final class AppPanel {
         LinearLayout text = new LinearLayout(context);
         text.setOrientation(LinearLayout.VERTICAL);
         TextView label = new TextView(context);
-        label.setTextColor(Color.WHITE);
+        label.setTextColor(Theme.ink());
         label.setTextSize(17);
         label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         label.setMaxLines(1);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         text.addView(label);
         TextView pkg = new TextView(context);
-        pkg.setTextColor(0x8CFFFFFF);
+        pkg.setTextColor(Theme.inkTertiary());
         pkg.setTextSize(12);
         pkg.setMaxLines(1);
         pkg.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -216,18 +217,18 @@ public final class AppPanel {
                 final int index = i;
                 TextView tab = new TextView(host);
                 tab.setText(FILTER_NAMES[i]);
-                tab.setTextColor(Color.WHITE);
+                tab.setTextColor(Theme.ink());
                 tab.setTextSize(15);
                 tab.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
                 tab.setPadding(Ui.dp(host, 16), Ui.dp(host, 8), Ui.dp(host, 16), Ui.dp(host, 8));
                 tab.setFocusable(true);
                 tab.setOnFocusChangeListener((v, focused) ->
-                        tab.setTextColor(focused ? Color.WHITE : 0x8CFFFFFF));
+                        tab.setTextColor(focused ? Theme.ink() : Theme.inkTertiary()));
                 tab.setOnClickListener(v -> {
                     filter = index;
                     applyFilter();
                     for (int t = 0; t < tabs.size(); t++) {
-                        tabs.get(t).setTextColor(t == index ? Color.WHITE : 0x8CFFFFFF);
+                        tabs.get(t).setTextColor(t == index ? Theme.ink() : Theme.inkTertiary());
                     }
                     notifyDataSetChanged();
                 });
