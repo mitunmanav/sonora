@@ -8,8 +8,10 @@
 - `files/`: the standalone Files app. A thin shell around `files-core/`.
 - `files-core/`: the file manager itself, bundled into both apps.
 - `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only.
-- `docs/`: `research/`, `handoffs/` (latest state), `plans/`, `perf/`, `agents/`.
+- `docs/`: `research/`, `handoffs/` (dated snapshots; newest is current), `plans/` (running log
+  and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
 - `reference/`: vendor APKs for study. Git-ignored.
+- `README.md`: the human-facing overview. `GLOSSARY.md`: the domain vocabulary — use its terms.
 
 ## Explore with CodeGraph first
 
@@ -68,3 +70,6 @@ in both. The home screen wallpaper stays as it is in both.
 - **Issues and specs**: markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
 - **Triage labels**: the default strings, as `Status:` lines. See `docs/agents/triage-labels.md`.
 - **Domain docs**: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+- **Documentation upkeep**: before finishing a session that changed code, docs or layout, follow
+  `.devin/skills/docs-sync/SKILL.md` — append the `PLAN.md` session entry, update the requirements
+  status table and the newest handoff, and record perf numbers when measured.

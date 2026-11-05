@@ -670,3 +670,39 @@ picker opens: a cancel restores the row that opened it, while a pick that
 pushes a screen keeps that screen's own focus. Verified on the TV: BACK from
 the clock picker returns to the Clock row, picking a value returns to the
 rebuilt row, and BACK from the Clock page returns to the Clock category.
+
+## 12. Session: commit the third round, then clean the repo
+
+The third requirements round had been sitting uncommitted since 2026-11-04,
+plus a stale `files-rename-thumbs` worktree holding two fixes that were never
+merged back (thumbnail centring in `ItemCell`, the rename selection fix in
+`Sheets`). The worktree's three differing files were copied into the main
+tree, the worktree and its branch were removed (backup tarball was kept in
+/tmp at the time), and `.claude/` was added to `.gitignore`.
+
+The work was then committed in three pieces so each builds on its own:
+
+- `decbc87` — docs under `docs/`, `AGENTS.md`/`CLAUDE.md`, `scripts/`.
+- `ff48bfc` — `files-core` + `files` modules, root plugin versions, the
+  `perf` build type, storage permissions. Verified to build with the old
+  launcher code in a scratch worktree.
+- `4d903cf` — the whole third round: `Theme` dark/light, `DeviceTier`,
+  `SearchKeys`/`SearchKeyboard`, `ControlCenter`, `GlassLens`, `BackdropView`,
+  `PressRow`, `RowDrawable`, `Glyph`, `AerialsView`, `SceneChoice`, pickers
+  on the Settings row language, and Files reached through `files-core`.
+
+A cleanup pass followed on 2026-11-05:
+
+- `SonoraProvider` deleted: nothing called `uri()` any more — sharing goes
+  through `ShareActivity`/`FileServer` and `FilesProvider`. Its manifest
+  provider entry and its two `EdgeCasesTest` cases went with it.
+- `banner.png` and `ic_launcher.png` deleted: the manifest uses
+  `sonora_banner`/`sonora_mark`; they were leftovers.
+- `strings.xml` cut to the three strings anything references
+  (`app_name`, `dream_name`, `about_text`); the rest were dead resources.
+- Root `build/` (a stale Gradle report) removed.
+- `README.md` and `GLOSSARY.md` added; `docs/plans/REQUIREMENTS-2026-11-04.md`
+  gained a status table; this file remains the session log.
+
+Unit tests and debug/release builds for all three modules pass after the
+cleanup.
