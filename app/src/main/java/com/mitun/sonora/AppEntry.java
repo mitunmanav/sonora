@@ -46,6 +46,7 @@ public final class AppEntry {
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(intent);
+                RecentApps.noteLaunched(packageName);
                 return true;
             }
         } catch (RuntimeException ignored) {
