@@ -6,3 +6,4 @@ local.properties
 .codegraph/
 reference/
 .claude/
+__pycache__/
