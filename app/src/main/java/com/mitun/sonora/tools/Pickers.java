@@ -114,7 +114,7 @@ public final class Pickers {
     }
 
     public static void mode(ToolActivity host, Runnable after) {
-        String[] options = {"Default — just the basics", "Technical — every setting"};
+        String[] options = {"Default, just the basics", "Technical, every setting"};
         host.choose("Mode", options, host.prefs().mode(), index -> {
             host.prefs().setMode(index);
             if (after != null) {
