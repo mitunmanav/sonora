@@ -8,7 +8,7 @@
 - `files/`: the standalone Files app. A thin shell around `files-core/`.
 - `files-core/`: the file manager itself, bundled into both apps.
 - `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only.
-- `docs/`: `research/` (design and performance notes), `plans/` (running log
+- `docs/`: `ARCHITECTURE.md` (what exists + the rules), `research/` (design and performance notes), `plans/` (running log
   and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
 - `reference/`: vendor APKs for study. Git-ignored.
 - `README.md`: the human-facing overview. `GLOSSARY.md`: the domain vocabulary — use its terms.

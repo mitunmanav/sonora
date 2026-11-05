@@ -37,6 +37,7 @@ app has focus — the owner often has the remote). See `AGENTS.md` and
 ## Documentation
 
 - `AGENTS.md` — working rules for agents (also `CLAUDE.md`, a symlink).
+- `docs/ARCHITECTURE.md` — what the system is: modules, every screen, the rules.
 - `docs/plans/PLAN.md` — running project log; append a session section,
   never rewrite history.
 - `docs/plans/REQUIREMENTS-*.md` — dated owner requirements with status.
