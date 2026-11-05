@@ -764,3 +764,25 @@ access is allowed again.
 Still open, in order: FrameMetrics self-tuning (`DeviceTier.degrade` on a
 rolling jank window), porting cleanyourtv's `bench.py`/`perf-ab.md` into
 `scripts/`, then the Files/browser suite pass.
+
+## 15. Session: post-merge benchmark on master
+
+The `performance-optimization` worktree was merged into `master` (`2af7e57`) and the
+worktree/branch removed; repo is single-branch again at `aerial`. The pending
+docs-sync output (benchmark write-up, raw dumps, GLOSSARY term) was committed as
+`f6242b0`.
+
+Re-ran the 2026-11-05 protocol against the merged code (`2af7e57`, `app-perf.apk`
+reinstalled, `compile -m speed`): two clean Sonora runs, recorded in
+`docs/perf/2026-11-05.md` under "Post-rewrite Sonora runs". Deadline misses
+2.7% → 0.9%, p99 48 → 18–28 ms, zero slow UI-thread events; MemAvailable ~944 MiB
+at idle, swap ~11 MB. Idle PSS ~43.9 MB, ~2.5 MB above the pre-rewrite run —
+plausibly the focus-glass layer.
+
+Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, two on-device runs.
+Not verified: the screensaver itself — the walk never shows the dream, so the
+`c4bfde4` rewrite is untested on-device (needs an idle-dream measurement or a look).
+TV left on Sonora's home screen.
+
+Still open, in order: cheap wins (text layout first), a dream-time frame check for
+the screensaver, `tvlauncher` re-enablement quirk, then the Files/browser pass.
