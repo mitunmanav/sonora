@@ -1,6 +1,6 @@
 # Sourced by the other scripts. Set SONORA_TV to another device's adb address.
 export PATH="$PATH:$HOME/Android/Sdk/platform-tools"
-SONORA_TV=${SONORA_TV:-192.168.68.108:5555}
+SONORA_TV=${SONORA_TV:-192.168.68.104:5555}
 
 tv() { adb -s "$SONORA_TV" "$@"; }
 

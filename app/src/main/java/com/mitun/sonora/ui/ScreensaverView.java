@@ -175,6 +175,10 @@ public final class ScreensaverView extends FrameLayout {
                 return;
             }
             java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+            if (all.isEmpty()) {
+                // Every aerial is hidden: there is no place name to show.
+                return;
+            }
             Scenes.Scene scene = all.get(Math.max(0, Math.min(all.size() - 1, sceneIndex)));
             float density = getResources().getDisplayMetrics().density;
             // The clock sits above the place, as it does over Apple's aerials.
