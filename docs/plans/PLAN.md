@@ -822,3 +822,37 @@ the `AppPanel`/`DebugPanel` style, reached from the Apps page.
 
 Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.
 TV untouched.
+
+## 18. Session: Google TV parity batch, part 1
+
+Working from `docs/research/GOOGLE-TV-TEARDOWN.md` §6 (Tier 1 + Tier 2 approved).
+
+Done and building:
+
+- Quick settings gained Keyboard, Date & time and Language rows. The three
+  `com.android.tv.settings` activities were verified present on the TV
+  (`inputmethod.KeyboardActivity`, `system.DateTimeActivity`,
+  `system.LanguageActivity`); each row falls back to generic Settings.
+- The screen saver overlay now draws a large clock above the place name,
+  respecting the 12/24-hour setting. It invalidates once a minute, only while
+  the overlay is showing — the drift clock is untouched.
+- A round glass search pill (`GlyphPillView`, new) sits beside the clock on the
+  top shelf. This remote has no search key, so the pill is the visible way in.
+  UP from the first row now lands on the pill; UP again opens Control Center;
+  DOWN returns to the grid. The pill is fed by the same glass bake as the dock
+  and clock (frost and bent-lens paths both updated).
+- `android.intent.action.ALL_APPS` is handled: the grid is the all-apps screen,
+  so the intent scrolls it to the top.
+
+Already done before this session (verified in code): the long-press menu order
+(Open · Move · Favourites · Info · Uninstall) and uninstall via
+`PackageActions.requestUninstall`.
+
+Skipped: "Previews on/off" — Sonora has no content previews to toggle; the hero
+is a still and Reduce motion already covers animation. A fake toggle would
+violate the no-fake-features rule.
+
+Still open: ADD_APP_LINK approval dialog (needs the extras contract from the
+launcher dex), Apps/Games order split, icon polish pass, setup-guide clarity.
+
+Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.

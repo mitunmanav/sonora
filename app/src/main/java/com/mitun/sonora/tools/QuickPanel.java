@@ -39,6 +39,12 @@ public final class QuickPanel {
                 () -> openDisplay(host)));
         rows.add(SettingRow.push("Sound", "",
                 () -> openSound(host)));
+        rows.add(SettingRow.push("Keyboard", "",
+                () -> openKeyboard(host)));
+        rows.add(SettingRow.push("Date & time", "",
+                () -> openDateTime(host)));
+        rows.add(SettingRow.push("Language", "",
+                () -> openLanguage(host)));
         rows.add(SettingRow.push("Screen saver", "Sonora's own",
                 () -> SettingsPanel.openScreenSaver(host)));
         rows.add(SettingRow.push("Apps", "", () -> AppPanel.show(host)));
@@ -81,6 +87,31 @@ public final class QuickPanel {
         openFirst(context, new Intent(Settings.ACTION_SOUND_SETTINGS),
                 component("com.android.tv.settings",
                         "com.android.tv.settings.device.displaysound.DisplaySoundActivity"));
+    }
+
+    /** The TV's keyboard picker: which on-screen keyboard the system uses. */
+    public static void openKeyboard(Context context) {
+        openFirst(context,
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.inputmethod.KeyboardActivity"),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    /** The TV's date and time screen. */
+    public static void openDateTime(Context context) {
+        openFirst(context,
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.system.DateTimeActivity"),
+                new Intent(Settings.ACTION_DATE_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    /** The TV's language and input screen. */
+    public static void openLanguage(Context context) {
+        openFirst(context,
+                component("com.android.tv.settings",
+                        "com.android.tv.settings.system.LanguageActivity"),
+                new Intent(Settings.ACTION_SETTINGS));
     }
 
     /**

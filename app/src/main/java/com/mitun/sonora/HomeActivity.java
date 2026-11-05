@@ -36,6 +36,8 @@ import com.mitun.sonora.ui.ControlCenter;
 import com.mitun.sonora.ui.GlassDrawable;
 import com.mitun.sonora.ui.GlassLens;
 import com.mitun.sonora.ui.GlassPillView;
+import com.mitun.sonora.ui.Glyph;
+import com.mitun.sonora.ui.GlyphPillView;
 import com.mitun.sonora.ui.HeroBackgroundView;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.ScreensaverView;
@@ -83,6 +85,7 @@ public class HomeActivity extends Activity {
     private FrameLayout root;
     private HeroBackgroundView hero;
     private GlassPillView clockPill;
+    private GlyphPillView searchPill;
     private TextView shelfTitle;
     private TextView shelfSubtitle;
     private LinearLayout shelf;
@@ -276,6 +279,16 @@ public class HomeActivity extends Activity {
         titles.addView(shelfSubtitle);
         shelf.addView(titles, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // A round search button beside the clock: this remote has no search
+        // key, so the pill is the way in. UP from the first row lands here;
+        // UP again opens Control Center.
+        searchPill = new GlyphPillView(this, Glyph.SEARCH, "Search");
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        searchParams.setMarginEnd(Ui.dp(this, 10));
+        searchPill.setOnClickListener(v -> openSearch());
+        shelf.addView(searchPill, searchParams);
 
         clockPill = new GlassPillView(this, prefs);
         clockPill.setId(View.generateViewId());
@@ -852,6 +865,10 @@ public class HomeActivity extends Activity {
         super.onNewIntent(intent);
         if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) {
             onHomeSignal();
+        } else if (intent != null && Intent.ACTION_ALL_APPS.equals(intent.getAction())) {
+            // The grid is the all-apps screen; an app asking for it gets the
+            // launcher back at the top, not a second copy of the same list.
+            scrollGridToTop();
         }
     }
 
@@ -981,12 +998,14 @@ public class HomeActivity extends Activity {
         }
         final Rect dock = screenRect(dockBar);
         final Rect clock = screenRect(clockPill);
+        final Rect search = screenRect(searchPill);
         final Bitmap source = lensSource;
         boolean bend = source != null && !source.isRecycled()
                 && DeviceTier.bentGlass(DeviceTier.get(this));
         Bitmap frost = softened;
         String key = (bend ? System.identityHashCode(source) : frost == null ? 0
-                : System.identityHashCode(frost)) + "@" + width + "x" + height + dock + clock;
+                : System.identityHashCode(frost)) + "@" + width + "x" + height + dock + clock
+                + search;
         if (key.equals(glassKey)) {
             return;
         }
@@ -995,6 +1014,7 @@ public class HomeActivity extends Activity {
         if (!bend) {
             dockMaterial.setFrost(frost, width, height, HeroBackgroundView.ZOOM, dock, 0x1F000000);
             clockPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, clock);
+            searchPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, search);
             return;
         }
         final float dockRadius = Ui.dpf(this, DOCK_RADIUS_DP);
@@ -1002,20 +1022,25 @@ public class HomeActivity extends Activity {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             Bitmap dockLens = null;
             Bitmap clockLens = null;
+            Bitmap searchLens = null;
             try {
                 dockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, dock,
                         dockRadius, DOCK_LENS_SCALE);
                 clockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, clock,
                         clock.height() / 2f, 1);
+                searchLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, search,
+                        search.height() / 2f, 1);
             } catch (RuntimeException | OutOfMemoryError ignored) {
                 // The glass stays dark, which still reads as glass.
             }
             final Bitmap bakedDock = dockLens;
             final Bitmap bakedClock = clockLens;
+            final Bitmap bakedSearch = searchLens;
             runOnUiThread(() -> {
                 if (generation == glassGeneration && !isDestroyed()) {
                     dockMaterial.setBackdrop(bakedDock, 0x1F000000);
                     clockPill.setBackdrop(bakedClock);
+                    searchPill.setBackdrop(bakedSearch);
                 }
             });
         }, "sonora-glass").start();
@@ -1596,6 +1621,18 @@ public class HomeActivity extends Activity {
      */
     private boolean moveFocus(int key) {
         View focused = getCurrentFocus();
+        if (focused == searchPill) {
+            // The search pill is the one stop on the shelf: DOWN goes back to
+            // the grid, UP opens Control Center. OK is the pill's own click.
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (!tiles.isEmpty()) {
+                    tiles.get(0).requestFocus();
+                }
+            } else if (key == KeyEvent.KEYCODE_DPAD_UP) {
+                openControlCenter();
+            }
+            return true;
+        }
         if (focused instanceof AppTileView) {
             int index = tiles.indexOf(focused);
             if (index < 0) {
@@ -1607,7 +1644,9 @@ public class HomeActivity extends Activity {
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
-                openControlCenter();
+                // UP from the first row lands on the search pill; UP again
+                // opens Control Center.
+                searchPill.requestFocus();
             }
             return true;
         }
