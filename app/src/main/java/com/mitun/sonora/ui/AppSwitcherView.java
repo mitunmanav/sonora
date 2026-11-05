@@ -234,6 +234,14 @@ public final class AppSwitcherView extends FrameLayout {
             setOnClickListener(v -> listener.onPick(entry));
             setOnLongClickListener(v -> {
                 listener.onCloseApp(entry.packageName);
+                // The card that closed may be the focused one; the focus
+                // moves to its neighbour first so it is not left nowhere.
+                int index = cards.indexOf(this);
+                Card next = index >= 0 && index + 1 < cards.size() ? cards.get(index + 1)
+                        : index > 0 ? cards.get(index - 1) : null;
+                if (next != null && next != this) {
+                    next.requestFocus();
+                }
                 Motion.spring(this, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
                         Motion.RESPONSE_FOCUS, () -> {
                             row.removeView(this);

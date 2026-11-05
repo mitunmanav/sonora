@@ -32,18 +32,19 @@ public final class DebugPanel {
 
     public static void show(ToolActivity host) {
         SystemInfo.invalidate();
-        host.stack().showOrPush("Device", "What this TV is and what it is doing", rows(host));
+        host.stack().pushSettings("Device", rows(host));
     }
 
     /** Rebuilds the device screen with the numbers as they are now. */
     private static void refresh(ToolActivity host) {
         SystemInfo.invalidate();
-        host.stack().refresh("Device", "What this TV is and what it is doing", rows(host));
+        host.stack().refreshSettings("Device", rows(host));
     }
 
     private static List<SettingRow> rows(ToolActivity host) {
         SystemInfo info = SystemInfo.get(host);
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("What this TV is and what it is doing."));
 
         rows.add(SettingRow.header("Device"));
         rows.add(SettingRow.value("Model", info.manufacturer + " " + info.model));
@@ -86,10 +87,10 @@ public final class DebugPanel {
 
     private static void showProcesses(ToolActivity host) {
         final String title = "Processes";
-        final String subtitle = "Everything running right now";
         List<SettingRow> reading = new ArrayList<>();
+        reading.add(SettingRow.note("Everything running right now."));
         reading.add(SettingRow.value("Reading", "…"));
-        host.stack().push(title, subtitle, reading);
+        host.stack().pushSettings(title, reading);
         // Asking the system for every process is a binder call each time. On a
         // slow stick that is long enough to be an ANR, so it happens off the
         // UI thread and the screen fills in when it is done.
@@ -105,13 +106,14 @@ public final class DebugPanel {
                     // these rows would replace the wrong screen.
                     return;
                 }
-                host.stack().refresh(title, subtitle, rows);
+                host.stack().refreshSettings(title, rows);
             });
         }, "sonora-processes").start();
     }
 
     private static List<SettingRow> processRows(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("Everything running right now."));
         List<ActivityManager.RunningAppProcessInfo> processes = new ArrayList<>();
         ActivityManager manager = (ActivityManager)
                 host.getSystemService(Context.ACTIVITY_SERVICE);
@@ -171,6 +173,7 @@ public final class DebugPanel {
         } catch (RuntimeException ignored) {
         }
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("Charge and power."));
         rows.add(SettingRow.header("Battery"));
         if (level >= 0 && scale > 0) {
             rows.add(SettingRow.value("Charge", Math.round(level * 100f / scale) + "%"));
@@ -178,7 +181,7 @@ public final class DebugPanel {
         rows.add(SettingRow.value("Status", status));
         rows.add(SettingRow.value("Power", plugged == 0 ? "On battery" : "Plugged in"));
         rows.add(SettingRow.value("Low power mode", isPowerSaver(host) ? "On" : "Off"));
-        host.stack().push("Battery", "Charge and power", rows);
+        host.stack().pushSettings("Battery", rows);
     }
 
     private static String batteryStatus(int status) {
@@ -208,6 +211,7 @@ public final class DebugPanel {
 
     private static void showNetwork(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("Addresses and connectivity."));
         rows.add(SettingRow.header("Network"));
         String ip = SetupGuide.ipAddress();
         rows.add(SettingRow.value("IP address", ip.length() == 0 ? "Not connected" : ip));
@@ -220,7 +224,7 @@ public final class DebugPanel {
             rows.add(SettingRow.value("Wireless debugging",
                     SetupGuide.wirelessDebuggingOn(host) ? "On" : "Off"));
         }
-        host.stack().push("Network", "Addresses and connectivity", rows);
+        host.stack().pushSettings("Network", rows);
     }
 
     private static String wifiName(Context context) {
@@ -276,6 +280,7 @@ public final class DebugPanel {
     private static void showSelfCheck(ToolActivity host) {
         SystemInfo info = SystemInfo.get(host);
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("How this device is set up."));
         rows.add(SettingRow.header("Self check"));
         rows.add(SettingRow.value("Default launcher",
                 Ui.isDefaultLauncher(host) ? "Yes" : "No. Set it in Settings"));
@@ -290,7 +295,7 @@ public final class DebugPanel {
                 SystemInfo.bytes(heapUsed) + " of " + SystemInfo.bytes(info.javaHeapLimit)));
         rows.add(SettingRow.value("Low RAM device", info.lowRam ? "Yes" : "No"));
         rows.add(SettingRow.value("Screen saver", screenSaverState(host)));
-        host.stack().push("Self check", "How this device is set up", rows);
+        host.stack().pushSettings("Self check", rows);
     }
 
     /**
