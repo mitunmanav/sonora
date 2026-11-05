@@ -25,7 +25,8 @@ so build offline:
 
 A `perf` build type exists on `app`, `files` and `files-core`: release
 config signed with the debug key, for on-device measurement
-(`scripts/perf.sh`).
+(`scripts/perf.sh` for a quick read, `scripts/bench.py` + `scripts/perf-ab.md`
+for the full A/B protocol).
 
 ## TV
 
