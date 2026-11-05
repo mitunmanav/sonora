@@ -88,14 +88,7 @@ public final class ScreenStack extends FrameLayout {
         return stack.size();
     }
 
-    /** Replaces the whole stack with one screen. */
-    public void show(String title, String subtitle, List<SettingRow> rows) {
-        stack.clear();
-        removeAllViews();
-        push(title, subtitle, rows);
-    }
-
-    /** Replaces the stack with a screen whose content has its own layout. */
+    /** Replaces the whole stack with a screen whose content has its own layout. */
     public void showContent(String title, String subtitle, View content) {
         showContent(title, subtitle, content, false);
     }
@@ -113,24 +106,6 @@ public final class ScreenStack extends FrameLayout {
         screen.custom = content;
         screen.fullBleed = fullBleed;
         add(screen);
-    }
-
-    /**
-     * Pushes a screen, or shows it as the only one when the stack is empty.
-     * A panel reached from a list keeps the list behind it, so BACK goes back
-     * to where the user came from.
-     */
-    public void showOrPush(String title, String subtitle, List<SettingRow> rows) {
-        if (stack.isEmpty()) {
-            show(title, subtitle, rows);
-        } else {
-            push(title, subtitle, rows);
-        }
-    }
-
-    /** Adds a screen on top of the current one. */
-    public void push(String title, String subtitle, List<SettingRow> rows) {
-        push(title, subtitle, rows, false);
     }
 
     private void push(String title, String subtitle, List<SettingRow> rows, boolean split) {
@@ -161,18 +136,9 @@ public final class ScreenStack extends FrameLayout {
     }
 
     /**
-     * Replaces the top screen with a freshly built one, keeping its place in
-     * the stack. Use it when a value shown in the screen has changed.
-     *
-     * The focus stays on the row the user was on. Rebuilding a screen and
-     * throwing the focus back to the top of it is what makes a settings list
-     * feel like it is fighting the user.
+     * Rebuilds a tvOS settings page with the values it now shows, keeping its
+     * place in the stack. The focus stays on the row the user was on.
      */
-    public void refresh(String title, String subtitle, List<SettingRow> rows) {
-        refresh(title, subtitle, rows, false);
-    }
-
-    /** Rebuilds a tvOS settings page with the values it now shows. */
     public void refreshSettings(String title, List<SettingRow> rows) {
         refresh(title, null, rows, true);
     }

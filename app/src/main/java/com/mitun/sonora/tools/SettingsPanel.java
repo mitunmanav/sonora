@@ -81,6 +81,11 @@ public final class SettingsPanel {
         }
     }
 
+    /** True when the title is one of the settings pages. */
+    static boolean isPage(String title) {
+        return pageFor(title) != null;
+    }
+
     private static Page pageFor(String title) {
         if (QUICK.title.equals(title)) {
             return QUICK;

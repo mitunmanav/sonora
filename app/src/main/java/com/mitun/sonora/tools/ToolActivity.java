@@ -114,8 +114,6 @@ public final class ToolActivity extends Activity {
         if ("wizard".equals(screen)) {
             wizard = new SetupWizard(this);
             wizard.start();
-        } else if ("tools".equals(screen)) {
-            ToolsPanel.show(this);
         } else if ("quick".equals(screen)) {
             QuickPanel.show(this);
         } else if ("apps".equals(screen)) {
@@ -349,6 +347,15 @@ public final class ToolActivity extends Activity {
         super.onResume();
         Ui.immersive(this);
         reportUninstall();
+        // A system screen can change what a row says - the network, the
+        // screen saver, the home-screen role - so the settings are rebuilt
+        // on the way back. Screens with content of their own (the app list,
+        // the log, the aerials) are left alone.
+        View top = stack.topContent();
+        if (top instanceof SettingsHomeView
+                || top == null && SettingsPanel.isPage(stack.topTitle())) {
+            SettingsPanel.refresh(this);
+        }
     }
 
     @Override

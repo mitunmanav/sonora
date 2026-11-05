@@ -31,12 +31,12 @@ public final class SetupGuide {
     public static void show(ToolActivity host) {
         // It is pushed, not shown: the screen the user came from stays behind
         // it, so BACK goes back there instead of out of the activity.
-        host.stack().showOrPush("Setup guide",
-                "Turn on debugging, then connect from your computer", rows(host));
+        host.stack().pushSettings("Setup guide", rows(host));
     }
 
     private static List<SettingRow> rows(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.note("Turn on debugging, then connect from your computer."));
         boolean developerOptions = developerOptionsOn(host);
         boolean usbDebugging = usbDebuggingOn(host);
         boolean wireless = wirelessDebuggingOn(host);

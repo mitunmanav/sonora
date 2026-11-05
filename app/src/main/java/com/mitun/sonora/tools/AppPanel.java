@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,8 +16,11 @@ import android.widget.TextView;
 import com.mitun.sonora.AppManager;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
+import com.mitun.sonora.ui.Motion;
+import com.mitun.sonora.ui.RowDrawable;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Theme;
+import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
@@ -69,7 +71,7 @@ public final class AppPanel {
     }
 
     private static void showDetail(ToolActivity host, AppAdapter adapter, AppManager.Item item) {
-        host.stack().push("App", item.label, detailRows(host, adapter, item));
+        host.stack().pushSettings(item.label, detailRows(host, adapter, item));
     }
 
     private static List<SettingRow> detailRows(ToolActivity host, AppAdapter adapter,
@@ -114,7 +116,7 @@ public final class AppPanel {
                 }
                 // The screen is rebuilt, or the row would keep showing the
                 // value it had before the tap.
-                host.stack().refresh("App", item.label,
+                host.stack().refreshSettings(item.label,
                         detailRows(host, adapter, item));
             }));
         } else {
@@ -180,14 +182,13 @@ public final class AppPanel {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView label = new TextView(context);
         label.setTextColor(Theme.ink());
-        label.setTextSize(17);
-        label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(label, Type.HEADING);
         label.setMaxLines(1);
         label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         text.addView(label);
         TextView pkg = new TextView(context);
         pkg.setTextColor(Theme.inkTertiary());
-        pkg.setTextSize(12);
+        Type.apply(pkg, Type.CAPTION);
         pkg.setMaxLines(1);
         pkg.setEllipsize(android.text.TextUtils.TruncateAt.END);
         text.addView(pkg);
@@ -217,18 +218,36 @@ public final class AppPanel {
                 final int index = i;
                 TextView tab = new TextView(host);
                 tab.setText(FILTER_NAMES[i]);
-                tab.setTextColor(Theme.ink());
-                tab.setTextSize(15);
-                tab.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                tab.setTextColor(Theme.inkSoft());
+                Type.apply(tab, Type.BODY);
                 tab.setPadding(Ui.dp(host, 16), Ui.dp(host, 8), Ui.dp(host, 16), Ui.dp(host, 8));
+                RowDrawable tabBg = new RowDrawable(host);
+                tab.setBackground(tabBg);
                 tab.setFocusable(true);
-                tab.setOnFocusChangeListener((v, focused) ->
-                        tab.setTextColor(focused ? Theme.ink() : Theme.inkTertiary()));
+                final float[] tabFocus = {0f};
+                tab.setOnFocusChangeListener((v, focused) -> {
+                    Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                            Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
+                                @Override
+                                public float get() {
+                                    return tabFocus[0];
+                                }
+
+                                @Override
+                                public void set(float value) {
+                                    tabFocus[0] = value;
+                                    tabBg.setFocus(value);
+                                    tab.setTextColor(Ui.lerpColor(Theme.inkSoft(),
+                                            Theme.ink(), value));
+                                }
+                            });
+                    v.setElevation(focused ? Ui.dpf(host, 8f) : 0f);
+                });
                 tab.setOnClickListener(v -> {
                     filter = index;
                     applyFilter();
                     for (int t = 0; t < tabs.size(); t++) {
-                        tabs.get(t).setTextColor(t == index ? Theme.ink() : Theme.inkTertiary());
+                        tabs.get(t).setTextColor(t == index ? Theme.ink() : Theme.inkSoft());
                     }
                     notifyDataSetChanged();
                 });

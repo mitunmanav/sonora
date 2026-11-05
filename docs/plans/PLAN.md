@@ -898,3 +898,34 @@ referenced. `README.md`, `AGENTS.md` and the `docs-sync` skill no longer point
 at handoffs; `PLAN.md`/`REQUIREMENTS` keep their historical mentions.
 
 Verified: no live references remain outside the dated plan/requirements files.
+
+## 21. Session: settings screens unified on the tvOS split layout
+
+Audit of every screen against tvOS 26. The home grid, Control Center, app
+switcher, search and the settings index were already measured; the stragglers
+were the last old-style screens.
+
+- SetupWizard, the App detail screen, DebugPanel (Device, Processes, Battery,
+  Network, Self check) and SetupGuide now use `pushSettings`/`refreshSettings`
+  — the split layout with the centred title, the list on the right and the
+  mark on the left. Subtitles became NOTE rows, which the split layout draws
+  under the mark.
+- Dead code removed: the unreachable "tools" screen (`ToolsPanel.show` and its
+  `ToolActivity` branch — Settings > Tools is the only tools page now) and the
+  old-style `ScreenStack.show`/`push`/`showOrPush`/`refresh` row-list API,
+  which nothing calls any more. Custom-content screens (app list, log,
+  aerials, About) keep the standard column chrome.
+- Edge case: `ToolActivity.onResume` now rebuilds the settings index and any
+  settings page, so values that a system screen can change (Wi-Fi state,
+  screen-saver selection, home-screen role, developer options) are fresh on
+  the way back instead of stale. Custom screens are skipped on purpose.
+- AppPanel: the filter tabs got the same RowDrawable focus treatment as
+  settings rows (they only changed text colour before), and row/tab text now
+  uses the `Type` scale instead of hardcoded sizes.
+- AppSwitcherView: closing the focused card with a long OK moves focus to a
+  neighbour first, so it is not left nowhere.
+- QuickPanel: removed a duplicated javadoc block.
+
+Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`, `codegraph sync`.
+Not verified on-device — the wizard, app detail, Device/Battery/Network/Self
+check, Setup guide and the app-manager tabs want a look on the TV.
