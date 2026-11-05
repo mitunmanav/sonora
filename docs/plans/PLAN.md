@@ -856,3 +856,34 @@ Still open: ADD_APP_LINK approval dialog (needs the extras contract from the
 launcher dex), Apps/Games order split, icon polish pass, setup-guide clarity.
 
 Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.
+
+## 19. Session: icon polish pass
+
+Redrew every hand-drawn mark toward the tvOS 26 look: `ui/Glyph` (17 marks) and
+`files-core/Marks` (14 marks), all still authored as `Path` geometry on a 24-unit
+grid — no Apple assets, per the rules.
+
+Notable fixes, not just nudges:
+
+- STAR was a ten-point burst; it is now a five-point star.
+- HOME was a monitor-with-windows shape; it is now a house outline with a door.
+- DELETE was a skewed bin with an X; it is now a proper trash can (lid, handle,
+  body, two ribs).
+- WIFI arcs were elliptical and off-centre; they are now three concentric circular
+  arcs sharing the dot's centre.
+- SOUND waves were flat ellipses; they are now concentric `)` arcs.
+- GEAR teeth were 12 sharp notches; now 8 rounded teeth from a smooth sampled
+  radius profile.
+- APPS/GRID squares unified (same geometry in both apps); LIST/MORE/DRIVE dots are
+  now solid discs (radius 0.9 with the 1.8 stroke fills them).
+- MOVIES is now a clapperboard (striped slab + body) instead of a divided frame.
+- DISPLAY gained a proper stand; MIC gained its base line; HIDDEN's pupil and eye
+  proportions corrected.
+
+`FileIcon` (the file-type artwork: folder gradient, page) was left alone — it is
+not an Apple-style mark.
+
+Verified: `:app` + `:files` compile, `:app:testDebugUnitTest` +
+`:files-core:testDebugUnitTest` pass, `codegraph sync` run. Geometry bounds-checked
+against the 24-grid in a matplotlib harness. Not seen on the TV — icon look is
+unverified on-device; check Control Center, Settings rows, Files sidebar/toolbar.
