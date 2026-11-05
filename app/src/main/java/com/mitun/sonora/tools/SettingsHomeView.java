@@ -2,25 +2,32 @@ package com.mitun.sonora.tools;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.mitun.sonora.R;
-import com.mitun.sonora.ui.GlassDrawable;
 import com.mitun.sonora.ui.Motion;
+import com.mitun.sonora.ui.PressRow;
+import com.mitun.sonora.ui.RowDrawable;
+import com.mitun.sonora.ui.ScreenStack;
+import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/** The settings index: a remote-driven list beside Sonora's settings identity. */
-final class SettingsHomeView extends LinearLayout {
+/**
+ * The settings index, laid out the way tvOS Settings is: the page name above,
+ * the list on the right, and the app mark on the left. The mark is drawn by
+ * the activity behind this view, so it stays still while pages slide past it.
+ */
+final class SettingsHomeView extends FrameLayout {
     static final class Detail {
         final String label;
         final String value;
@@ -59,25 +66,14 @@ final class SettingsHomeView extends LinearLayout {
         }
     }
 
-    private static final int TEXT = 0xFFF4F8FB;
-    private static final int MUTED = 0xFFADBBC5;
-    private static final int INK = 0xFF101C26;
-    private static final int ACCENT = 0xFF8FD9F3;
-
     private final List<Category> categories;
     private final List<View> navRows = new ArrayList<>();
-    private final TextView selectedSummary;
-    private final TextView selectedDetails;
-    private final boolean rtl;
     private int selectedIndex;
 
     SettingsHomeView(Context context, List<Category> categories, int initialSelection) {
         super(context);
         this.categories = categories;
         selectedIndex = clamp(initialSelection, categories.size());
-        rtl = context.getResources().getConfiguration().getLayoutDirection()
-                == View.LAYOUT_DIRECTION_RTL;
-        setOrientation(HORIZONTAL);
         setFocusable(true);
         setFocusableInTouchMode(false);
         setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
@@ -90,124 +86,60 @@ final class SettingsHomeView extends LinearLayout {
             }
         });
 
-        LinearLayout brand = new LinearLayout(context);
-        brand.setOrientation(VERTICAL);
-        brand.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        brand.setPadding(Ui.dp(context, 12), 0, Ui.dp(context, 28), 0);
-        brand.setClipChildren(false);
-        brand.setClipToPadding(false);
+        int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+        int listStart = Math.round(screenWidth * 0.552f);
+        int listEnd = Math.round(screenWidth * 0.043f);
 
-        ImageView mark = new ImageView(context);
-        mark.setImageResource(R.drawable.sonora_mark);
-        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        float density = context.getResources().getDisplayMetrics().density;
-        int screenWidthDp = Math.round(context.getResources().getDisplayMetrics().widthPixels
-                / density);
-        int markSize = Math.min(168, Math.max(116, Math.round(screenWidthDp * 0.17f)));
-        brand.addView(mark, new LinearLayout.LayoutParams(
-                Ui.dp(context, markSize), Ui.dp(context, markSize)));
-
-        TextView wordmark = new TextView(context);
-        wordmark.setText("Sonora");
-        wordmark.setTextColor(TEXT);
-        Type.apply(wordmark, Type.TITLE);
-        LinearLayout.LayoutParams wordmarkParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wordmarkParams.topMargin = Ui.dp(context, 12);
-        brand.addView(wordmark, wordmarkParams);
-
-        TextView section = new TextView(context);
-        section.setText("SETTINGS");
-        section.setTextColor(ACCENT);
-        Type.apply(section, Type.MICRO);
-        LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sectionParams.topMargin = Ui.dp(context, 5);
-        brand.addView(section, sectionParams);
-
-        View separator = new View(context);
-        separator.setBackgroundColor(0x334B6473);
-        LinearLayout.LayoutParams separatorParams = new LinearLayout.LayoutParams(
-                Ui.dp(context, 54), Ui.dp(context, 1));
-        separatorParams.topMargin = Ui.dp(context, 28);
-        separatorParams.bottomMargin = Ui.dp(context, 20);
-        brand.addView(separator, separatorParams);
-
-        selectedSummary = new TextView(context);
-        selectedSummary.setTextColor(0xFFE1EAF0);
-        Type.apply(selectedSummary, Type.BODY);
-        selectedSummary.setMaxLines(3);
-        selectedSummary.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        brand.addView(selectedSummary, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        selectedDetails = new TextView(context);
-        selectedDetails.setTextColor(MUTED);
-        Type.apply(selectedDetails, Type.CAPTION);
-        selectedDetails.setMaxLines(2);
-        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        detailsParams.topMargin = Ui.dp(context, 14);
-        brand.addView(selectedDetails, detailsParams);
+        TextView title = new TextView(context);
+        title.setText("Settings");
+        title.setTextColor(Theme.ink());
+        Type.apply(title, Type.DISPLAY);
+        title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, ScreenStack.PAGE_TITLE_SP);
+        title.setGravity(Gravity.CENTER);
+        LayoutParams titleParams = new LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        titleParams.topMargin = Ui.dp(context, ScreenStack.PAGE_TITLE_TOP_DP);
+        addView(title, titleParams);
 
         ScrollView navScroll = new ScrollView(context);
         navScroll.setFocusable(false);
         navScroll.setVerticalScrollBarEnabled(false);
-        navScroll.setFillViewport(true);
         navScroll.setClipChildren(false);
         navScroll.setClipToPadding(false);
         LinearLayout nav = new LinearLayout(context);
-        nav.setOrientation(VERTICAL);
-        nav.setGravity(Gravity.CENTER_VERTICAL);
+        nav.setOrientation(LinearLayout.VERTICAL);
         nav.setClipChildren(false);
         nav.setClipToPadding(false);
         navScroll.addView(nav, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        View spacer = new View(context);
-        LayoutParams spacerParams = new LayoutParams(0, 1, 0.055f);
-
-        LayoutParams brandParams = new LayoutParams(0,
-                ViewGroup.LayoutParams.MATCH_PARENT, 0.425f);
-        LayoutParams navParams = new LayoutParams(0,
-                ViewGroup.LayoutParams.MATCH_PARENT, 0.52f);
-        if (rtl) {
-            addView(navScroll, navParams);
-            addView(spacer, spacerParams);
-            addView(brand, brandParams);
-        } else {
-            addView(brand, brandParams);
-            addView(spacer, spacerParams);
-            addView(navScroll, navParams);
-        }
+        LayoutParams navParams = new LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.TOP | Gravity.START);
+        navParams.setMarginStart(listStart);
+        navParams.setMarginEnd(listEnd);
+        navParams.topMargin = Math.round(context.getResources().getDisplayMetrics().heightPixels
+                * ScreenStack.PAGE_LIST_TOP);
+        navParams.bottomMargin = Ui.dp(context, 20);
+        addView(navScroll, navParams);
 
         for (int i = 0; i < categories.size(); i++) {
-            if (i == categories.size() - 1 && i > 0) {
-                View rule = new View(context);
-                rule.setBackgroundColor(0x263E5666);
-                LinearLayout.LayoutParams ruleParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(context, 1));
-                ruleParams.setMargins(Ui.dp(context, 20), Ui.dp(context, 10),
-                        Ui.dp(context, 20), Ui.dp(context, 10));
-                nav.addView(rule, ruleParams);
-            }
-
             View row = buildRow(context, categories.get(i), i);
             navRows.add(row);
-            nav.addView(row, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowParams.bottomMargin = Ui.dp(context, 7);
+            nav.addView(row, rowParams);
         }
 
         if (navRows.isEmpty()) {
             TextView empty = new TextView(context);
             empty.setText("No settings available");
-            empty.setTextColor(MUTED);
+            empty.setTextColor(Theme.inkSecondary());
             Type.apply(empty, Type.BODY);
             nav.addView(empty, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            selectedSummary.setText("There are no settings to show.");
-            selectedDetails.setText("");
         } else {
             for (int i = 0; i < navRows.size(); i++) {
                 View row = navRows.get(i);
@@ -216,44 +148,42 @@ final class SettingsHomeView extends LinearLayout {
                 row.setNextFocusUpId(navRows.get(Math.max(0, i - 1)).getId());
                 row.setNextFocusDownId(navRows.get(Math.min(navRows.size() - 1, i + 1)).getId());
             }
-            showCategory(selectedIndex);
         }
     }
 
     private View buildRow(Context context, Category category, int index) {
-        LinearLayout row = new LinearLayout(context);
+        PressRow row = new PressRow(context, 1.02f);
         row.setId(View.generateViewId());
-        row.setOrientation(HORIZONTAL);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setLayoutDirection(rtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
-        row.setPadding(Ui.dp(context, 22), Ui.dp(context, 9),
-                Ui.dp(context, 20), Ui.dp(context, 9));
-        // Eight categories have to fit a 540dp TV without scrolling: the list
-        // is the whole screen, and a last row below the fold looks like a bug.
-        row.setMinimumHeight(Ui.dp(context, 46));
+        row.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), 0);
+        row.setMinimumHeight(Ui.dp(context, 33));
         row.setFocusable(true);
         row.setFocusableInTouchMode(false);
         row.setClickable(true);
-        row.setBackground(new GlassDrawable(context, 26f, 1f));
-        row.getBackground().setAlpha(0);
+        RowDrawable material = new RowDrawable(context);
+        row.setBackground(material);
 
         TextView label = new TextView(context);
         label.setText(category.title);
-        label.setTextColor(TEXT);
+        label.setTextColor(Theme.inkSoft());
         Type.apply(label, Type.HEADING);
         label.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
         label.setMaxLines(1);
+        label.setEllipsize(TextUtils.TruncateAt.END);
         row.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
+                == View.LAYOUT_DIRECTION_RTL;
         TextView chevron = new TextView(context);
         chevron.setText(rtl ? "‹" : "›");
-        chevron.setTextColor(0xFF8296A5);
-        chevron.setTextSize(26f);
+        chevron.setTextColor(Theme.inkTertiary());
+        chevron.setTextSize(22f);
         chevron.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        chevronParams.setMarginStart(Ui.dp(context, 18));
+        chevronParams.setMarginStart(Ui.dp(context, 10));
         row.addView(chevron, chevronParams);
 
         StringBuilder description = new StringBuilder(category.title)
@@ -262,18 +192,27 @@ final class SettingsHomeView extends LinearLayout {
             description.append(". ").append(detail.label).append(": ").append(detail.value);
         }
         row.setContentDescription(description.toString());
+
+        final float[] focus = {0f};
         row.setOnFocusChangeListener((view, focused) -> {
             selectedIndex = index;
-            GlassDrawable glass = (GlassDrawable) view.getBackground();
-            glass.setAlpha(focused ? 255 : 0);
-            glass.setFocus(focused ? 1f : 0f);
-            label.setTextColor(focused ? INK : TEXT);
-            chevron.setTextColor(focused ? 0xFF506571 : 0xFF8296A5);
-            view.setElevation(focused ? Ui.dpf(context, 12f) : 0f);
-            Motion.scale(view, focused ? 1.035f : 1f, 1f, 0.2f);
-            if (focused) {
-                showCategory(index);
-            }
+            RowDrawable bg = (RowDrawable) view.getBackground();
+            Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
+                        @Override
+                        public float get() {
+                            return focus[0];
+                        }
+
+                        @Override
+                        public void set(float value) {
+                            focus[0] = value;
+                            bg.setFocus(value);
+                            label.setTextColor(Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value));
+                            chevron.setTextColor(Ui.lerpColor(Theme.inkTertiary(), 0x99101C26, value));
+                        }
+                    });
+            view.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
         });
         row.setOnClickListener(view -> category.action.run());
         return row;
@@ -282,29 +221,6 @@ final class SettingsHomeView extends LinearLayout {
     /** The category the user is on, so a rebuilt screen can keep it. */
     int selectedCategory() {
         return selectedIndex;
-    }
-
-    private void showCategory(int index) {
-        if (index < 0 || index >= categories.size()) {
-            return;
-        }
-        selectedIndex = index;
-        Category category = categories.get(index);
-        selectedSummary.setText(category.summary);
-        StringBuilder details = new StringBuilder();
-        for (Detail detail : category.details) {
-            if (details.length() > 0) {
-                details.append('\n');
-            }
-            details.append(detail.label).append("  ·  ").append(detail.value);
-        }
-        selectedDetails.setText(details.toString());
-        StringBuilder spoken = new StringBuilder(category.title).append(". ")
-                .append(category.summary);
-        for (Detail detail : category.details) {
-            spoken.append(". ").append(detail.label).append(": ").append(detail.value);
-        }
-        selectedSummary.setContentDescription(spoken.toString());
     }
 
     private static int clamp(int index, int size) {

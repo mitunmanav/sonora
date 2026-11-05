@@ -40,6 +40,8 @@ public final class Motion {
     public static final float RESPONSE_PANEL = 0.32f;
     /** Focus settling on a card. */
     public static final float RESPONSE_FOCUS = 0.30f;
+    /** A control yielding under OK. Faster than focus: a press has to answer now. */
+    public static final float RESPONSE_PRESS = 0.16f;
 
     public static final int SCALE = 0;
     public static final int TRANSLATION_X = 1;
@@ -239,33 +241,6 @@ public final class Motion {
             runner.tracks[kind] = null;
         }
         write(view, kind, value);
-    }
-
-    /**
-     * Nudges a property straight away while a spring on it keeps running, so
-     * the animation continues from the new value instead of restarting.
-     */
-    public static void nudge(View view, int kind, float value) {
-        Runner runner = runners.get(view);
-        Track track = runner == null ? null : runner.tracks[kind];
-        if (track != null) {
-            track.spring.jumpTo(value);
-        }
-        write(view, kind, value);
-    }
-
-    /**
-     * Nudges a float the view draws itself, the same way a spring on a view
-     * property is nudged: the value jumps and the spring carries on from
-     * there.
-     */
-    public static void nudgeCustom(View owner, int slot, float value, FloatProperty property) {
-        Runner runner = runners.get(owner);
-        Track track = runner == null ? null : runner.tracks[KINDS + slot];
-        if (track != null) {
-            track.spring.jumpTo(value);
-        }
-        property.set(value);
     }
 
     /** Stops every animation on a view, for a view that is going away. */

@@ -4,8 +4,6 @@ import android.content.Context;
 import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.Gravity;
-import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -18,9 +16,9 @@ public final class AppTileView extends LinearLayout {
         void onTileFocused(AppTileView tile, AppEntry entry);
     }
 
-    /** How far the card leans, in degrees, per step of travel. */
-    private static final float LEAN_X = 2.2f;
-    private static final float LEAN_Y = 1.8f;
+    public static final float FOCUS_SCALE = 1.22f;
+    /** The focused card yields under OK, then springs back. */
+    private static final float PRESS_SCALE = 0.95f;
 
     private final AppIconView icon;
     private final TextView label;
@@ -49,6 +47,15 @@ public final class AppTileView extends LinearLayout {
         LayoutParams iconParams = new LayoutParams(LayoutParams.MATCH_PARENT, iconHeight);
         addView(icon, iconParams);
 
+        if (labelSpace <= 0) {
+            // Names are off by default, and a view per app costs on a big list.
+            label = null;
+            setOnFocusChangeListener((v, hasFocus) -> {
+                focused = hasFocus;
+                updateFocus();
+            });
+            return;
+        }
         label = new TextView(context);
         label.setTextColor(Color.WHITE);
         Type.apply(label, Type.CAPTION);
@@ -58,7 +65,7 @@ public final class AppTileView extends LinearLayout {
         label.setAlpha(0.82f);
         label.setMinHeight(labelSpace);
         LayoutParams labelParams = new LayoutParams(LayoutParams.MATCH_PARENT,
-                labelSpace > 0 ? LayoutParams.WRAP_CONTENT : 0);
+                LayoutParams.WRAP_CONTENT);
         labelParams.topMargin = Ui.dp(context, 5);
         addView(label, labelParams);
         // A label only shows for the focused tile in that mode, so the ones
@@ -67,8 +74,6 @@ public final class AppTileView extends LinearLayout {
         if (labelMode == Prefs.LABELS_FOCUSED) {
             label.setVisibility(INVISIBLE);
             label.setAlpha(0f);
-        } else if (labelMode == Prefs.LABELS_OFF) {
-            label.setVisibility(GONE);
         } else {
             label.setVisibility(VISIBLE);
         }
@@ -91,7 +96,9 @@ public final class AppTileView extends LinearLayout {
     public void setEntry(AppEntry entry) {
         this.entry = entry;
         icon.setEntry(entry);
-        label.setText(entry.label);
+        if (label != null) {
+            label.setText(entry.label);
+        }
         setContentDescription(entry.label);
     }
 
@@ -111,8 +118,8 @@ public final class AppTileView extends LinearLayout {
             // order the D-pad links were built from.
             setZ(Ui.dpf(getContext(), 8f));
             icon.setFocused(true);
-            Motion.scale(icon, 1.10f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
-            if (labelSpace && labelMode != Prefs.LABELS_OFF) {
+            Motion.scale(icon, FOCUS_SCALE, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
+            if (label != null) {
                 label.setVisibility(VISIBLE);
                 Motion.spring(label, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
                         Motion.RESPONSE_FOCUS);
@@ -124,7 +131,7 @@ public final class AppTileView extends LinearLayout {
             icon.setFocused(false);
             Motion.scale(icon, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
             setZ(0f);
-            if (labelSpace) {
+            if (label != null) {
                 if (labelMode == Prefs.LABELS_FOCUSED) {
                     Motion.spring(label, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
                             Motion.RESPONSE_FOCUS, () -> label.setVisibility(INVISIBLE));
@@ -137,38 +144,25 @@ public final class AppTileView extends LinearLayout {
     }
 
     /**
-     * Leans the card in the direction of travel, then lets it settle back.
-     *
-     * The lean is a spring, so moving on before it has settled continues from
-     * where the card is instead of restarting the movement.
+     * The card yields while OK is held, then springs back when it is let go.
+     * The framework clears the press when the focus leaves, so the card can
+     * never be left shrunk.
      */
-    public void lean(float directionX, float directionY) {
-        if (directionX == 0f && directionY == 0f) {
-            return;
-        }
-        if (Motion.isReduced(getContext())) {
-            // Reduced motion keeps the feedback but drops the travel: the
-            // card does not swing across the screen.
-            return;
-        }
-        icon.setCameraDistance(Ui.dpf(getContext(), 1800f));
-        Motion.nudge(icon, Motion.ROTATION_Y, directionX * LEAN_X);
-        Motion.nudge(icon, Motion.ROTATION_X, -directionY * LEAN_Y);
-        Motion.spring(icon, Motion.ROTATION_Y, 0f, Motion.DAMPING_CRITICAL,
-                Motion.RESPONSE_FOCUS);
-        Motion.spring(icon, Motion.ROTATION_X, 0f, Motion.DAMPING_CRITICAL,
-                Motion.RESPONSE_FOCUS);
-        // The artwork inside the card shifts with it, which is what gives the
-        // card its depth.
-        float dp = Ui.dpf(getContext(), 3f);
-        icon.nudgeParallax(directionX * dp, directionY * dp);
+    @Override
+    public void setPressed(boolean pressed) {
+        super.setPressed(pressed);
+        float base = focused ? FOCUS_SCALE : 1f;
+        Motion.scale(icon, pressed ? base * PRESS_SCALE : base,
+                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         Motion.cancel(this);
         Motion.cancel(icon);
-        Motion.cancel(label);
+        if (label != null) {
+            Motion.cancel(label);
+        }
         super.onDetachedFromWindow();
     }
 }

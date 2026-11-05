@@ -26,8 +26,8 @@ import java.io.File;
  * big enough to read off the screen and type into a phone or a laptop.
  */
 public final class ShareActivity extends Activity {
-    private static final String EXTRA_PATH = "path";
-    private static final String EXTRA_NAME = "name";
+    static final String EXTRA_PATH = "path";
+    static final String EXTRA_NAME = "name";
 
     private FileServer server;
     private File shared;

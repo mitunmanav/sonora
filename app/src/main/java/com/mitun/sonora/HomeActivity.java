@@ -5,13 +5,18 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -20,15 +25,19 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.mitun.sonora.tools.QuickPanel;
 import com.mitun.sonora.ui.AppTileView;
+import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
+import com.mitun.sonora.ui.ControlCenter;
 import com.mitun.sonora.ui.GlassDrawable;
-import com.mitun.sonora.ui.GlassIconPill;
+import com.mitun.sonora.ui.GlassLens;
 import com.mitun.sonora.ui.GlassPillView;
 import com.mitun.sonora.ui.HeroBackgroundView;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.ScreensaverView;
 import com.mitun.sonora.ui.SearchOverlay;
+import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
@@ -45,11 +54,19 @@ import java.util.Set;
  */
 public class HomeActivity extends Activity {
     /** Padding inside the glass dock, around the row of icons. */
-    private static final int BAR_PAD_DP = 12;
+    private static final int BAR_PAD_DP = 20;
     /** The gap between two rows of icons. */
-    private static final int ROW_GAP_DP = 22;
+    private static final int ROW_GAP_DP = 41;
     /** How much of the next row shows under the dock, cut by the screen edge. */
-    private static final int PEEK_DP = 20;
+    private static final int PEEK_DP = 13;
+    /** The gap between two rows once the grid is open, which is wider. */
+    private static final int OPEN_ROW_GAP_DP = 55;
+    /** Where the dock's top edge rides to when the grid opens. */
+    private static final float OPEN_DOCK_TOP = 0.056f;
+    /** The corner of the glass dock. */
+    private static final float DOCK_RADIUS_DP = 29f;
+    /** The dock is baked at half size: the bend hides it, and it costs a quarter. */
+    private static final int DOCK_LENS_SCALE = 2;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -63,15 +80,38 @@ public class HomeActivity extends Activity {
     private FrameLayout root;
     private HeroBackgroundView hero;
     private GlassPillView clockPill;
-    private GlassIconPill quickPill;
-    private GlassIconPill searchPill;
     private TextView shelfTitle;
     private TextView shelfSubtitle;
+    private LinearLayout shelf;
+    private BackdropView gridBackdrop;
+    /** The name under the focused card, once the grid is open. */
+    private TextView gridLabel;
+    private int gridLabelBase;
+    private int gridLabelRow;
+    private int dockTravelPx;
+    private int openExtraPx;
+    private float gridScroll;
+    private final Motion.FloatProperty gridScrollValue = new Motion.FloatProperty() {
+        @Override
+        public float get() {
+            return gridScroll;
+        }
+
+        @Override
+        public void set(float value) {
+            applyGridScroll(value);
+        }
+    };
+    private ControlCenter controlCenter;
     private LinearLayout grid;
     private FrameLayout dockPort;
     private View dockBar;
+    private GlassDrawable dockMaterial;
+    private View chevron;
+    private FrameLayout.LayoutParams chevronParams;
+    /** What the glass was last baked from, so a resume does not bake it again. */
+    private String glassKey = "";
     private FrameLayout.LayoutParams dockBarParams;
-    private FrameLayout.LayoutParams portParams;
     private int marginPx;
     private int barPadPx;
     private int rowGapPx;
@@ -85,22 +125,30 @@ public class HomeActivity extends Activity {
     /** True while the user is arranging the apps with the D-pad. */
     private boolean editing;
 
-    /** True when the search was opened from the search button, not the remote. */
-    private boolean searchFromPill;
-
     private long lastInteraction;
     private boolean suppressIdle;
     private boolean initialFocusDone;
-    /** True while the search and quick-settings buttons are showing. */
-    private boolean shelfToolsShown = true;
 
     /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
     private Bitmap wallpaperBitmap;
+    /**
+     * A half-size copy the glass is bent from. The wallpaper itself lives on the
+     * GPU where the platform allows it, and cannot be read back.
+     */
+    private Bitmap lensSource;
+    /** The small blurred wallpaper: the open grid, frosted glass, the first frame. */
+    private Bitmap softened;
+    /** Bumped for each bake, so a slow one that was overtaken is dropped. */
+    private int glassGeneration;
+    /** The instance on screen. HOME and a launcher tile each make one, in their own task. */
+    private static java.lang.ref.WeakReference<HomeActivity> latest;
+    private boolean resumed;
+    private boolean builtLight;
+    private int builtTier;
     /** The key of the wallpaper that is on screen. */
     private String wallpaperKey;
     /** The key of the newest request, so a decode that is overtaken can be dropped. */
     private String wallpaperRequest = "";
-    private Bitmap settingsIcon;
 
     /** The app that had the focus, so a rebuild can put the focus back on it. */
     private String focusedPackage;
@@ -133,8 +181,22 @@ public class HomeActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
+        Theme.load(this);
+        // A launcher tile and the HOME key start separate tasks, and each would keep
+        // a full home screen alive. Only the newest one is worth its memory.
+        HomeActivity older = latest == null ? null : latest.get();
+        // A recreate brings the same screen back, and the old one is already destroyed
+        // by now. Finishing that would close this new one, which shares its record.
+        if (older != null && older != this && !older.isFinishing() && !older.isDestroyed()) {
+            older.finish();
+        }
+        latest = new java.lang.ref.WeakReference<>(this);
+        builtLight = Theme.isLight();
+        builtTier = DeviceTier.get(this);
         Ui.immersive(this);
         buildLayout();
+        // The hero below paints every pixel, so the window has no need to first.
+        getWindow().setBackgroundDrawable(null);
         handler.post(idleWatcher);
         // Seeded here so the first resume does not read the grid as changed
         // and rebuild it a second time.
@@ -160,7 +222,6 @@ public class HomeActivity extends Activity {
 
     private void buildLayout() {
         root = new FrameLayout(this);
-        root.setBackgroundColor(Ui.NIGHT);
         root.setClipChildren(false);
         root.setClipToPadding(false);
 
@@ -172,17 +233,29 @@ public class HomeActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // Top shelf: the focused app's title, plus the clock pill on the right.
-        LinearLayout shelf = new LinearLayout(this);
+        shelf = new LinearLayout(this) {
+            // Fading this row as the grid opens would otherwise take an offscreen
+            // buffer as wide as the screen. Nothing in it overlaps enough to show.
+            @Override
+            public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
         shelf.setOrientation(LinearLayout.HORIZONTAL);
-        shelf.setGravity(Gravity.CENTER_VERTICAL);
+        shelf.setGravity(Gravity.TOP);
         shelf.setClipChildren(false);
-        shelf.setPadding(margin, Ui.dp(this, 34), margin, 0);
+        // Measured from tvOS 26: the title starts 3.6% in, the pill ends 2.8%
+        // from the edge and 4.7% from the top.
+        shelf.setPadding(Ui.dp(this, 34), Ui.dp(this, 25), Ui.dp(this, 27), 0);
 
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(0, Ui.dp(this, 7), 0, 0);
         shelfTitle = new TextView(this);
         shelfTitle.setTextColor(Color.WHITE);
         Type.apply(shelfTitle, Type.TITLE);
+        // It stands where tvOS puts the show's wordmark, so it has to carry.
+        shelfTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 44f);
         shelfTitle.setSingleLine(true);
         shelfTitle.setEllipsize(TextUtils.TruncateAt.END);
         titles.addView(shelfTitle);
@@ -198,72 +271,33 @@ public class HomeActivity extends Activity {
 
         clockPill = new GlassPillView(this, prefs);
         clockPill.setId(View.generateViewId());
-        clockPill.setOnOpenSettings(this::openSettings);
-        clockPill.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                setShelfTools(true);
-            }
-        });
-
-        // Search comes first in the row. This TV's remote has no search key
-        // and its voice key is swallowed by the system, so without a button
-        // of its own the search could never be reached.
-        searchPill = new GlassIconPill(this, Ui.magnifier(this, Ui.dp(this, 22)),
-                "Search apps");
-        searchPill.setId(View.generateViewId());
-        searchPill.setOnOpen(this::openSearch);
-
-        // The control centre sits to the left of the clock: the TV's own
-        // settings, one tap away.
-        quickPill = new GlassIconPill(this, Ui.sliders(this, Ui.dp(this, 22)),
-                "Quick settings");
-        quickPill.setId(View.generateViewId());
-        quickPill.setOnOpen(this::openQuickSettings);
-        // tvOS keeps only the clock and the profile in the top row. The extra
-        // buttons materialise when the user reaches that row, so at rest the
-        // screen matches the reference and the controls are still one press
-        // away.
-        setShelfTools(false);
-
-        LinearLayout pills = new LinearLayout(this);
-        pills.setOrientation(LinearLayout.HORIZONTAL);
-        pills.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        // An end margin, so the gap is on the side the next button is on in
-        // a right-to-left language too.
-        searchParams.setMarginEnd(Ui.dp(this, 10));
-        pills.addView(searchPill, searchParams);
-        LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        quickParams.setMarginEnd(Ui.dp(this, 10));
-        pills.addView(quickPill, quickParams);
-        pills.addView(clockPill, new LinearLayout.LayoutParams(
+        // The clock is a readout, as on tvOS. The controls live in Control
+        // Center, one press up from the first row.
+        clockPill.setFocusable(false);
+        clockPill.setClickable(false);
+        shelf.addView(clockPill, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        shelf.addView(pills, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        // The shelf of apps lives in a strip at the bottom of the screen.
-        //
-        // tvOS 26 puts the focused row of icons inside a fixed pane of glass
-        // and lets the next row peek out of the bottom of the screen. The
-        // rows are one list: moving the focus down slides the list, so the
-        // row that has the focus is always the one in the dock.
+        // The apps are one list, and the dock is a pane of glass around its
+        // first row. At rest they sit at the bottom of the screen with the next
+        // row peeking out. Moving the focus down carries them up together into
+        // a full-screen grid over the blurred wallpaper, as tvOS 26 does.
         marginPx = margin;
         barPadPx = Ui.dp(this, BAR_PAD_DP);
         rowGapPx = Ui.dp(this, ROW_GAP_DP);
         peekPx = Ui.dp(this, PEEK_DP);
 
-        // The dock: a fixed pane of glass that the focused row of apps sits
-        // in. The rows slide behind it, the way tvOS keeps the shelf still
-        // while the next row of icons rises into it.
+        gridBackdrop = new BackdropView(this, softened);
+        gridBackdrop.setVisibility(View.GONE);
+        root.addView(gridBackdrop, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         dockBar = new View(this);
-        GlassDrawable dockMaterial = new GlassDrawable(this, 26f, 1f);
+        dockMaterial = new GlassDrawable(this, DOCK_RADIUS_DP, 1f);
         dockBar.setBackground(dockMaterial);
         // The glass sits behind the icons. Elevation would paint it over them.
         dockBar.setElevation(0f);
-        final float barRadius = Ui.dpf(this, 26f);
+        final float barRadius = Ui.dpf(this, DOCK_RADIUS_DP);
         dockBar.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override
             public void getOutline(View v, android.graphics.Outline outline) {
@@ -272,18 +306,25 @@ public class HomeActivity extends Activity {
         });
         dockBarParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM);
-        dockBarParams.leftMargin = marginPx - barPadPx;
-        dockBarParams.rightMargin = marginPx - barPadPx;
+        int dockMargin = Math.round(getResources().getDisplayMetrics().widthPixels
+                * Grid.DOCK_MARGIN_RATIO);
+        dockBarParams.leftMargin = dockMargin;
+        dockBarParams.rightMargin = dockMargin;
         root.addView(dockBar, dockBarParams);
 
-        // The strip the rows live in. It is as tall as the dock plus the
-        // peek, so the row below the focus is cut off by the screen edge.
+        // The mark above the dock that says there is more up there.
+        chevron = new ChevronView(this);
+        chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        chevronParams = new FrameLayout.LayoutParams(Ui.dp(this, 27), Ui.dp(this, 8),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        root.addView(chevron, chevronParams);
+
+        // The strip the rows live in: the whole screen, so the list can ride up
+        // it. The next row at rest is cut off by the screen edge.
         dockPort = new FrameLayout(this);
         dockPort.setClipChildren(true);
-        dockPort.setPadding(margin, 0, margin, 0);
-        portParams = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM);
-        root.addView(dockPort, portParams);
+        root.addView(dockPort, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
@@ -291,7 +332,27 @@ public class HomeActivity extends Activity {
         grid.setClipToPadding(false);
         dockPort.addView(grid, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        gridLabel = new TextView(this);
+        gridLabel.setTextColor(Color.WHITE);
+        Type.apply(gridLabel, Type.BODY);
+        gridLabel.setGravity(Gravity.CENTER_HORIZONTAL);
+        gridLabel.setSingleLine(true);
+        gridLabel.setEllipsize(TextUtils.TruncateAt.END);
+        gridLabel.setAlpha(0f);
+        gridLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        dockPort.addView(gridLabel, new FrameLayout.LayoutParams(
+                Ui.dp(this, metrics.tileWidthDp + 40), ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.START));
+        openExtraPx = Ui.dp(this, OPEN_ROW_GAP_DP - ROW_GAP_DP);
         applyDockMetrics(labelSpacePx(), tileHeightPx());
+
+        View.OnLayoutChangeListener rebake = (v, l, t, r, b, ol, ot, orr, ob) -> {
+            if (l != ol || t != ot || r != orr || b != ob) {
+                bakeGlass();
+            }
+        };
+        dockBar.addOnLayoutChangeListener(rebake);
+        clockPill.addOnLayoutChangeListener(rebake);
 
         root.addView(shelf, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -306,8 +367,11 @@ public class HomeActivity extends Activity {
 
     private void loadApps() {
         final long gen = ++appsLoadGeneration;
-        final int tileWidthPx = Ui.dp(this, gridMetrics().tileWidthDp);
+        // Stored at the size the focused card draws at, so it stays sharp.
+        final int tileWidthPx = DeviceTier.artworkWidth(DeviceTier.get(this),
+                Ui.dp(this, gridMetrics().tileWidthDp), AppTileView.FOCUS_SCALE);
         new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             List<AppEntry> result;
             try {
                 result = AppRepository.get(this, tileWidthPx);
@@ -348,7 +412,7 @@ public class HomeActivity extends Activity {
         AppEntry[] all = new AppEntry[appEntries.length + 1];
         System.arraycopy(appEntries, 0, all, 0, appEntries.length);
         all[appEntries.length] = new AppEntry("Settings", getPackageName(), null,
-                settingsIcon(), null, 0xFF4A505C, true);
+                null, null, 0xFF4A505C, true);
 
         for (AppEntry entry : all) {
             AppTileView tile = new AppTileView(this, tileHeight, labelHeight, prefs);
@@ -416,14 +480,17 @@ public class HomeActivity extends Activity {
             grid.addView(row, rowParams);
         }
         // The focused row has to start inside the dock, so the list is
-        // padded by the glass padding and slid by whole rows.
-        grid.setPadding(0, barPadPx, 0, 0);
+        // padded by the glass padding and slid by whole rows. The side margin
+        // is padding on the list too: the strip clips the list to the list's
+        // own bounds, so a narrower list would cut a focused card's outer edge.
+        grid.setPadding(marginPx, barPadPx, marginPx, 0);
         // The strip is shorter than the list so the next row peeks out. The
         // list itself must keep its full height, or the rows below the fold
         // measure to zero and can never take focus.
         int rows = (tiles.size() + columns - 1) / columns;
         FrameLayout.LayoutParams gridParams = (FrameLayout.LayoutParams) grid.getLayoutParams();
-        gridParams.height = barPadPx + rows * (rowHeightPx + rowGapPx);
+        // Room for the wider gaps of the open grid: the list is clipped to it.
+        gridParams.height = barPadPx + rows * (rowHeightPx + rowGapPx + openExtraPx);
         grid.setLayoutParams(gridParams);
         scrollToRow(focusedRow(), false);
     }
@@ -461,14 +528,6 @@ public class HomeActivity extends Activity {
         });
     }
 
-    /** The gear for the Settings tile, drawn once and reused. */
-    private Bitmap settingsIcon() {
-        if (settingsIcon == null || settingsIcon.isRecycled()) {
-            settingsIcon = Ui.gear(this, Ui.dp(this, 192), true);
-        }
-        return settingsIcon;
-    }
-
     /** Grid metrics for the real screen, so a 720p stick and a 4K panel match. */
     private Grid.Metrics gridMetrics() {
         int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels
@@ -496,13 +555,18 @@ public class HomeActivity extends Activity {
     private void applyDockMetrics(int labelHeight, int tileHeight) {
         rowHeightPx = tileHeight + labelHeight;
         int barHeight = rowHeightPx + barPadPx * 2;
-        int portHeight = barHeight + peekPx + rowGapPx - barPadPx;
         dockBarParams.height = barHeight;
         // The dock sits above the peek, so the next row shows under it.
         dockBarParams.bottomMargin = peekPx + rowGapPx - barPadPx;
         dockBar.setLayoutParams(dockBarParams);
-        portParams.height = portHeight;
-        dockPort.setLayoutParams(portParams);
+        chevronParams.bottomMargin = dockBarParams.bottomMargin + barHeight + Ui.dp(this, 11);
+        chevron.setLayoutParams(chevronParams);
+        int height = getResources().getDisplayMetrics().heightPixels;
+        int dockTop = height - dockBarParams.bottomMargin - barHeight;
+        dockTravelPx = dockTop - Math.round(height * OPEN_DOCK_TOP);
+        FrameLayout.LayoutParams gridParams = (FrameLayout.LayoutParams) grid.getLayoutParams();
+        gridParams.topMargin = dockTop;
+        grid.setLayoutParams(gridParams);
     }
 
     /** The distance from one row of icons to the next. */
@@ -511,23 +575,71 @@ public class HomeActivity extends Activity {
     }
 
     /**
-     * Brings a row of icons into the dock.
-     *
-     * The rows are one list that slides behind the fixed glass, so the row
-     * that has the focus is always the one inside the dock, and the row
-     * below it peeks out at the bottom of the screen.
+     * Brings a row of icons into view: the first row in the dock at the bottom
+     * of the screen, any other in the open grid.
      */
     private void scrollToRow(int row, boolean animate) {
         if (grid == null) {
             return;
         }
-        float target = -row * (float) rowStridePx();
+        float target = Grid.scrollFor(row, dockTravelPx, rowStridePx() + openExtraPx);
         if (!animate || Motion.isReduced(this)) {
-            Motion.set(grid, Motion.TRANSLATION_Y, target);
+            Motion.cancel(grid);
+            applyGridScroll(target);
         } else {
-            Motion.spring(grid, Motion.TRANSLATION_Y, target,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
+            Motion.springCustom(grid, 0, target, Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE,
+                    gridScrollValue);
         }
+    }
+
+    /**
+     * One position drives the whole move, so the dock, the rows, the wallpaper
+     * and the clock can never fall out of step, even when it is interrupted.
+     */
+    private void applyGridScroll(float value) {
+        gridScroll = value;
+        float open = Grid.openProgress(value, dockTravelPx);
+        grid.setTranslationY(value);
+        dockBar.setTranslationY(value);
+        for (int i = 1; i < grid.getChildCount(); i++) {
+            grid.getChildAt(i).setTranslationY(i * openExtraPx * open);
+        }
+        gridLabel.setTranslationY(gridLabelBase + value + gridLabelRow * openExtraPx * open);
+        // The top row is gone by the time the dock has come halfway up to it.
+        shelf.setAlpha(Math.max(0f, 1f - open * 2f));
+        chevron.setTranslationY(value);
+        gridBackdrop.setAlpha(open);
+        gridBackdrop.setVisibility(open > 0f ? View.VISIBLE : View.GONE);
+        // Once the blur covers it, drawing the wallpaper is a screen of wasted pixels.
+        hero.setVisibility(open >= 1f ? View.INVISIBLE : View.VISIBLE);
+        dockMaterial.setLens(1f - open);
+    }
+
+    /** Puts the app's name under its card, once the grid is open. */
+    private void placeGridLabel(AppTileView tile, AppEntry entry, int row) {
+        if (row == 0 || labelSpacePx() > 0) {
+            gridLabelRow = 0;
+            Motion.spring(gridLabel, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS);
+            return;
+        }
+        // The name fades in under the new card rather than jumping there from the
+        // old one, while the card it belongs to is still growing.
+        if (!entry.label.contentEquals(gridLabel.getText())) {
+            gridLabel.setAlpha(0f);
+            gridLabel.setText(entry.label);
+        }
+        View rowView = (View) tile.getParent();
+        gridLabel.setTranslationX(marginPx + rowView.getLeft() - grid.getPaddingLeft()
+                + tile.getLeft() + (tile.getWidth() - gridLabel.getLayoutParams().width) / 2f);
+        // Below the card as it stands under the focus.
+        float grown = rowHeightPx * (AppTileView.FOCUS_SCALE - 1f) / 2f;
+        gridLabelRow = row;
+        gridLabelBase = Math.round(((FrameLayout.LayoutParams) grid.getLayoutParams()).topMargin
+                + barPadPx + row * rowStridePx() + rowHeightPx + grown + Ui.dp(this, 5));
+        applyGridScroll(gridScroll);
+        Motion.spring(gridLabel, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS);
     }
 
     /** The row of icons the focus is in. */
@@ -544,36 +656,15 @@ public class HomeActivity extends Activity {
         if (entry == null) {
             return;
         }
-        hero.setEntry(entry);
         updateShelf(entry);
         focusedPackage = entry.packageName;
-        setShelfTools(false);
-        // The row that has the focus rides in the dock; the rows slide to
-        // put it there, the way tvOS lifts the row into its shelf.
         int index = tiles.indexOf(tile);
         if (index >= 0) {
-            scrollToRow(index / Math.max(1, gridMetrics().columns), true);
+            int row = index / Math.max(1, gridMetrics().columns);
+            scrollToRow(row, true);
+            showChevron(row == 0);
+            placeGridLabel(tile, entry, row);
         }
-        View focused = getCurrentFocus();
-        View previous = lastFocused;
-        if (previous != null && previous != focused) {
-            float dx = 0f;
-            float dy = 0f;
-            if (focused != null) {
-                int[] a = new int[2];
-                int[] b = new int[2];
-                previous.getLocationOnScreen(a);
-                focused.getLocationOnScreen(b);
-                dx = Math.signum(b[0] - a[0]);
-                dy = Math.signum(b[1] - a[1]);
-            }
-            // The card that just took the focus leans into the direction of
-            // travel and settles back, the way a tvOS card does.
-            if (focused instanceof AppTileView) {
-                ((AppTileView) focused).lean(dx, dy);
-            }
-        }
-        lastFocused = focused;
     }
 
     /** Puts the focus on the first app, once, when the screen is ready for it. */
@@ -590,8 +681,6 @@ public class HomeActivity extends Activity {
         initialFocusDone = true;
         tiles.get(0).requestFocus();
     }
-
-    private View lastFocused;
 
     private void updateShelf(AppEntry entry) {
         if (entry == null) {
@@ -617,26 +706,193 @@ public class HomeActivity extends Activity {
         shelfSubtitle.setVisibility(text == null ? View.GONE : View.VISIBLE);
     }
 
-    /**
-     * Reveals the search and quick-settings buttons only while the top row has
-     * the focus. tvOS keeps that corner to the clock and the profile; the
-     * controls are still one UP press away.
-     */
-    private void setShelfTools(boolean show) {
-        if (searchPill == null || quickPill == null || show == shelfToolsShown) {
+    private void showChevron(boolean show) {
+        Motion.spring(chevron, Motion.ALPHA, show ? 1f : 0f,
+                Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
+    }
+
+    // --- Control Center -----------------------------------------------------
+
+    private void openControlCenter() {
+        if (controlCenter != null) {
             return;
         }
-        shelfToolsShown = show;
-        for (View view : new View[]{searchPill, quickPill}) {
-            view.setFocusable(show);
-            view.setClickable(show);
-            if (!view.isAttachedToWindow()) {
-                view.setAlpha(show ? 1f : 0f);
-                continue;
-            }
-            Motion.spring(view, Motion.ALPHA, show ? 1f : 0f,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
+        suppressIdle = true;
+        showChevron(false);
+        clockPill.refresh();
+        controlCenter = new ControlCenter(this, clockPill.clockText(), QuickPanel.wifiName(this),
+                gridBackdrop.softened(), new ControlCenter.Listener() {
+                    @Override
+                    public void onPick(int action) {
+                        closeControlCenter(() -> runControl(action));
+                    }
+
+                    @Override
+                    public void onDismiss() {
+                        closeControlCenter(null);
+                    }
+                });
+        overlayHost.addView(controlCenter, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Control Center repeats the clock in its own top row.
+        Motion.spring(clockPill, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS);
+        controlCenter.open();
+    }
+
+    private void closeControlCenter(Runnable after) {
+        if (controlCenter == null) {
+            return;
         }
+        final ControlCenter closing = controlCenter;
+        controlCenter = null;
+        suppressIdle = false;
+        Motion.spring(clockPill, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
+                Motion.RESPONSE_FOCUS);
+        restoreFocus();
+        showChevron(true);
+        closing.close(() -> overlayHost.removeView(closing));
+        if (after != null) {
+            after.run();
+        }
+    }
+
+    private void runControl(int action) {
+        switch (action) {
+            case ControlCenter.SAVER:
+                showScreensaver();
+                break;
+            case ControlCenter.WIFI:
+                QuickPanel.openWifi(this);
+                break;
+            case ControlCenter.BLUETOOTH:
+                QuickPanel.openBluetooth(this);
+                break;
+            case ControlCenter.SOUND:
+                QuickPanel.openSound(this);
+                break;
+            case ControlCenter.DISPLAY:
+                QuickPanel.openDisplay(this);
+                break;
+            case ControlCenter.SEARCH:
+                openSearch();
+                break;
+            case ControlCenter.APPS:
+                openTool("apps");
+                break;
+            case ControlCenter.QUICK:
+                openQuickSettings();
+                break;
+            case ControlCenter.SETTINGS:
+            default:
+                openSettings();
+                break;
+        }
+    }
+
+    private void openTool(String screen) {
+        try {
+            startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, screen));
+        } catch (RuntimeException e) {
+            Ui.toast(this, "Could not open that screen");
+        }
+    }
+
+    /** The chevron tvOS draws above the dock, as a shallow caret. */
+    private static final class ChevronView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+
+        ChevronView(android.content.Context context) {
+            super(context);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setStrokeWidth(Ui.dpf(context, 1.75f));
+            paint.setColor(0xB3FFFFFF);
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            float inset = paint.getStrokeWidth();
+            path.reset();
+            path.moveTo(inset, h - inset);
+            path.lineTo(w / 2f, inset);
+            path.lineTo(w - inset, h - inset);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            canvas.drawPath(path, paint);
+        }
+    }
+
+    /**
+     * Gives every pane of glass on the home screen its share of the wallpaper. It
+     * runs only when the wallpaper or the layout changes; after that each pane is
+     * one textured quad. Bending takes a mesh per pane, so it runs off the main
+     * thread. The lightest tier frosts from the blur instead, which makes no bitmap.
+     */
+    private void bakeGlass() {
+        final int width = root.getWidth();
+        final int height = root.getHeight();
+        if (width == 0 || height == 0) {
+            return;
+        }
+        final Rect dock = screenRect(dockBar);
+        final Rect clock = screenRect(clockPill);
+        final Bitmap source = lensSource;
+        boolean bend = source != null && !source.isRecycled()
+                && DeviceTier.bentGlass(DeviceTier.get(this));
+        Bitmap frost = softened;
+        String key = (bend ? System.identityHashCode(source) : frost == null ? 0
+                : System.identityHashCode(frost)) + "@" + width + "x" + height + dock + clock;
+        if (key.equals(glassKey)) {
+            return;
+        }
+        glassKey = key;
+        final int generation = ++glassGeneration;
+        if (!bend) {
+            dockMaterial.setFrost(frost, width, height, HeroBackgroundView.ZOOM, dock, 0x1F000000);
+            clockPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, clock);
+            return;
+        }
+        final float dockRadius = Ui.dpf(this, DOCK_RADIUS_DP);
+        new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            Bitmap dockLens = null;
+            Bitmap clockLens = null;
+            try {
+                dockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, dock,
+                        dockRadius, DOCK_LENS_SCALE);
+                clockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, clock,
+                        clock.height() / 2f, 1);
+            } catch (RuntimeException | OutOfMemoryError ignored) {
+                // The glass stays dark, which still reads as glass.
+            }
+            final Bitmap bakedDock = dockLens;
+            final Bitmap bakedClock = clockLens;
+            runOnUiThread(() -> {
+                if (generation == glassGeneration && !isDestroyed()) {
+                    dockMaterial.setBackdrop(bakedDock, 0x1F000000);
+                    clockPill.setBackdrop(bakedClock);
+                }
+            });
+        }, "sonora-glass").start();
+    }
+
+    /** Where a view is laid out on the screen, ignoring its focus scale. */
+    private Rect screenRect(View view) {
+        int left = 0;
+        int top = 0;
+        View walk = view;
+        while (walk != null && walk != root) {
+            left += walk.getLeft();
+            top += walk.getTop();
+            walk = walk.getParent() instanceof View ? (View) walk.getParent() : null;
+        }
+        return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
     }
 
     private void launch(AppTileView tile) {
@@ -754,6 +1010,8 @@ public class HomeActivity extends Activity {
     private void startEditing() {
         editing = true;
         updateShelf(focusedEntry());
+        // The hint on the shelf is out of sight once the grid is open.
+        Ui.toast(this, "Move with the arrows, BACK to finish");
     }
 
     private void endEditing() {
@@ -840,11 +1098,11 @@ public class HomeActivity extends Activity {
             return;
         }
         suppressIdle = true;
-        searchFromPill = getCurrentFocus() == searchPill;
         Grid.Metrics metrics = gridMetrics();
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
         searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
-                Ui.dp(this, metrics.tileHeightDp), Ui.dp(this, metrics.marginDp),
+                Ui.dp(this, metrics.tileHeightDp), Ui.dp(this, metrics.gapDp), metrics.columns,
+                Ui.dp(this, metrics.marginDp), softened,
                 new SearchOverlay.Listener() {
             @Override
             public void onPicked(AppEntry entry) {
@@ -881,13 +1139,7 @@ public class HomeActivity extends Activity {
         suppressIdle = false;
         overlay.dismiss(() -> {
             overlayHost.removeView(overlay);
-            // The focus goes back where it came from: the button that opened
-            // the search, or the app that had it.
-            if (searchFromPill) {
-                searchPill.requestFocus();
-            } else {
-                restoreFocus();
-            }
+            restoreFocus();
             if (after != null) {
                 after.run();
             }
@@ -946,56 +1198,119 @@ public class HomeActivity extends Activity {
     }
 
     private void applyWallpaper() {
-        int index = prefs.wallpaper();
-        String uri = prefs.wallpaperUri();
-        int width = getResources().getDisplayMetrics().widthPixels;
-        int height = getResources().getDisplayMetrics().heightPixels;
-        String key = (index < 0 ? "u:" + uri : "s:" + index) + "@" + width + "x" + height;
+        final int index = prefs.wallpaper();
+        final String uri = prefs.wallpaperUri();
+        final int tier = DeviceTier.get(this);
+        final int divisor = DeviceTier.wallpaperDivisor(tier);
+        final int width = getResources().getDisplayMetrics().widthPixels;
+        final int height = getResources().getDisplayMetrics().heightPixels;
+        final String blurKey = BackdropView.key(index, uri);
+        String key = blurKey + "@" + width + "x" + height + "/" + tier;
         if (key.equals(wallpaperKey) && wallpaperBitmap != null && !wallpaperBitmap.isRecycled()) {
             hero.setWallpaper(wallpaperBitmap);
+            bakeGlass();
             return;
         }
-        // Decoding a full-screen JPEG takes long enough to drop frames, so it
-        // happens off the main thread and the result is applied back on it.
+        // The blur from the last decode covers the screen until this one lands, so
+        // a return to the launcher never shows an empty frame.
+        Bitmap blur = BackdropView.remembered(blurKey);
+        if (blur != null) {
+            useSoftened(blur);
+        }
         final String wanted = key;
         wallpaperRequest = wanted;
         new Thread(() -> {
-            Bitmap bitmap = null;
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            Bitmap picture = null;
+            Bitmap thumbnail = BackdropView.remembered(blurKey);
+            Bitmap half = null;
             try {
                 if (index < 0 && uri != null) {
                     // A photo the user picked; fall back to a bundled scene if
                     // the permission was refused or the file has gone.
-                    bitmap = Ui.decodeUri(getResources(), getContentResolver(),
-                            Uri.parse(uri), width);
+                    picture = Ui.decodeUri(getResources(), getContentResolver(),
+                            Uri.parse(uri), width / divisor);
                 }
-                if (bitmap == null) {
-                    bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
-                            Scenes.safeIndex(index)).res, width, height);
+                if (picture == null) {
+                    picture = Ui.decodeScene(getResources(), Scenes.ALL.get(
+                            Scenes.safeIndex(index)).res, width / divisor, height / divisor,
+                            tier == DeviceTier.LOW ? Bitmap.Config.RGB_565
+                                    : Bitmap.Config.ARGB_8888);
+                }
+                if (picture != null && thumbnail == null) {
+                    thumbnail = BackdropView.soften(picture);
+                    BackdropView.remember(blurKey, thumbnail);
+                }
+                if (picture != null && DeviceTier.bentGlass(tier)) {
+                    half = halfSize(picture);
+                    picture = moveToGpu(picture);
                 }
             } catch (RuntimeException | OutOfMemoryError ignored) {
-                bitmap = null;
+                // The blur or the plain gradient stays up, which beats a crash.
             }
-            final Bitmap decoded = bitmap;
+            final Bitmap decoded = picture;
+            final Bitmap source = half;
+            final Bitmap blurred = thumbnail;
             runOnUiThread(() -> {
-                // A newer wallpaper was asked for while this one was decoding:
-                // this one is stale and its memory is better given back.
-                if (!wanted.equals(wallpaperRequest)) {
-                    if (decoded != null) {
-                        decoded.recycle();
-                    }
-                    return;
-                }
-                if (isFinishing() || isDestroyed()) {
-                    if (decoded != null) {
-                        decoded.recycle();
-                    }
+                // A newer wallpaper was asked for while this one was decoding, or
+                // the screen is gone: this one's memory is better given back.
+                if (!wanted.equals(wallpaperRequest) || isFinishing() || isDestroyed()) {
                     return;
                 }
                 wallpaperBitmap = decoded;
                 wallpaperKey = wanted;
-                hero.setWallpaper(wallpaperBitmap);
+                lensSource = source;
+                useSoftened(blurred);
+                hero.setWallpaper(decoded);
+                bakeGlass();
             });
         }, "sonora-wallpaper").start();
+    }
+
+    private void useSoftened(Bitmap blur) {
+        softened = blur;
+        hero.setPlaceholder(blur);
+        gridBackdrop.setSoftened(blur);
+    }
+
+    private static Bitmap halfSize(Bitmap picture) {
+        Bitmap half = Bitmap.createBitmap(Math.max(1, picture.getWidth() / 2),
+                Math.max(1, picture.getHeight() / 2), Bitmap.Config.RGB_565);
+        new Canvas(half).drawBitmap(picture, null,
+                new Rect(0, 0, half.getWidth(), half.getHeight()),
+                new Paint(Paint.FILTER_BITMAP_FLAG));
+        return half;
+    }
+
+    /**
+     * Keeps the wallpaper in one place. An ordinary bitmap is held twice, once in
+     * memory and once as the texture made from it.
+     */
+    private static Bitmap moveToGpu(Bitmap picture) {
+        if (android.os.Build.VERSION.SDK_INT < 26) {
+            return picture;
+        }
+        Bitmap onGpu = picture.copy(Bitmap.Config.HARDWARE, false);
+        if (onGpu == null) {
+            return picture;
+        }
+        picture.recycle();
+        return onGpu;
+    }
+
+    /** Lets the screen-sized pictures go. The blur stays: it is a few kilobytes. */
+    private void releaseWallpaper() {
+        wallpaperRequest = "";
+        wallpaperBitmap = null;
+        wallpaperKey = null;
+        lensSource = null;
+        glassKey = "";
+        glassGeneration++;
+        hero.release();
+        if (dockMaterial != null) {
+            dockMaterial.setBackdrop(null, 0x1F000000);
+            clockPill.setBackdrop(null);
+        }
     }
 
     private void showScreensaver() {
@@ -1005,10 +1320,7 @@ public class HomeActivity extends Activity {
         // The wallpaper is invisible under the screen saver, which holds two
         // screen-sized scenes of its own. Letting it go keeps the peak at two
         // full-screen bitmaps instead of three.
-        wallpaperRequest = "";
-        wallpaperBitmap = null;
-        wallpaperKey = null;
-        hero.release();
+        releaseWallpaper();
         screensaver = new ScreensaverView(this);
         screensaver.setSceneDurationSec(prefs.screensaverSceneSec());
         screensaver.setShowOverlay(prefs.screensaverClock() == 1);
@@ -1140,35 +1452,7 @@ public class HomeActivity extends Activity {
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
-                // Leaving the grid for the top shelf. The clock is the only
-                // control there at rest; it reveals the rest of the row.
-                clockPill.requestFocus();
-            }
-            return true;
-        }
-        if (focused == searchPill) {
-            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                tiles.get(0).requestFocus();
-            } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                quickPill.requestFocus();
-            }
-            return true;
-        }
-        if (focused == quickPill) {
-            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                tiles.get(0).requestFocus();
-            } else if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                clockPill.requestFocus();
-            } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
-                searchPill.requestFocus();
-            }
-            return true;
-        }
-        if (focused == clockPill) {
-            if (key == KeyEvent.KEYCODE_DPAD_DOWN && !tiles.isEmpty()) {
-                tiles.get(0).requestFocus();
-            } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {
-                quickPill.requestFocus();
+                openControlCenter();
             }
             return true;
         }
@@ -1179,6 +1463,10 @@ public class HomeActivity extends Activity {
     private boolean handleBack() {
         if (screensaver != null) {
             hideScreensaver();
+            return true;
+        }
+        if (controlCenter != null) {
+            closeControlCenter(null);
             return true;
         }
         if (searchOverlay != null) {
@@ -1244,6 +1532,14 @@ public class HomeActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
+        Theme.load(this);
+        if (Theme.isLight() != builtLight || DeviceTier.get(this) != builtTier) {
+            // The search and Control Center build from the theme, and the tier set
+            // the window and the cards, so a change in Settings needs a fresh screen.
+            recreate();
+            return;
+        }
         Ui.immersive(this);
         lastInteraction = System.currentTimeMillis();
         // The settings live in another activity, so a change made there is
@@ -1295,32 +1591,52 @@ public class HomeActivity extends Activity {
         AppRepository.invalidate();
         loadApps();
         // The wallpaper is sized for the screen, so it goes as well.
-        wallpaperBitmap = null;
-        wallpaperKey = null;
-        hero.release();
+        releaseWallpaper();
         applyWallpaper();
     }
 
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            // The wallpaper is a screen-sized bitmap; drop it and decode it
-            // again when the UI comes back.
-            wallpaperBitmap = null;
-            wallpaperKey = null;
-            hero.release();
-            // The artwork of every app is the other thing worth holding on
-            // to. It is dropped and read again, so the old pixels are gone
-            // before the new ones are made.
+        if (resumed) {
+            // On screen, the picture is what the user is looking at, so it stays.
+            // Only a real emergency changes it, for the lightest one there is.
+            if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+                    && DeviceTier.get(this) != DeviceTier.LOW) {
+                DeviceTier.degrade();
+                applyWallpaper();
+            }
+            return;
+        }
+        // Hidden, this memory belongs to the app the user is watching.
+        boolean low = DeviceTier.get(this) == DeviceTier.LOW;
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+                || low && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            releaseWallpaper();
+        }
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            // The tiles hold the artwork too, so they go with the cache. The system
+            // is close to killing the process and a rebuild costs less than a restart.
+            tiles.clear();
+            grid.removeAllViews();
             AppRepository.invalidate();
             artworkDropped = true;
         }
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        // Settings opens over this screen on a TV that has nothing to spare.
+        if (DeviceTier.get(this) == DeviceTier.LOW) {
+            releaseWallpaper();
+        }
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         if (screensaver != null) {
             hideScreensaver();
         }

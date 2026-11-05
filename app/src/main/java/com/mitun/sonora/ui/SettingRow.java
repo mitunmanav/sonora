@@ -1,8 +1,6 @@
 package com.mitun.sonora.ui;
 
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -109,32 +107,31 @@ public final class SettingRow {
         if (type == HEADER) {
             TextView view = new TextView(context);
             view.setText(title.toUpperCase(java.util.Locale.US));
-            view.setTextColor(0x8CFFFFFF);
+            view.setTextColor(Theme.inkTertiary());
             Type.apply(view, Type.MICRO);
-            view.setPadding(Ui.dp(context, 22), Ui.dp(context, 22), 0, Ui.dp(context, 6));
+            view.setPadding(Ui.dp(context, 14), Ui.dp(context, 18), 0, Ui.dp(context, 6));
             return view;
         }
 
         if (type == NOTE) {
             TextView view = new TextView(context);
             view.setText(title);
-            view.setTextColor(0x8CFFFFFF);
+            view.setTextColor(Theme.inkTertiary());
             Type.apply(view, Type.CAPTION);
-            view.setPadding(Ui.dp(context, 22), Ui.dp(context, 2), Ui.dp(context, 22), Ui.dp(context, 10));
+            view.setPadding(Ui.dp(context, 14), Ui.dp(context, 2), Ui.dp(context, 14), Ui.dp(context, 10));
             view.setFocusable(false);
             return view;
         }
 
-        LinearLayout line = new LinearLayout(context);
+        PressRow line = new PressRow(context, 1.02f);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
-        line.setPadding(Ui.dp(context, 22), Ui.dp(context, 12), Ui.dp(context, 22), Ui.dp(context, 12));
-        // The row carries the same material as the rest of the app: a
-        // translucent surface with a light top edge. It is invisible until
-        // the row has the focus, then it dims what is behind it.
-        GlassDrawable material = new GlassDrawable(context, 12f, 1f);
-        material.setAlpha(0);
+        line.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), 0);
+        // The row is a pane of light glass at rest and an opaque white card
+        // under the focus, the same material as the settings index.
+        RowDrawable material = new RowDrawable(context);
         line.setBackground(material);
+        line.setMinimumHeight(Ui.dp(context, 33));
         line.setFocusable(true);
         line.setFocusableInTouchMode(false);
         String spoken = title;
@@ -149,14 +146,16 @@ public final class SettingRow {
 
         TextView label = new TextView(context);
         label.setText(title);
-        label.setTextColor(type == DANGER ? 0xFFFF6B6B : Color.WHITE);
+        label.setTextColor(type == DANGER ? Theme.danger() : Theme.ink());
         Type.apply(label, Type.HEADING);
+        label.setMaxLines(1);
+        label.setEllipsize(TextUtils.TruncateAt.END);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView valueView = new TextView(context);
         valueView.setText(value);
-        valueView.setTextColor(0xB3FFFFFF);
+        valueView.setTextColor(Theme.inkSecondary());
         Type.apply(valueView, Type.BODY);
         valueView.setGravity(Gravity.END);
         valueView.setMaxLines(1);
@@ -164,8 +163,15 @@ public final class SettingRow {
         // A value is a technical thing: an address, a package name, a path.
         // It stays in reading order even in a right-to-left language.
         valueView.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG_LTR);
-        line.addView(valueView, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+        // The settings list is narrower than a phone list: a value may not
+        // eat its label. A read-only value is a technical string and keeps
+        // the room it needs.
+        if (type != VALUE) {
+            valueView.setMaxWidth(Math.round(
+                    context.getResources().getDisplayMetrics().widthPixels * 0.22f));
+        }
+        line.addView(valueView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView chevron = null;
         if (type == PUSH) {
@@ -175,7 +181,7 @@ public final class SettingRow {
             boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
                     == View.LAYOUT_DIRECTION_RTL;
             chevron.setText(rtl ? "‹" : "›");
-            chevron.setTextColor(0x80FFFFFF);
+            chevron.setTextColor(Theme.inkTertiary());
             chevron.setTextSize(22);
             chevron.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(
@@ -189,15 +195,15 @@ public final class SettingRow {
         final TextView valueText = valueView;
         final TextView labelText = label;
         final TextView chevronText = chevron;
-        final int labelOff = type == DANGER ? 0xFFFF6B6B : 0xE6FFFFFF;
-        final int labelOn = type == DANGER ? 0xFF8C1D18 : 0xFF101C26;
-        final int valueOff = 0xB3FFFFFF;
-        final int valueOn = 0xCC101C26;
-        final int chevronOff = 0x80FFFFFF;
+        final int labelOff = type == DANGER ? Theme.danger() : Theme.inkSoft();
+        final int labelOn = type == DANGER ? Theme.DANGER_ON_FOCUS : Theme.INK_ON_FOCUS;
+        final int valueOff = Theme.inkSecondary();
+        final int valueOn = Theme.INK_ON_FOCUS_SOFT;
+        final int chevronOff = Theme.inkTertiary();
         final int chevronOn = 0x99101C26;
         final float[] focus = {0f};
         line.setOnFocusChangeListener((view, focused) -> {
-            final GlassDrawable bg = (GlassDrawable) view.getBackground();
+            final RowDrawable bg = (RowDrawable) view.getBackground();
             Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
                     Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
                         @Override
@@ -208,7 +214,6 @@ public final class SettingRow {
                         @Override
                         public void set(float value) {
                             focus[0] = value;
-                            bg.setAlpha(Math.round(255f * value));
                             bg.setFocus(value);
                             labelText.setTextColor(Ui.lerpColor(labelOff, labelOn, value));
                             valueText.setTextColor(Ui.lerpColor(valueOff, valueOn, value));
@@ -218,16 +223,14 @@ public final class SettingRow {
                         }
                     });
             // Lift the row, so its small focus scale is not covered by the
-            // row below it.
+            // row below it. The scale itself is the row's (PressRow).
             view.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
-            Motion.scale(view, focused ? 1.02f : 1f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS);
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());
         } else {
             line.setFocusable(false);
-            valueText.setTextColor(0x8CFFFFFF);
+            valueText.setTextColor(Theme.inkTertiary());
         }
         return line;
     }
