@@ -32,7 +32,7 @@ config signed with the debug key, for on-device measurement
 The test TV is reached over adb; `scripts/tv.sh` provides `tv`, `keys`
 and `lit` for safe key injection (it only sends keys while the expected
 app has focus — the owner often has the remote). See `AGENTS.md` and
-`docs/handoffs/` for device details and known quirks.
+`docs/plans/PLAN.md` for device details and known quirks.
 
 ## Documentation
 
@@ -40,9 +40,8 @@ app has focus — the owner often has the remote). See `AGENTS.md` and
 - `docs/plans/PLAN.md` — running project log; append a session section,
   never rewrite history.
 - `docs/plans/REQUIREMENTS-*.md` — dated owner requirements with status.
-- `docs/handoffs/` — dated session handoffs; the newest is current.
 - `docs/perf/` — measured performance numbers.
-- `docs/research/` — tvOS/Google TV teardown notes.
+- `docs/research/` — tvOS design and performance research notes.
 - `docs/agents/` — conventions for the local issue tracker (`.scratch/`)
   and domain docs (`GLOSSARY.md`, `docs/adr/`).
 - `GLOSSARY.md` — the project's domain vocabulary.

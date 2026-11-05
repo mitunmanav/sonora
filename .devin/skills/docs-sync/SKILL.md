@@ -17,9 +17,8 @@ one that owns the fact you changed. Never rewrite history — append.
 | `GLOSSARY.md` | Domain vocabulary | Add a term when a new domain concept appears; never invent synonyms |
 | `docs/plans/PLAN.md` | Running session log | **Append** a numbered `## N. Session:` section; never edit old sections |
 | `docs/plans/REQUIREMENTS-*.md` | Dated owner requirements | Update the `## Status` table when a requirement's state changes |
-| `docs/handoffs/HANDOFF-*.md` | Dated session snapshots | Write a new dated file for a new handoff; add a dated `>` note at the top of the previous one pointing forward |
 | `docs/perf/YYYY-MM-DD.md` | Measured numbers | One file per measurement date; always record device, method and what was NOT measured |
-| `docs/research/` | Reference teardowns | Append findings; keep "measured, not copied" notes |
+| `docs/research/` | Design and performance research | Append findings; keep "measured, not copied" notes |
 | `docs/agents/` | Tracker/domain conventions | Rarely changes |
 
 ## Checklist before finishing
@@ -33,7 +32,6 @@ one that owns the fact you changed. Never rewrite history — append.
 5. Owner requirement touched → status table in the requirements file.
 6. Numbers measured → `docs/perf/` with method and device.
 7. Dead code found → remove it and say so in the session entry.
-8. Handoff older than the newest commit → add the forward-pointer note.
 
 ## Style
 

@@ -887,3 +887,14 @@ Verified: `:app` + `:files` compile, `:app:testDebugUnitTest` +
 `:files-core:testDebugUnitTest` pass, `codegraph sync` run. Geometry bounds-checked
 against the 24-grid in a matplotlib harness. Not seen on the TV — icon look is
 unverified on-device; check Control Center, Settings rows, Files sidebar/toolbar.
+
+## 20. Session: stale docs cleanup
+
+Removed the Google TV reverse-engineering trail now that its findings are in
+the code: `docs/handoffs/` (both dated handoffs — the live log is `PLAN.md`),
+`docs/research/GOOGLE-TV-TEARDOWN.md` and `docs/FEATURE-COMPARISON.md`.
+`docs/research/` keeps the tvOS design and performance notes, which are still
+referenced. `README.md`, `AGENTS.md` and the `docs-sync` skill no longer point
+at handoffs; `PLAN.md`/`REQUIREMENTS` keep their historical mentions.
+
+Verified: no live references remain outside the dated plan/requirements files.
