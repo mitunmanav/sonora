@@ -5,11 +5,12 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
-import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.RectF;
 import android.graphics.Shader;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
+import android.widget.FrameLayout;
 
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
@@ -23,11 +24,21 @@ import java.util.concurrent.Executors;
  * The screen saver: full-bleed aerial stills with a very slow drift, crossfaded
  * into each other. Two bitmaps are alive at a time, so the memory cost stays
  * around two screen-sized images regardless of how many scenes exist.
+ *
+ * Nothing here invalidates per frame. The drift is a scale and a translation on
+ * each scene view — RenderNode properties the GPU applies without re-recording
+ * a draw — and the crossfade is view alpha. Only a scene change or an overlay
+ * toggle ever asks a view to redraw.
  */
-public final class ScreensaverView extends View {
+public final class ScreensaverView extends FrameLayout {
     private static final long FRAME_MS = 33; // ~30fps is plenty for a slow drift.
     /** The lightest tier draws a little less often, since the drift hardly shows it. */
     private static final long FRAME_MS_LOW = 50;
+    /** How long one scene takes to fade into the next. */
+    private static final long FADE_MS = 2200;
+    /** Zoom at the start and end of a scene's drift. */
+    private static final float ZOOM_START = 1.04f;
+    private static final float ZOOM_END = 1.10f;
 
     public interface Listener {
         void onSceneChanged(int index);
@@ -35,28 +46,154 @@ public final class ScreensaverView extends View {
         void onDismiss();
     }
 
-    private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-    private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Matrix matrix = new Matrix();
-    private final RectF dest = new RectF();
+    /**
+     * One aerial, drawn once to cover its bounds and then only ever moved by
+     * RenderNode properties. {@link #applyProgress} turns the scene clock into
+     * the same zoom-and-pan the old per-frame draw produced.
+     */
+    private static final class SceneView extends View {
+        private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private Bitmap bitmap;
+        private float fit = 1f;
 
+        SceneView(Context context) {
+            super(context);
+        }
+
+        void setSceneBitmap(Bitmap bitmap) {
+            this.bitmap = bitmap;
+            measureFit();
+            invalidate();
+        }
+
+        Bitmap getSceneBitmap() {
+            return bitmap;
+        }
+
+        private void measureFit() {
+            if (bitmap == null || getWidth() == 0 || getHeight() == 0) {
+                return;
+            }
+            fit = Math.max(getWidth() / (float) bitmap.getWidth(),
+                    getHeight() / (float) bitmap.getHeight());
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            setPivotX(w / 2f);
+            setPivotY(h / 2f);
+            measureFit();
+        }
+
+        /** Back to the start-of-scene framing, for a view being reused. */
+        void resetDrift() {
+            setScaleX(ZOOM_START);
+            setScaleY(ZOOM_START);
+            setTranslationX(0f);
+        }
+
+        /**
+         * Drives the Ken Burns drift for scene progress {@code t} in [0,1].
+         * The bitmap is already cover-fit inside this view, so the view scale
+         * is the zoom factor and the translation is the horizontal pan.
+         */
+        void applyProgress(float t, float panDirection, boolean reduced) {
+            if (bitmap == null) {
+                return;
+            }
+            float zoom = reduced ? ZOOM_START : ZOOM_START + (ZOOM_END - ZOOM_START) * t;
+            setScaleX(zoom);
+            setScaleY(zoom);
+            float drawnWidth = bitmap.getWidth() * fit * zoom;
+            setTranslationX((getWidth() - drawnWidth) * 0.5f * panDirection * t);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            Bitmap b = bitmap;
+            if (b == null) {
+                return;
+            }
+            float scale = fit;
+            float dx = (getWidth() - b.getWidth() * scale) * 0.5f;
+            float dy = (getHeight() - b.getHeight() * scale) * 0.5f;
+            canvas.drawBitmap(b, dx, dy, paint);
+        }
+    }
+
+    /**
+     * The scrim and the location credit. It redraws only when the scene or the
+     * overlay setting changes — never on the drift clock.
+     */
+    private static final class OverlayView extends View {
+        private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int sceneIndex = -1;
+        private boolean show;
+
+        OverlayView(Context context) {
+            super(context);
+            Type.apply(titlePaint, Type.DISPLAY, context);
+            Type.apply(creditPaint, Type.BODY, context);
+            titlePaint.setColor(Color.WHITE);
+            creditPaint.setColor(Ui.alpha(Color.WHITE, 0.72f));
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        void setInfo(int index, boolean showOverlay) {
+            if (index == sceneIndex && showOverlay == show) {
+                return;
+            }
+            sceneIndex = index;
+            show = showOverlay;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            int w = getWidth();
+            int h = getHeight();
+            if (w == 0 || h == 0) {
+                return;
+            }
+            if (scrimPaint.getShader() == null) {
+                // Built once: a new gradient every draw is garbage every draw.
+                scrimPaint.setShader(new LinearGradient(0, h * 0.72f, 0, h,
+                        new int[]{0x00000000, 0x8C000000},
+                        new float[]{0f, 1f}, Shader.TileMode.CLAMP));
+            }
+            canvas.drawRect(0, h * 0.72f, w, h, scrimPaint);
+            if (!show || sceneIndex < 0) {
+                return;
+            }
+            Scenes.Scene scene = Scenes.ALL.get(Math.max(0, sceneIndex));
+            float density = getResources().getDisplayMetrics().density;
+            canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
+            canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
+        }
+    }
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "sonora-screensaver-decode");
         t.setDaemon(true);
         return t;
     });
+    private final SceneView sceneA;
+    private final SceneView sceneB;
+    private final OverlayView overlay;
     private volatile boolean loadingNext;
 
-    private Bitmap current;
-    private Bitmap next;
+    private SceneView current;
+    private SceneView incoming;
     private int currentIndex = -1;
-    private int nextIndex = -1;
+    private int incomingIndex = -1;
     private long sceneStartedAt;
-    private long fadeStart = 0;
-    private float progress;
+    private long fadeStart;
     private boolean running;
+    private boolean tickerPosted;
     private boolean showOverlay = true;
     private int sceneDurationMs = 60000;
     private float panDirection = 1f;
@@ -68,13 +205,18 @@ public final class ScreensaverView extends View {
 
     public ScreensaverView(Context context) {
         super(context);
+        setBackgroundColor(Color.BLACK);
         // A full-screen drifting background is exactly what reduced motion is
         // meant to stop, so the stills hold still and only cross-fade.
         reduced = Motion.isReduced(context);
         tier = DeviceTier.get(context);
         hidden = Scenes.hiddenFlags(new Prefs(context));
-        Type.apply(titlePaint, Type.DISPLAY, context);
-        Type.apply(creditPaint, Type.BODY, context);
+        sceneA = new SceneView(context);
+        sceneB = new SceneView(context);
+        overlay = new OverlayView(context);
+        addView(sceneA, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        addView(sceneB, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        addView(overlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         setFocusable(true);
         setFocusableInTouchMode(true);
     }
@@ -93,22 +235,38 @@ public final class ScreensaverView extends View {
 
     public void setShowOverlay(boolean show) {
         showOverlay = show;
-        invalidate();
+        overlay.setInfo(currentIndex, show);
+    }
+
+    public void showInfoOverlay() {
+        setShowOverlay(!showOverlay);
     }
 
     public void start() {
         running = true;
-        if (current == null) {
+        if (current == null || current.getSceneBitmap() == null) {
             currentIndex = -1;
             showNextScene(1);
         }
-        postInvalidateOnAnimation();
+        if (!tickerPosted) {
+            tickerPosted = true;
+            handler.post(tick);
+        }
     }
 
     public void stop() {
         running = false;
+        handler.removeCallbacks(tick);
+        tickerPosted = false;
+        if (current != null) {
+            current.setSceneBitmap(null);
+        }
+        if (incoming != null) {
+            incoming.setSceneBitmap(null);
+        }
         current = null;
-        next = null;
+        incoming = null;
+        fadeStart = 0;
     }
 
     /** Called when the user asks for a different location. */
@@ -150,21 +308,31 @@ public final class ScreensaverView extends View {
                     sceneStartedAt = System.currentTimeMillis();
                     return;
                 }
-                if (current == null) {
-                    current = bitmap;
+                if (current == null || current.getSceneBitmap() == null) {
+                    // The first scene has nothing to fade out of.
+                    current = sceneA;
+                    incoming = sceneB;
+                    current.setSceneBitmap(bitmap);
+                    current.resetDrift();
+                    incoming.resetDrift();
                     currentIndex = targetIndex;
                     sceneStartedAt = System.currentTimeMillis();
-                    progress = 0f;
                     fadeStart = 0;
+                    overlay.setInfo(currentIndex, showOverlay);
                     if (listener != null) {
-                        listener.onSceneChanged(targetIndex);
+                        listener.onSceneChanged(currentIndex);
                     }
                 } else {
-                    nextIndex = targetIndex;
-                    next = bitmap;
+                    incoming.setSceneBitmap(bitmap);
+                    incoming.resetDrift();
+                    incomingIndex = targetIndex;
+                    incoming.setAlpha(0f);
                     fadeStart = System.currentTimeMillis();
+                    // The incoming scene has to draw above the outgoing one,
+                    // but under the overlay.
+                    incoming.bringToFront();
+                    overlay.bringToFront();
                 }
-                invalidate();
             });
         });
     }
@@ -189,88 +357,54 @@ public final class ScreensaverView extends View {
         }
     }
 
-    @Override
-    protected void onDraw(Canvas canvas) {
-        int w = getWidth();
-        int h = getHeight();
-        if (w == 0 || h == 0) {
-            return;
+    private final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            if (!running) {
+                tickerPosted = false;
+                return;
+            }
+            step(System.currentTimeMillis());
+            handler.postDelayed(this, tier == DeviceTier.LOW ? FRAME_MS_LOW : FRAME_MS);
         }
-        canvas.drawColor(Color.BLACK);
-        dest.set(0, 0, w, h);
-        if (current != null) {
-            drawScene(canvas, current, progress);
-        }
-        if (next != null && fadeStart > 0) {
-            float fade = Math.min(1f, (System.currentTimeMillis() - fadeStart) / 2200f);
-            paint.setAlpha((int) (fade * 255));
-            drawScene(canvas, next, 0f);
-            paint.setAlpha(255);
+    };
+
+    private void step(long now) {
+        if (fadeStart > 0 && incoming != null) {
+            float fade = Math.min(1f, (now - fadeStart) / (float) FADE_MS);
+            incoming.setAlpha(fade);
             if (fade >= 1f) {
-                current = next;
-                next = null;
-                currentIndex = nextIndex;
-                nextIndex = -1;
+                // The incoming scene takes over; the outgoing one goes back to
+                // being the spare and drops its bitmap.
+                SceneView outgoing = current;
+                current = incoming;
+                incoming = outgoing;
+                currentIndex = incomingIndex;
+                incomingIndex = -1;
+                current.setAlpha(1f);
+                incoming.setSceneBitmap(null);
+                incoming.setAlpha(1f);
                 fadeStart = 0;
-                sceneStartedAt = System.currentTimeMillis();
-                progress = 0f;
+                sceneStartedAt = now;
+                overlay.setInfo(currentIndex, showOverlay);
                 if (listener != null) {
                     listener.onSceneChanged(currentIndex);
                 }
             }
         }
-        drawOverlay(canvas, w, h);
-        if (running) {
-            long elapsed = System.currentTimeMillis() - sceneStartedAt;
-            progress = Math.min(1f, elapsed / (float) sceneDurationMs);
-            if (elapsed > sceneDurationMs && next == null && !loadingNext) {
+        if (current != null && current.getSceneBitmap() != null) {
+            long elapsed = now - sceneStartedAt;
+            float t = Math.min(1f, elapsed / (float) sceneDurationMs);
+            current.applyProgress(t, panDirection, reduced);
+            if (elapsed > sceneDurationMs && fadeStart == 0 && !loadingNext) {
                 showNextScene(1);
             }
-            postInvalidateDelayed(tier == DeviceTier.LOW ? FRAME_MS_LOW : FRAME_MS);
         }
-    }
-
-    private void drawScene(Canvas canvas, Bitmap bitmap, float t) {
-        // Fills the screen whatever size the scene was decoded at.
-        float fit = Math.max(getWidth() / (float) bitmap.getWidth(),
-                getHeight() / (float) bitmap.getHeight());
-        float scale = fit * (reduced ? 1.04f : 1.04f + 0.06f * t);
-        float dx = (getWidth() - bitmap.getWidth() * scale) * (0.5f + 0.5f * panDirection * t);
-        float dy = (getHeight() - bitmap.getHeight() * scale) * 0.5f;
-        matrix.reset();
-        matrix.postScale(scale, scale);
-        matrix.postTranslate(dx, dy);
-        canvas.drawBitmap(bitmap, matrix, paint);
-    }
-
-    private void drawOverlay(Canvas canvas, int w, int h) {
-        if (scrimPaint.getShader() == null) {
-            // Built once: a new gradient every frame is garbage every frame.
-            scrimPaint.setShader(new LinearGradient(0, h * 0.72f, 0, h,
-                    new int[]{0x00000000, 0x8C000000},
-                    new float[]{0f, 1f}, Shader.TileMode.CLAMP));
-        }
-        canvas.drawRect(0, h * 0.72f, w, h, scrimPaint);
-        if (!showOverlay || current == null) {
-            // Nothing is loaded, so there is no scene to name.
-            return;
-        }
-        Scenes.Scene scene = Scenes.ALL.get(Math.max(0, currentIndex));
-        float density = getResources().getDisplayMetrics().density;
-        canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
-        canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
-    }
-
-    public void showInfoOverlay() {
-        showOverlay = !showOverlay;
-        invalidate();
     }
 
     @Override
     protected void onDetachedFromWindow() {
-        running = false;
-        current = null;
-        next = null;
+        stop();
         decodeExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }
