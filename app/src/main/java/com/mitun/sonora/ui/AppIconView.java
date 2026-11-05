@@ -17,14 +17,14 @@ import android.text.TextUtils;
 import android.view.View;
 
 import com.mitun.sonora.AppEntry;
-import com.mitun.sonora.DeviceTier;
 
 /**
  * The app "icon": a tvOS-shaped 5:3 card, showing the app's Android TV banner when
  * one exists and otherwise a generated card.
  *
- * Focus is a scale on the view, which the GPU does without a redraw, plus a shadow
- * and a brighter rim. Nothing moves inside the card, on any card, as on tvOS.
+ * Focus is a scale on the view, which the GPU does without a redraw. The rim
+ * glow and the shadow belong to {@link FocusGlassView}, which floats over the
+ * focused card so this view never has to repaint when focus moves.
  *
  * Every draw is a round rectangle with a shader. A clip path here would ask the GPU
  * for a mask per card on every frame the row moves.
@@ -41,41 +41,21 @@ public final class AppIconView extends View {
     private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final TextPaint labelPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint starPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint starShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path starPath = new Path();
     private final RectF rect = new RectF();
     private final RectF edgeRect = new RectF();
-    private final RectF shadowRect = new RectF();
     private final RectF iconRect = new RectF();
-    private final boolean shadow;
     private final float starDrop;
-    private final float[] shadowSpread = new float[3];
-    private final float[] shadowDrop = new float[3];
 
     private AppEntry entry;
     private Glyph gear;
     private CharSequence cardLabel;
-    /** How lifted the card is: nothing at rest, all of it under the focus. */
-    private float lift;
     private boolean favourite;
-
-    private final Motion.FloatProperty liftValue = new Motion.FloatProperty() {
-        @Override
-        public float get() {
-            return lift;
-        }
-
-        @Override
-        public void set(float value) {
-            setLift(value);
-        }
-    };
 
     public AppIconView(Context context) {
         super(context);
-        shadow = DeviceTier.cardShadow(DeviceTier.get(context));
         edgePaint.setStyle(Paint.Style.STROKE);
         edgePaint.setStrokeWidth(Math.max(1f, Ui.dpf(context, 0.8f)));
         edgePaint.setColor(Ui.alpha(Color.WHITE, EDGE_REST));
@@ -85,12 +65,6 @@ public final class AppIconView extends View {
         labelPaint.setTypeface(Ui.medium());
         labelPaint.setColor(0xFFF5F6F8);
         labelPaint.setTextAlign(Paint.Align.CENTER);
-        // Three layers, widest first. The widest stops short of the next card, or
-        // the shadow would land on it as a dark stripe.
-        for (int i = 0; i < 3; i++) {
-            shadowSpread[i] = Ui.dpf(context, 1.5f + i * 3f);
-            shadowDrop[i] = Ui.dpf(context, 2f + i * 2f);
-        }
     }
 
     public void setEntry(AppEntry entry) {
@@ -107,21 +81,15 @@ public final class AppIconView extends View {
         }
     }
 
-    private void setLift(float value) {
-        lift = value;
-        edgePaint.setColor(Ui.alpha(Color.WHITE, EDGE_REST + (EDGE_LIT - EDGE_REST) * value));
-        invalidate();
-    }
-
+    /**
+     * A one-shot rim for hosts that do not use {@link FocusGlassView}, like the
+     * search results. The home grid leaves this alone: its rim and shadow come
+     * from the floating glass, which costs no redraw.
+     */
     public void setFocused(boolean focused) {
-        float target = focused ? 1f : 0f;
-        if (shadow) {
-            Motion.springCustom(this, 0, target, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS, liftValue);
-        } else {
-            // On the lightest tier only the rim answers, and only once.
-            setLift(target);
-        }
+        edgePaint.setColor(Ui.alpha(Color.WHITE,
+                focused ? EDGE_LIT : EDGE_REST));
+        invalidate();
     }
 
     @Override
@@ -210,9 +178,6 @@ public final class AppIconView extends View {
             return;
         }
         float radius = h * RADIUS;
-        if (shadow && lift > 0.01f) {
-            drawFocusShadow(canvas, w, h, radius);
-        }
         if (artPaint.getShader() != null) {
             canvas.drawRoundRect(rect, radius, radius, artPaint);
         } else {
@@ -227,16 +192,6 @@ public final class AppIconView extends View {
             canvas.drawPath(starPath, starShadowPaint);
             canvas.restore();
             canvas.drawPath(starPath, starPaint);
-        }
-    }
-
-    private void drawFocusShadow(Canvas canvas, int w, int h, float radius) {
-        for (int i = 2; i >= 0; i--) {
-            shadowPaint.setColor(Ui.alpha(Color.BLACK, 0.11f * (1f - i * 0.22f) * lift));
-            shadowRect.set(-shadowSpread[i], -shadowSpread[i] + shadowDrop[i],
-                    w + shadowSpread[i], h + shadowSpread[i] + shadowDrop[i]);
-            canvas.drawRoundRect(shadowRect, radius + shadowSpread[i], radius + shadowSpread[i],
-                    shadowPaint);
         }
     }
 
