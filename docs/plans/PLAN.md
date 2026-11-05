@@ -786,3 +786,21 @@ TV left on Sonora's home screen.
 
 Still open, in order: cheap wins (text layout first), a dream-time frame check for
 the screensaver, `tvlauncher` re-enablement quirk, then the Files/browser pass.
+
+## 16. Session: frame-phase breakdown and dream verification
+
+Two measurements on `master` @ `7ce7058`-era build, same TV:
+
+- `framestats` after the DPAD walk: CPU-side frame phases are ~0.1–3 ms; GPU
+  completion trails swap ~15 ms median. Remaining cost is fill/composition, so
+  the planned "cheap wins" (text layout etc.) were re-ordered — overdraw audit is
+  the only lever left on the frame path.
+- The TV dozed to the system dream on its own timer. Found
+  `screensaver_components` still naming the removed `com.mitun.aerial` package —
+  the dream had been unreachable since the rename. Set it to
+  `com.mitun.sonora/.dream.SonoraDreamService`; dream ran, 902 frames/30 s,
+  zero jank, p99 5 ms. `ScreensaverView` rewrite verified on-device. TV left on
+  Sonora's home screen.
+
+Still open: overdraw audit, `tvlauncher` re-enablement quirk, Files/browser pass,
+FrameMetrics self-tuning, port `bench.py`/`perf-ab.md` into `scripts/`.
