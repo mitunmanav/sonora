@@ -1,0 +1,2 @@
+-keep class com.mitun.files.FilesActivity { *; }
+-keep class com.mitun.files.FilesProvider { *; }

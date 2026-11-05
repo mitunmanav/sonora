@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Each app that bundles this library declares the storage permissions it wants. -->
+    <application>
+        <activity
+            android:name="com.mitun.files.FilesActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|density"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" />
+
+        <!-- Hands one file to another app, read-only, only when the user opens it there. -->
+        <provider
+            android:name="com.mitun.files.FilesProvider"
+            android:authorities="${applicationId}.filesprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

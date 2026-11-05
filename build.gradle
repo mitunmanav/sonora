@@ -1,1 +1,5 @@
-// Root build file intentionally empty. Plugin versions live in app/build.gradle.
+// Plugin versions live here so every module agrees on them.
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+    id 'com.android.library' version '8.13.0' apply false
+}
