@@ -151,6 +151,10 @@ public final class SetupWizard {
                             () -> Pickers.screensaverClock(host, this::refreshCurrent)));
                 }
                 rows.add(SettingRow.note("It stops the moment you press a button."));
+                if (Ui.dreamState(host) != Ui.DreamState.SELECTED) {
+                    rows.add(SettingRow.action("Use Sonora when the TV dozes",
+                            () -> Ui.openDreamSettings(host)));
+                }
                 break;
             case APPS:
                 rows.add(SettingRow.note("How the apps are laid out on the home screen."));

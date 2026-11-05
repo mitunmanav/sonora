@@ -301,18 +301,13 @@ public final class DebugPanel {
         if (host.prefs().screensaverDelaySec() <= 0) {
             return "Off";
         }
-        return dreamSelected(host) ? "On, and set as the TV's screen saver"
-                : "On in Sonora, not set as the TV's screen saver";
-    }
-
-    /** True when the TV's own screen saver is Sonora. */
-    private static boolean dreamSelected(android.content.Context context) {
-        try {
-            String components = android.provider.Settings.Secure.getString(
-                    context.getContentResolver(), "screensaver_components");
-            return components != null && components.contains(context.getPackageName());
-        } catch (RuntimeException e) {
-            return false;
+        switch (Ui.dreamState(host)) {
+            case SELECTED:
+                return "On, and set as the TV's screen saver";
+            case STALE:
+                return "On in Sonora. The TV's screen saver points to an app that is not installed";
+            default:
+                return "On in Sonora, not set as the TV's screen saver";
         }
     }
 

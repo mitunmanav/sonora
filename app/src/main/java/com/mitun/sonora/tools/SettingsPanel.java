@@ -314,6 +314,14 @@ public final class SettingsPanel {
             rows.add(SettingRow.choice("Clock", Pickers.screensaverClockName(prefs),
                     () -> Pickers.screensaverClock(host, () -> refresh(host))));
         }
+        Ui.DreamState dream = Ui.dreamState(host);
+        if (dream == Ui.DreamState.STALE) {
+            rows.add(SettingRow.note("The TV's screen saver is set to an app that is not "
+                    + "installed, so it shows nothing. Pick Sonora in the TV's settings."));
+        } else if (dream != Ui.DreamState.SELECTED) {
+            rows.add(SettingRow.note("When the TV dozes it can show Sonora's scenes too. "
+                    + "Pick Sonora in the TV's screen saver settings."));
+        }
         rows.add(SettingRow.action("Screen saver settings", () -> Ui.openDreamSettings(host)));
         rows.add(SettingRow.header("Screen saver preferences"));
         rows.add(SettingRow.push("Aerials", "", () -> host.stack().pushFullBleed(

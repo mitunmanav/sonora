@@ -142,6 +142,38 @@ public final class Ui {
         }
     }
 
+    /** What the TV's own screen saver setting points at. */
+    public enum DreamState { SELECTED, OTHER, STALE, UNKNOWN }
+
+    /**
+     * Reads the system screen saver setting. SELECTED means Sonora's dream is
+     * the one the TV shows; STALE means it names a package that is not
+     * installed, which leaves the TV with a blank screen saver.
+     */
+    public static DreamState dreamState(Context context) {
+        String components;
+        try {
+            components = Settings.Secure.getString(
+                    context.getContentResolver(), "screensaver_components");
+        } catch (RuntimeException e) {
+            return DreamState.UNKNOWN;
+        }
+        if (components == null || components.trim().isEmpty()) {
+            return DreamState.UNKNOWN;
+        }
+        if (components.contains(context.getPackageName())) {
+            return DreamState.SELECTED;
+        }
+        int slash = components.indexOf('/');
+        String pkg = (slash >= 0 ? components.substring(0, slash) : components).trim();
+        try {
+            context.getPackageManager().getPackageInfo(pkg, 0);
+            return DreamState.OTHER;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return DreamState.STALE;
+        }
+    }
+
     public static void openDreamSettings(Context context) {
         if (!start(context, new Intent(Settings.ACTION_DREAM_SETTINGS))) {
             toast(context, "No screen saver settings available");
