@@ -929,3 +929,17 @@ were the last old-style screens.
 Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`, `codegraph sync`.
 Not verified on-device — the wizard, app detail, Device/Battery/Network/Self
 check, Setup guide and the app-manager tabs want a look on the TV.
+
+## 22. Session: remaining work split into tracked efforts
+
+The open items are now three separate efforts under `.scratch/`, each with a
+`spec.md` (Status: needs-triage):
+
+- `benchmark-scripts/` — port cleanyourtv's `bench.py`/`perf-ab.md` into
+  `scripts/`, kept apart from the app passes.
+- `files-pass/` — tvOS-26 look, focus and edge-case pass over `files/` +
+  `files-core/` (the standalone app and the bundled copy).
+- `browser-pass/` — same treatment for `browser/`; stays off until enabled,
+  zero-dependency and 1 GB rules apply.
+
+Verified: docs only, no code changed.
