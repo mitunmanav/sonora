@@ -1,0 +1,52 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 21872172 Realtime: 29920331
+
+** MEMINFO in pid 24024 [com.mitun.sonora] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    10633    10608        8       52    11224    24640    11808     2461
+  Dalvik Heap      848      812        8       82     1752     3966     1983     1983
+ Dalvik Other      366      352        0        4      924                           
+        Stack      412      412        0        0      416                           
+       Ashmem        2        0        0        0       12                           
+    Other dev       40        0       40        0      200                           
+     .so mmap     2265      168      336        8    28868                           
+    .jar mmap      822        0       20        0    17536                           
+    .apk mmap      548        0        0        0    21760                           
+    .ttf mmap       56        0        0        0      280                           
+    .dex mmap      836        8      828        0      836                           
+    .oat mmap      527        0       88        0    11896                           
+    .art mmap      877      572        4       94    11052                           
+   Other mmap       26        8        0        0      816                           
+    GL mtrack    11408    11408        0        0    11408                           
+      Unknown      343      332        0        0      620                           
+        TOTAL    30249    24680     1332      240    30249    28606    13791     4444
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:     1388                          12804
+         Native Heap:    10608                          11224
+                Code:     1464                          81268
+               Stack:      412                            416
+            Graphics:    11408                          11408
+       Private Other:      732
+              System:     4237
+             Unknown:                                    2480
+ 
+           TOTAL PSS:    30249            TOTAL RSS:   119600       TOTAL SWAP PSS:      240
+ 
+ Objects
+               Views:       56         ViewRootImpl:        1
+         AppContexts:        5           Activities:        1
+              Assets:       10        AssetManagers:        0
+       Local Binders:        9        Proxy Binders:       29
+       Parcel memory:        3         Parcel count:       14
+    Death Recipients:        0      OpenSSL Sockets:        0
+            WebViews:        0
+ 
+ SQL
+         MEMORY_USED:        0
+  PAGECACHE_OVERFLOW:        0          MALLOC_SIZE:        0
+ 

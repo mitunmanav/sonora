@@ -11,20 +11,19 @@ import com.mitun.sonora.DeviceTier;
 
 /**
  * The focus glass: one slab that floats over the focused card and carries the
- * rim and the shadow, so the card itself never has to repaint when focus moves.
+ * shadow, so the card itself never has to repaint when focus moves. tvOS
+ * lifts the focused card; there is no rim or outline.
  *
  * Everything that changes while the focus travels — position, size, opacity —
  * is a RenderNode property, which the GPU applies without re-recording a single
  * draw. The slab is drawn once into a hardware layer and then only moved.
  */
 public final class FocusGlassView extends View {
-    /** Air around the card for the rim and the shadow to live in. */
-    private static final float PAD_DP = 8f;
+    /** Air around the card for the shadow to live in. */
+    private static final float PAD_DP = 16f;
     /** Matches AppIconView's corner radius as a fraction of the card height. */
     private static final float RADIUS = 0.19f;
-    private static final float EDGE_LIT = 0.58f;
 
-    private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF cardRect = new RectF();
     private final RectF shadowRect = new RectF();
@@ -46,18 +45,18 @@ public final class FocusGlassView extends View {
         super(context);
         pad = Ui.dp(context, PAD_DP);
         shadow = DeviceTier.cardShadow(DeviceTier.get(context));
-        edgePaint.setStyle(Paint.Style.STROKE);
-        edgePaint.setStrokeWidth(Math.max(1f, Ui.dpf(context, 0.8f)));
-        edgePaint.setColor(Ui.alpha(Color.WHITE, EDGE_LIT));
+        // tvOS's lift is a soft shadow that lives mostly under the card: a
+        // small lateral spread and a drop that grows per layer, so nothing
+        // leaks above the top edge.
         for (int i = 0; i < 3; i++) {
-            shadowSpread[i] = Ui.dpf(context, 1.5f + i * 3f);
-            shadowDrop[i] = Ui.dpf(context, 2f + i * 2f);
+            shadowSpread[i] = Ui.dpf(context, 1.5f + i * 2f);
+            shadowDrop[i] = Ui.dpf(context, 2f + i * 3.5f);
         }
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         if (shadow) {
             // The draw is static; caching it as a texture means focus travel is
-            // pure compositing. On the lightest tier the rim alone is cheap
-            // enough to draw every time the slab is touched.
+            // pure compositing. On the lightest tier the slab draws nothing and
+            // the card's own scale carries the focus.
             setLayerType(LAYER_TYPE_HARDWARE, null);
         }
         setAlpha(0f);
@@ -121,7 +120,5 @@ public final class FocusGlassView extends View {
                         radius + shadowSpread[i], shadowPaint);
             }
         }
-        float edgeRadius = Math.max(1f, radius - edgePaint.getStrokeWidth() / 2f);
-        canvas.drawRoundRect(cardRect, edgeRadius, edgeRadius, edgePaint);
     }
 }
