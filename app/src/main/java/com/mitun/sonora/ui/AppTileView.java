@@ -117,7 +117,6 @@ public final class AppTileView extends LinearLayout {
             // to the front moves it to the end of its row, which breaks the
             // order the D-pad links were built from.
             setZ(Ui.dpf(getContext(), 8f));
-            icon.setFocused(true);
             Motion.scale(icon, FOCUS_SCALE, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
             if (label != null) {
                 label.setVisibility(VISIBLE);
@@ -128,7 +127,6 @@ public final class AppTileView extends LinearLayout {
                 focusListener.onTileFocused(this, entry);
             }
         } else {
-            icon.setFocused(false);
             Motion.scale(icon, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
             setZ(0f);
             if (label != null) {
