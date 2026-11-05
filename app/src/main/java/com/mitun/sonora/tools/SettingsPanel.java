@@ -137,7 +137,7 @@ public final class SettingsPanel {
                 detail("System controls", "Provided by your TV"),
                 () -> open(host, QUICK)));
         categories.add(new SettingsHomeView.Category(HOME.title,
-                "Choose Sonora’s appearance, wallpaper, app labels, focus effects, and remote search.",
+                "Change how Sonora looks and works.",
                 new SettingsHomeView.Detail[]{
                     detail("Appearance", prefs.lightAppearance() ? "Light" : "Dark"),
                     detail("Wallpaper", Pickers.wallpaperName(prefs)),
@@ -165,22 +165,22 @@ public final class SettingsPanel {
             saverDetails.add(detail("Screen saver clock", Pickers.screensaverClockName(prefs)));
         }
         categories.add(new SettingsHomeView.Category(SAVER.title,
-                "Choose when Sonora’s scenes begin and open the TV’s screen saver settings.",
+                "Pick when the scenes start. The TV's own screen saver settings are here too.",
                 saverDetails.toArray(new SettingsHomeView.Detail[0]),
                 () -> open(host, SAVER)));
         categories.add(new SettingsHomeView.Category(APPS.title,
-                "Choose favourites, hide apps, and manage what is installed.",
+                "Pick favourites, hide apps and manage what is installed.",
                 detail("Favourites", Pickers.favouritesName(prefs)),
                 detail("Hidden apps", Pickers.hiddenName(prefs)),
                 () -> open(host, APPS)));
         categories.add(new SettingsHomeView.Category(TOOLS.title,
-                "On-device tools for diagnostics, files, and browsing.",
-                detail("Device", "Information and diagnostics"),
+                "Files, a browser and info about this TV.",
+                detail("Device", "Info and checks"),
                 detail("Files", "Browse and share"),
                 detail("Browser", "Optional; stays off until opened"),
                 () -> open(host, TOOLS)));
         categories.add(new SettingsHomeView.Category(SYSTEM.title,
-                "Set Sonora as home, open TV updates, or reset its settings.",
+                "Set Sonora as home, open TV updates or reset its settings.",
                 detail("Home screen", Ui.isDefaultLauncher(host) ? "Sonora" : "Not set"),
                 detail("System update", "Open the TV’s settings"),
                 () -> open(host, SYSTEM)));

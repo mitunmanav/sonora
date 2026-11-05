@@ -278,7 +278,7 @@ public final class DebugPanel {
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.header("Self check"));
         rows.add(SettingRow.value("Default launcher",
-                Ui.isDefaultLauncher(host) ? "Yes" : "No — set it in Settings"));
+                Ui.isDefaultLauncher(host) ? "Yes" : "No. Set it in Settings"));
         rows.add(SettingRow.value("Developer options",
                 SetupGuide.developerOptionsOn(host) ? "On" : "Off"));
         rows.add(SettingRow.value("Network",

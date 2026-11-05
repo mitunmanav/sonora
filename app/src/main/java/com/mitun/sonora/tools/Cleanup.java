@@ -72,7 +72,7 @@ public final class Cleanup {
                 return turnedOff + " turned off, " + failed + " could not be changed";
             }
             if (turnedOff == 0) {
-                return "Nothing to do — everything was already off";
+                return "Nothing to do. Everything was already off";
             }
             return turnedOff + (turnedOff == 1 ? " app turned off" : " apps turned off");
         }
