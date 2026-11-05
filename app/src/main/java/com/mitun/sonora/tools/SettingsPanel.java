@@ -9,6 +9,7 @@ import com.mitun.sonora.AppEntry;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.RecentApps;
 import com.mitun.sonora.R;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.SettingRow;
@@ -221,6 +222,14 @@ public final class SettingsPanel {
         }));
         rows.add(SettingRow.note("The search key on your remote opens Sonora's own search. "
                 + "It looks at the apps on this TV and sends nothing anywhere."));
+        if (RecentApps.usageGranted(host)) {
+            rows.add(SettingRow.value("App switcher", "Double-press Home"));
+        } else {
+            rows.add(SettingRow.note("Double-press Home lists recent apps. Allow usage "
+                    + "access so Sonora can see them."));
+            rows.add(SettingRow.action("Allow usage access",
+                    () -> Ui.openUsageAccessSettings(host)));
+        }
         if (prefs.technical()) {
             rows.add(SettingRow.choice("Apps per row", Pickers.columnsName(host),
                     () -> Pickers.columns(host, () -> refresh(host))));

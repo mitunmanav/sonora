@@ -174,6 +174,12 @@ public final class Ui {
         }
     }
 
+    public static void openUsageAccessSettings(Context context) {
+        if (!start(context, new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))) {
+            toast(context, "No usage access settings available");
+        }
+    }
+
     public static void openDreamSettings(Context context) {
         if (!start(context, new Intent(Settings.ACTION_DREAM_SETTINGS))) {
             toast(context, "No screen saver settings available");
