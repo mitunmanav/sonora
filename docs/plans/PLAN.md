@@ -971,10 +971,11 @@ Verified: docs only, no code changed.
   `AppIconView` only for hosts without the glass (search results).
 - A/B measured (`docs/perf/2026-11-05.md`, phase0 vs phase1/1b): frame
   parity — ~0.9% deadline misses and p99 ~23 ms on both sides.
-- The TV went offline mid-session (both known addresses unreachable): the
-  with-rim build is still installed there. Owed when it returns: deploy the
-  rim-less build, eyeball the glass (lit check on the focus shadow), and a
-  phase0b rerun to answer the +8 MB idle-PSS delta recorded in the perf file.
+- The TV dropped mid-session and came back: phase0b reran the with-rim
+  build at the same measurement point and read the same ~37 MB idle as the
+  no-rim runs — the +8 MB delta was app age, not the change. The rim-less
+  build is deployed, the glass is verified on-device (lift + shadow, no
+  outline), and the TV is left on Sonora's home screen.
 
-Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, two on-device bench
-runs. Not verified: the look on the TV, phase0b.
+Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, three bench pairs
+on-device, screencap look check.
