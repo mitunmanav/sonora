@@ -804,3 +804,21 @@ Two measurements on `master` @ `7ce7058`-era build, same TV:
 
 Still open: overdraw audit, `tvlauncher` re-enablement quirk, Files/browser pass,
 FrameMetrics self-tuning, port `bench.py`/`perf-ab.md` into `scripts/`.
+
+## 17. Session: debloat tool in settings
+
+Added a Debloat screen under Settings → Apps: a curated list of common Android TV
+bloatware packages with On/Off toggles. Turning an app off uses
+`PackageActions.setPackageEnabled` (disable-user), then invalidates
+`AppRepository`/`AppManager` and bumps the apps epoch so the home grid drops it.
+Package state is read on a background thread and the screen fills in via
+`refreshSettings`, same pattern as Favourites. Warnings are shown before the two
+risky rows (Google TV Launcher, Google Play Services).
+
+The first cut was a custom `DebloatView` pushed full-bleed; it did not compile
+(`SettingRow` is a row model, not a `View`) and its `Debloat` page was never
+linked into the settings index. Replaced with `DebloatPanel`, a row-provider in
+the `AppPanel`/`DebugPanel` style, reached from the Apps page.
+
+Verified: `:app:assembleDebug`, `:app:testDebugUnitTest`. Not verified on-device.
+TV untouched.
