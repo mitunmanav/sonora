@@ -79,29 +79,4 @@ public class EdgeCasesTest {
         assertFalse(FileServer.copyFile(parent, child));
         assertFalse(FileServer.copyFile(parent, parent));
     }
-
-    @Test
-    public void sonoraProviderFileOfRejectsNullContext() {
-        org.junit.Assert.assertNull(SonoraProvider.fileOf(null, null));
-        assertFalse(SonoraProvider.isAllowed(null, new File("/etc/passwd")));
-        assertFalse(SonoraProvider.isAllowed(null, null));
-    }
-
-    @Test
-    public void sonoraProviderOpenFileRejectsWriteMode() throws Exception {
-        SonoraProvider provider = new SonoraProvider();
-        try {
-            provider.openFile(null, "w");
-            org.junit.Assert.fail("Expected SecurityException");
-        } catch (SecurityException e) {
-            assertTrue(e.getMessage().contains("read-only"));
-        }
-
-        try {
-            provider.openFile(null, "rw");
-            org.junit.Assert.fail("Expected SecurityException");
-        } catch (SecurityException e) {
-            assertTrue(e.getMessage().contains("read-only"));
-        }
-    }
 }

@@ -93,13 +93,6 @@
             android:exported="false"
             android:screenOrientation="landscape" />
 
-        <!-- Hands local files to other apps as content URIs. -->
-        <provider
-            android:name=".SonoraProvider"
-            android:authorities="com.mitun.sonora.files"
-            android:exported="false"
-            android:grantUriPermissions="true" />
-
         <service
             android:name=".dream.SonoraDreamService"
             android:exported="true"
