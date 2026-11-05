@@ -484,6 +484,13 @@ public class HomeActivity extends Activity {
      * the bottom of the screen, the way tvOS shows it.
      */
     private void layoutRows() {
+        // removeAllViews drops the rows but a tile stays parented to its old
+        // row, so each one has to leave it before the new rows can adopt it.
+        for (AppTileView tile : tiles) {
+            if (tile.getParent() != null) {
+                ((ViewGroup) tile.getParent()).removeView(tile);
+            }
+        }
         grid.removeAllViews();
         Grid.Metrics metrics = gridMetrics();
         int columns = metrics.columns;
