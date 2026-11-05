@@ -62,19 +62,20 @@ public final class Glyph extends Drawable {
     private void build(int kind) {
         switch (kind) {
             case SAVER:
-                path.addCircle(8f, 7.5f, 2.4f, Path.Direction.CW);
+                path.addCircle(8.5f, 7.5f, 2.1f, Path.Direction.CW);
                 path.moveTo(3f, 19f);
-                path.lineTo(9f, 11.5f);
-                path.lineTo(12.5f, 15.5f);
-                path.lineTo(15.5f, 9f);
+                path.lineTo(9.5f, 11.5f);
+                path.lineTo(13f, 15f);
+                path.lineTo(16.5f, 9.5f);
                 path.lineTo(21f, 19f);
                 path.close();
                 break;
             case WIFI:
-                arc(12f, 18f, 13f);
-                arc(12f, 18f, 8.5f);
-                arc(12f, 18f, 4f);
-                path.addCircle(12f, 18.5f, 0.6f, Path.Direction.CW);
+                // Three concentric upper arcs sharing the dot's centre, like wifi.
+                path.addCircle(12f, 19.6f, 0.9f, Path.Direction.CW);
+                path.addArc(new RectF(-1.5f, 6.1f, 25.5f, 33.1f), -140f, 100f);
+                path.addArc(new RectF(3f, 10.6f, 21f, 28.6f), -140f, 100f);
+                path.addArc(new RectF(7.5f, 15.1f, 16.5f, 24.1f), -140f, 100f);
                 break;
             case BLUETOOTH:
                 path.moveTo(7f, 7.5f);
@@ -92,13 +93,15 @@ public final class Glyph extends Drawable {
                 path.lineTo(7.5f, 14.5f);
                 path.lineTo(4f, 14.5f);
                 path.close();
-                path.addArc(new RectF(10.5f, 8f, 18.5f, 16f), -55f, 110f);
-                path.addArc(new RectF(9f, 4.5f, 22f, 19.5f), -55f, 110f);
+                path.addArc(new RectF(5f, 5f, 19f, 19f), -60f, 120f);
+                path.addArc(new RectF(7.5f, 7.5f, 16.5f, 16.5f), -60f, 120f);
                 break;
             case DISPLAY:
                 path.addRoundRect(new RectF(3f, 4.5f, 21f, 16.5f), 2f, 2f, Path.Direction.CW);
-                path.moveTo(8.5f, 20f);
-                path.lineTo(15.5f, 20f);
+                path.moveTo(12f, 16.5f);
+                path.lineTo(12f, 20.5f);
+                path.moveTo(8.5f, 20.5f);
+                path.lineTo(15.5f, 20.5f);
                 break;
             case SEARCH:
                 path.addCircle(10.5f, 10.5f, 6.5f, Path.Direction.CW);
@@ -108,9 +111,9 @@ public final class Glyph extends Drawable {
             case APPS:
                 for (int y = 0; y < 2; y++) {
                     for (int x = 0; x < 2; x++) {
-                        float left = 4f + x * 9f;
-                        float top = 4f + y * 9f;
-                        path.addRoundRect(new RectF(left, top, left + 7f, top + 7f), 1.5f, 1.5f,
+                        float left = 3.5f + x * 9.5f;
+                        float top = 3.5f + y * 9.5f;
+                        path.addRoundRect(new RectF(left, top, left + 8f, top + 8f), 2f, 2f,
                                 Path.Direction.CW);
                     }
                 }
@@ -122,71 +125,66 @@ public final class Glyph extends Drawable {
                 break;
             case HIDDEN:
                 path.moveTo(2.5f, 12f);
-                path.quadTo(12f, 2.5f, 21.5f, 12f);
-                path.quadTo(12f, 21.5f, 2.5f, 12f);
+                path.quadTo(12f, 5.2f, 21.5f, 12f);
+                path.quadTo(12f, 18.8f, 2.5f, 12f);
                 path.close();
-                path.addCircle(12f, 12f, 3f, Path.Direction.CW);
+                path.addCircle(12f, 12f, 2.4f, Path.Direction.CW);
                 path.moveTo(4.5f, 19.5f);
                 path.lineTo(19.5f, 4.5f);
                 break;
             case CLOCK:
                 path.addCircle(12f, 12f, 9f, Path.Direction.CW);
-                path.moveTo(12f, 6.5f);
+                path.moveTo(12f, 6.8f);
                 path.lineTo(12f, 12f);
-                path.lineTo(15.5f, 14f);
+                path.lineTo(15.8f, 14.2f);
                 break;
             case TOOLS:
                 buildWrench();
                 break;
             case STAR:
-                for (int i = 0; i < 10; i++) {
-                    double a = Math.PI / 5 * i - Math.PI / 2;
-                    float r = i % 2 == 0 ? 10f : 4.4f;
-                    float x = 12f + (float) (Math.cos(a) * r);
-                    float y = 12.5f + (float) (Math.sin(a) * r);
-                    if (i == 0) {
-                        path.moveTo(x, y);
-                    } else {
-                        path.lineTo(x, y);
-                    }
-                }
-                path.close();
+                star();
                 break;
             case MIC:
-                path.addRoundRect(new RectF(9f, 3f, 15f, 14f), 3f, 3f, Path.Direction.CW);
-                path.addArc(new RectF(5.5f, 6f, 18.5f, 18f), 0f, 180f);
-                path.moveTo(12f, 18f);
-                path.lineTo(12f, 21f);
+                path.addRoundRect(new RectF(9f, 3f, 15f, 13.5f), 3f, 3f, Path.Direction.CW);
+                path.addArc(new RectF(5.5f, 6f, 18.5f, 17.5f), 0f, 180f);
+                path.moveTo(12f, 17.5f);
+                path.lineTo(12f, 20.5f);
+                path.moveTo(9.5f, 20.5f);
+                path.lineTo(14.5f, 20.5f);
                 break;
             case DELETE:
-                path.moveTo(8.5f, 5f);
-                path.lineTo(20f, 5f);
-                path.quadTo(21.5f, 5f, 21.5f, 6.5f);
-                path.lineTo(21.5f, 17.5f);
-                path.quadTo(21.5f, 19f, 20f, 19f);
-                path.lineTo(8.5f, 19f);
-                path.lineTo(2.5f, 12f);
-                path.close();
-                path.moveTo(11.5f, 9f);
-                path.lineTo(17.5f, 15f);
-                path.moveTo(17.5f, 9f);
-                path.lineTo(11.5f, 15f);
+                path.moveTo(5.5f, 6.5f);
+                path.lineTo(18.5f, 6.5f);
+                path.moveTo(9.5f, 6.5f);
+                path.lineTo(9.5f, 5f);
+                path.lineTo(14.5f, 5f);
+                path.lineTo(14.5f, 6.5f);
+                path.moveTo(5.5f, 6.5f);
+                path.lineTo(5.5f, 19f);
+                path.quadTo(5.5f, 20.5f, 7f, 20.5f);
+                path.lineTo(17f, 20.5f);
+                path.quadTo(18.5f, 20.5f, 18.5f, 19f);
+                path.lineTo(18.5f, 6.5f);
+                path.moveTo(9.5f, 10.5f);
+                path.lineTo(9.5f, 16.5f);
+                path.moveTo(14.5f, 10.5f);
+                path.lineTo(14.5f, 16.5f);
                 break;
             case HOME:
-                path.addRoundRect(new RectF(3f, 4f, 21f, 17f), 2f, 2f, Path.Direction.CW);
-                for (int x = 0; x < 3; x++) {
-                    path.addRoundRect(new RectF(5.5f + x * 4.8f, 12f, 8.9f + x * 4.8f, 14.5f),
-                            0.6f, 0.6f, Path.Direction.CW);
-                }
-                path.moveTo(8.5f, 20.5f);
-                path.lineTo(15.5f, 20.5f);
+                path.moveTo(4f, 11.5f);
+                path.lineTo(12f, 4.5f);
+                path.lineTo(20f, 11.5f);
+                path.lineTo(20f, 20f);
+                path.lineTo(4f, 20f);
+                path.close();
+                path.addRoundRect(new RectF(10.25f, 13f, 13.75f, 20f), 0.8f, 0.8f,
+                        Path.Direction.CW);
                 break;
             case INFO:
                 path.addCircle(12f, 12f, 9f, Path.Direction.CW);
                 path.moveTo(12f, 11f);
-                path.lineTo(12f, 16.5f);
-                path.moveTo(12f, 7.6f);
-                path.lineTo(12f, 7.7f);
+                path.lineTo(12f, 16.8f);
+                path.addCircle(12f, 7.8f, 0.9f, Path.Direction.CW);
                 break;
             case GEAR:
             default:
@@ -214,42 +212,54 @@ public final class Glyph extends Drawable {
         path.op(jaw, Path.Op.DIFFERENCE);
     }
 
-    /** A solid cog with a hole through it, one outline rather than a ring of ticks. */
-    private void buildGear() {
-        int teeth = 12;
-        float outer = 11f;
-        float root = 8.6f;
-        double step = Math.PI * 2 / teeth;
-        for (int i = 0; i < teeth; i++) {
-            double a = i * step;
-            point(root, a - step * 0.30, i == 0);
-            point(outer, a - step * 0.16, false);
-            point(outer, a + step * 0.16, false);
-            point(root, a + step * 0.30, false);
+    /** A solid five-point star, the favourites mark. */
+    private void star() {
+        for (int i = 0; i < 10; i++) {
+            double a = Math.PI / 5 * i - Math.PI / 2;
+            float r = i % 2 == 0 ? 10f : 4.3f;
+            float x = 12f + (float) (Math.cos(a) * r);
+            float y = 12f + (float) (Math.sin(a) * r);
+            if (i == 0) {
+                path.moveTo(x, y);
+            } else {
+                path.lineTo(x, y);
+            }
         }
         path.close();
-        path.addCircle(12f, 12f, 4.4f, Path.Direction.CCW);
     }
 
-    private void point(float radius, double angle, boolean first) {
-        float x = 12f + (float) (Math.cos(angle) * radius);
-        float y = 12f + (float) (Math.sin(angle) * radius);
-        if (first) {
-            path.moveTo(x, y);
-        } else {
-            path.lineTo(x, y);
+    /**
+     * A solid cog with a hole through it. The teeth are a smooth radius profile
+     * sampled around the circle, so the fill has no corners to catch the light.
+     */
+    private void buildGear() {
+        int teeth = 8;
+        int samples = 160;
+        float root = 8.3f;
+        float outer = 11f;
+        double step = Math.PI * 2 / teeth;
+        for (int i = 0; i < samples; i++) {
+            double a = Math.PI * 2 * i / samples;
+            double t = (a / step) % 1.0;
+            double tooth = Math.pow(0.5 - 0.5 * Math.cos(Math.PI * 2 * t), 1.5);
+            float r = (float) (root + (outer - root) * tooth);
+            float x = 12f + (float) (Math.cos(a) * r);
+            float y = 12f + (float) (Math.sin(a) * r);
+            if (i == 0) {
+                path.moveTo(x, y);
+            } else {
+                path.lineTo(x, y);
+            }
         }
-    }
-
-    private void arc(float cx, float cy, float r) {
-        path.addArc(new RectF(cx - r, cy - r, cx + r, cy + r), -135f, 90f);
+        path.close();
+        path.addCircle(12f, 12f, 4.2f, Path.Direction.CCW);
     }
 
     private void slider(float x, float knob) {
         path.moveTo(x, 4f);
-        path.lineTo(x, knob - 2.2f);
-        path.addCircle(x, knob, 2.2f, Path.Direction.CW);
-        path.moveTo(x, knob + 2.2f);
+        path.lineTo(x, knob - 2.4f);
+        path.addCircle(x, knob, 2.4f, Path.Direction.CW);
+        path.moveTo(x, knob + 2.4f);
         path.lineTo(x, 20f);
     }
 

@@ -9,6 +9,7 @@ import com.mitun.sonora.AppEntry;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.PhotoLoader;
 import com.mitun.sonora.RecentApps;
 import com.mitun.sonora.R;
 import com.mitun.sonora.ui.Motion;
@@ -315,6 +316,8 @@ public final class SettingsPanel {
     private static List<SettingRow> saverRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
+        rows.add(SettingRow.choice("Photo source", photoSourceName(prefs),
+                () -> choosePhotoSource(host)));
         rows.add(SettingRow.choice("Start after", Pickers.delayName(prefs),
                 () -> Pickers.screensaverDelay(host, () -> refresh(host))));
         if (prefs.technical()) {
@@ -340,12 +343,39 @@ public final class SettingsPanel {
         return rows;
     }
 
+    private static String photoSourceName(Prefs prefs) {
+        switch (prefs.screensaverPhotoSource()) {
+            case 0:
+                return "Bundled only";
+            case 1:
+                return "Device photos";
+            case 2:
+                return "Both";
+            default:
+                return "Bundled only";
+        }
+    }
+
+    private static void choosePhotoSource(ToolActivity host) {
+        Prefs prefs = host.prefs();
+        host.choose("Photo source", new String[]{"Bundled only", "Device photos", "Both"},
+                prefs.screensaverPhotoSource(), index -> {
+                    if (index != prefs.screensaverPhotoSource()) {
+                        prefs.setScreensaverPhotoSource(index);
+                        PhotoLoader.invalidateCache();
+                        refresh(host);
+                    }
+                });
+    }
+
     private static List<SettingRow> appsRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.push("Favourites", Pickers.favouritesName(prefs),
                 () -> openFavourites(host)));
         rows.add(SettingRow.push("Manage apps", "", () -> AppPanel.show(host)));
+        rows.add(SettingRow.push("Debloat", "Turn off apps you do not use",
+                () -> DebloatPanel.show(host)));
         rows.add(SettingRow.choice("Hidden apps", Pickers.hiddenName(prefs),
                 () -> Pickers.hiddenApps(host, () -> refresh(host))));
         if (prefs.technical()) {

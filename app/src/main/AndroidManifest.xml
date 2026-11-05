@@ -19,6 +19,10 @@
     <!-- Reads the state of the network so the quick settings can say whether
          the TV is online. It cannot send anything anywhere. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Load photos from device storage for the screensaver. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- Only ever used by the optional browser, and only once it is switched on. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -69,6 +73,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+
+            <!-- The "all apps" screen Android expects a home app to provide.
+                 Sonora's grid is that screen, so the intent just brings it up. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ALL_APPS" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

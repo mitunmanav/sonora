@@ -14,6 +14,7 @@ import android.widget.FrameLayout;
 
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.PhotoLoader;
 import com.mitun.sonora.SceneChoice;
 import com.mitun.sonora.Scenes;
 
@@ -130,15 +131,20 @@ public final class ScreensaverView extends FrameLayout {
         private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint clockPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Prefs prefs;
         private int sceneIndex = -1;
         private boolean show;
 
         OverlayView(Context context) {
             super(context);
-            Type.apply(titlePaint, Type.DISPLAY, context);
+            prefs = new Prefs(context);
+            Type.apply(titlePaint, Type.HEADING, context);
             Type.apply(creditPaint, Type.BODY, context);
+            Type.apply(clockPaint, Type.DISPLAY, context);
             titlePaint.setColor(Color.WHITE);
             creditPaint.setColor(Ui.alpha(Color.WHITE, 0.72f));
+            clockPaint.setColor(Color.WHITE);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
 
@@ -168,10 +174,18 @@ public final class ScreensaverView extends FrameLayout {
             if (!show || sceneIndex < 0) {
                 return;
             }
-            Scenes.Scene scene = Scenes.ALL.get(Math.max(0, sceneIndex));
+            java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+            Scenes.Scene scene = all.get(Math.max(0, Math.min(all.size() - 1, sceneIndex)));
             float density = getResources().getDisplayMetrics().density;
+            // The clock sits above the place, as it does over Apple's aerials.
+            String pattern = prefs.clock24() ? "HH:mm" : "h:mm a";
+            canvas.drawText(new java.text.SimpleDateFormat(pattern,
+                    java.util.Locale.getDefault()).format(new java.util.Date()),
+                    48 * density, h - 102 * density, clockPaint);
             canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
-            canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
+            if (scene.credit != null) {
+                canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
+            }
         }
     }
 
@@ -194,6 +208,8 @@ public final class ScreensaverView extends FrameLayout {
     private long fadeStart;
     private boolean running;
     private boolean tickerPosted;
+    /** The minute the overlay clock was last drawn for. */
+    private int lastMinute = -1;
     private boolean showOverlay = true;
     private int sceneDurationMs = 60000;
     private float panDirection = 1f;
@@ -210,7 +226,7 @@ public final class ScreensaverView extends FrameLayout {
         // meant to stop, so the stills hold still and only cross-fade.
         reduced = Motion.isReduced(context);
         tier = DeviceTier.get(context);
-        hidden = Scenes.hiddenFlags(new Prefs(context));
+        hidden = Scenes.hiddenFlags(new Prefs(context), context);
         sceneA = new SceneView(context);
         sceneB = new SceneView(context);
         overlay = new OverlayView(context);
@@ -343,18 +359,27 @@ public final class ScreensaverView extends FrameLayout {
     }
 
     private Bitmap load(int index) {
-        Scenes.Scene scene = Scenes.ALL.get(index);
+        java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+        if (index < 0 || index >= all.size()) {
+            return null;
+        }
+        Scenes.Scene scene = all.get(index);
         int divisor = DeviceTier.wallpaperDivisor(tier);
         int width = getResources().getDisplayMetrics().widthPixels / divisor;
         int height = getResources().getDisplayMetrics().heightPixels / divisor;
         try {
-            return Ui.decodeScene(getResources(), scene.res, width, height,
-                    tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
+            if (scene.res != null) {
+                return Ui.decodeScene(getResources(), scene.res, width, height,
+                        tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
+            } else if (scene.path != null) {
+                return PhotoLoader.decode(scene.path, width, height);
+            }
         } catch (RuntimeException | OutOfMemoryError e) {
             // A TV with little memory can refuse the decode. The saver says so
             // rather than taking the whole app down with it.
             return null;
         }
+        return null;
     }
 
     private final Runnable tick = new Runnable() {
@@ -370,6 +395,15 @@ public final class ScreensaverView extends FrameLayout {
     };
 
     private void step(long now) {
+        // The overlay clock only moves once a minute; one invalidate a minute
+        // is the whole cost of keeping it honest.
+        int minute = (int) (now / 60000L);
+        if (minute != lastMinute) {
+            lastMinute = minute;
+            if (showOverlay) {
+                overlay.invalidate();
+            }
+        }
         if (fadeStart > 0 && incoming != null) {
             float fade = Math.min(1f, (now - fadeStart) / (float) FADE_MS);
             incoming.setAlpha(fade);
