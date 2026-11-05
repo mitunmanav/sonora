@@ -197,12 +197,6 @@ public final class QuickPanel {
      * The work happens off the main thread: there are twenty packages to ask
      * about and to change, and the screen must not stutter while it happens.
      */
-    /**
-     * Turns off everything that a system update put back.
-     *
-     * The work happens off the main thread: there are twenty packages to ask
-     * about and to change, and the screen must not stutter while it happens.
-     */
     public static void tidyUpNow(final ToolActivity host) {
         new Thread(() -> {
             final Cleanup.Result result = Cleanup.run(host);

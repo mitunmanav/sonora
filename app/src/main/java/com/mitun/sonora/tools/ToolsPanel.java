@@ -5,10 +5,7 @@ import android.content.Intent;
 import com.mitun.files.FilesActivity;
 
 import com.mitun.sonora.browser.BrowserActivity;
-import com.mitun.sonora.ui.SettingRow;
-
-import java.util.ArrayList;
-import java.util.List;
+import com.mitun.sonora.ui.Ui;
 
 /**
  * The tools menu. The browser and the file manager are bundled but off until
@@ -17,18 +14,6 @@ import java.util.List;
  */
 public final class ToolsPanel {
     private ToolsPanel() {
-    }
-
-    public static void show(ToolActivity host) {
-        List<SettingRow> rows = new ArrayList<>();
-        rows.add(SettingRow.header("Tools"));
-        rows.add(SettingRow.push("Apps", "disable, uninstall, inspect", () -> AppPanel.show(host)));
-        rows.add(SettingRow.push("Device", "memory, storage, battery", () -> DebugPanel.show(host)));
-        rows.add(SettingRow.push("Setup guide", "turn on debugging, step by step",
-                () -> SetupGuide.show(host)));
-        rows.add(SettingRow.push("Files", "browse and share", () -> openFiles(host)));
-        rows.add(SettingRow.push("Browser", "with an ad blocker", () -> openBrowser(host)));
-        host.stack().show("Tools", "Everything runs on this TV. Nothing runs in the background.", rows);
     }
 
     public static void openFiles(ToolActivity host) {
