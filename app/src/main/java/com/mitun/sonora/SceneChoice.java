@@ -1,5 +1,7 @@
 package com.mitun.sonora;
 
+import android.content.Context;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -64,5 +66,10 @@ public final class SceneChoice {
             }
         }
         return out;
+    }
+
+    /** Scene count including device photos. */
+    public static int count(Context context) {
+        return Scenes.all(context).size();
     }
 }

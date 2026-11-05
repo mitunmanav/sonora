@@ -258,6 +258,24 @@ public final class Prefs {
         sp.edit().putInt("mode", mode == MODE_TECHNICAL ? MODE_TECHNICAL : MODE_DEFAULT).apply();
     }
 
+    /** Screensaver photo source: 0 = bundled only, 1 = device storage, 2 = both. */
+    public int screensaverPhotoSource() {
+        return Math.max(0, Math.min(2, sp.getInt("ss_photo_source", 0)));
+    }
+
+    public void setScreensaverPhotoSource(int value) {
+        sp.edit().putInt("ss_photo_source", Math.max(0, Math.min(2, value))).apply();
+    }
+
+    /** Custom photo folder path for device storage photos. */
+    public String screensaverPhotoFolder() {
+        return sp.getString("ss_photo_folder", null);
+    }
+
+    public void setScreensaverPhotoFolder(String path) {
+        sp.edit().putString("ss_photo_folder", path).apply();
+    }
+
     /** True when the technical settings should be shown. */
     public boolean technical() {
         return mode() == MODE_TECHNICAL;
