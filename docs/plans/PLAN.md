@@ -979,3 +979,142 @@ Verified: docs only, no code changed.
 
 Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, three bench pairs
 on-device, screencap look check.
+
+## 25. Session: exhaustive edge-case pass
+
+Five parallel audits walked every file in `app/`, `files-core/` and `files/`
+against the standing rules (1 GB target, D-pad, honest UI, no background
+work, minSdk 23). ~220 findings, consolidated in `.scratch/edge-cases/plan.md`;
+every P0/P1 and every cheap P2 was fixed by five parallel fix batches on
+disjoint file sets. A few highlights per area:
+
+- **Browser** (`browser/`): `shouldOverrideUrlLoading` now keeps http/https/
+  about in place and toasts for schemes that need another app (a crafted
+  `intent:` link could crash or hijack). Blocked main frames show an honest
+  page instead of a blank. The browser can be turned *off* again from Tools.
+  BACK dismisses the IME before history. `singleTask` stops WebView stacking
+  on 1 GB. Cookies/storage join "Clear history". `AdBlock` is hardened
+  (empty-fragment `|` no longer blocks everything, hosts-style lines parse,
+  IPv6/trailing-dot match, `volatile`) and unit-tested. `http://` now only
+  reaches LAN hosts — `BrowserActivity.localOrHttps` upgrades anything public
+  to https — so `usesCleartextTraffic` left the manifest and cleartext lives
+  only in the network-security config comment.
+- **Files** (`files-core/`): paste and rename no longer race an overwrite
+  (`createNewFile` O_EXCL since `Files.newOutputStream` is API 26+); FIFOs/
+  sockets in a copied tree are skipped instead of hanging the job forever;
+  a copy stops at the first failure instead of writing the rest onto a full
+  disk; `FilesProvider` whitelists canonical paths (a symlink into another
+  app's data no longer serves); rename/new-folder I/O moved off the UI
+  thread; sheets restore focus on cancel; post-op focus lands on the deleted
+  row's neighbour; Get Info runs on its own cancellable thread; `runJob`
+  always posts completion even on Error.
+- **UI toolkit** (`ui/`): the stale `onSettled`-hides-label bug fixed in both
+  `AppTileView` and `ScreenStack` (the top screen could end INVISIBLE while
+  still eating keys); `FocusGlassView` springs the real TRANSLATION tracks so
+  scroll no longer fights an in-flight spring; `BackdropView` never decodes
+  in its constructor (callers decode off-thread, `setSoftened` hands it in);
+  `ScreensaverView` retries a failed first decode instead of idling black,
+  preloads scenes off the main thread, clamps corrupt durations; `Motion`
+  rejects NaN targets and survives settled-callbacks that start new springs;
+  `ScreenStack` page-scrolls when a screen has no focusable row instead of
+  eating every key; a generation counter stops stale pop callbacks finishing
+  repopulated stacks.
+- **Launcher core**: `Prefs` getters survive wrong stored types; the app
+  switcher builds off the main thread; overlays dismiss each other before a
+  new one opens (OK can no longer launch an invisible app); focus restores
+  inside close callbacks; editing consumes every D-pad key; RTL D-pad
+  directions invert at the call site; system apps get a real "Hide" instead
+  of a fake "Uninstall"; `PhotoLoader` can't recurse through symlink loops;
+  the wallpaper decode no longer spawns while pausing.
+- **Tools**: `Cleanup` reads enabled state correctly (DEFAULT ≠ absent) and
+  won't kill the stock launcher unless Sonora is the default home;
+  `FileServer.stop()` closes tracked client sockets, joins the accept thread
+  and resets the port — the server truly dies with its screen; `copyFolder`
+  can't follow symlink loops; `+` in filenames no longer 404s; HEAD/405
+  honest; daemon pool workers; panels guard `isDestroyed`, catch
+  `RuntimeException`, and name unnamed processes honestly.
+- Manifest: duplicate `READ_EXTERNAL_STORAGE` merged; `BrowserActivity`
+  `singleTask`; `usesCleartextTraffic` removed (config file supersedes it on
+  24+, and on 23 it was blocking the LAN-http use case outright).
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest` —
+142 tests, 0 failures, incl. new `AdBlockTest` (12), FileOps/FileLogic
+extensions, `SpringTest` clamps, RTL/locale/surrogate cases, FileServer
+symlink + `+`-decode tests. `:app:assembleDebug` + `:files:assembleDebug`
+green. `codegraph sync` clean. Not verified on the TV — every focus and
+overlay fix needs a D-pad walk before this session is called done on-device.
+
+Deliberately left: latent contract-only NPEs, per-screen RTL cosmetics, and
+the "noted, not fixed" tail of `.scratch/edge-cases/plan.md` — each with a
+reason recorded there. `ShareActivity.EXTRA_NAME` stays (intent contract).
+
+## 26. Session: edge cases, third pass
+
+Two parallel audits swept the launcher end to end again — launcher core +
+manifest on one side, tools/browser/dream on the other — with `ui/` walked
+by hand. Both prior plans were re-checked first: every pass-2 fix was found
+in place except one unfinished `ChoiceOverlay` guard that left the tree not
+compiling; the fix moved into the overlay itself, where it covers both call
+sites (rows go dead the moment `dismiss()` starts).
+
+New findings fixed this pass, worst first:
+
+- **Unhide could never come back.** `PackageActions.setHidden(pkg, false)`
+  found no launch intent while the launcher component was disabled, took
+  the whole-app branch, and read back an app state that was never off —
+  "Restored" was a lie and the tile stayed hidden forever. `setHidden` now
+  disables *every* launcher component on hide (a dual LEANBACK+LAUNCHER
+  package no longer half-hides) and re-enables every DISABLED component on
+  restore, verified with a real intent read-back. Debloat's DISABLED_USER
+  is left alone.
+- **Two hidden stores now agree.** The tile menu wrote `prefs.hidden()`;
+  the app panel switched the component, so toasts lied both ways and a
+  component-hidden app could never appear in the Unhide picker. The panel
+  toggle reads and writes both, and the picker lists the pref against
+  installed packages — then switches the component back on too.
+- **Photo source asked for nothing.** "Device photos"/"Both" set the pref
+  with no storage access while the saver quietly played bundled scenes.
+  Choosing them without access now says so and opens Sonora's app-info
+  page instead of silently claiming photos.
+- Arrange mode no longer starts during the picker's dismiss fade (the
+  arrows would have moved a tile nobody could see); `dismissChoice` takes
+  an after-runnable.
+- Wall-clock timing went monotonic (`elapsedRealtime`) for double-HOME,
+  the idle watcher and the uninstall report — a clock change can no
+  longer fake a double-press or stall the saver.
+- Raw thread starts guard `RuntimeException|OutOfMemoryError`: the app
+  loader leaves an honest empty grid, the recents loader re-arms the
+  saver instead of stranding `suppressIdle`, the wallpaper request clears
+  instead of blocking every retry.
+- `forceStop` answers "Not running" when nothing was there.
+- `ToolActivity` and `ShareActivity` are `singleTask` with `onNewIntent`
+  recreates — no more stacked settings copies.
+- The Share screen's hint is a field recomputed on restart, and
+  `FileServer.stop()` runs on a daemon thread instead of joining on the
+  UI thread.
+- `FileServer` drains request headers (an unread >8 KB of them could RST
+  the answer away on `Connection: close`) and checks the *decoded* path
+  for its trailing slash — `GET /dir%2F` is served, not redirected into a
+  double slash. A socket test pins it.
+- IPv6 scope ids (`%wlan0`) are stripped from the share URL.
+- The browser matches schemes case-insensitively and denies geolocation
+  and hardware-permission prompts out loud instead of leaving them
+  pending forever.
+- `ScreensaverView` catches the `RejectedExecutionException` between its
+  shutdown check and `execute`.
+- Favourites rebuilds off the main thread on toggle and on resume
+  (`resumedFavourites`) — a cold package scan can no longer ANR a
+  check-row tap, and stale ticks refresh after package changes.
+- `PhotoLoader.photoPaths` precomputes mtimes once per file instead of
+  statting twice per sort comparison; `AppManager.Item.icon` is volatile;
+  the dead `Scenes.hiddenFlags(Prefs, Context)` overload is removed.
+
+Verified: `:app:testDebugUnitTest` — 118 tests, 0 failures, incl. the new
+`aFolderWithAnEncodedSlashIsServed`. `:app:assembleDebug` green,
+`codegraph sync` clean. Not verified on the TV — overlay, arrange-mode
+and focus fixes still need a D-pad walk on hardware.
+
+Deliberately left: two suspected misspellings in `Cleanup.PACKAGES`
+(correcting blind could disable a real package — needs a device check),
+`screenRect` translation gaps and the `glassKey` identityHashCode edge —
+each with a reason in `.scratch/edge-cases-3/plan.md`.
