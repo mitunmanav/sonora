@@ -61,7 +61,12 @@ public final class SystemInfo {
         availableMemory = available;
         javaHeapLimit = Runtime.getRuntime().maxMemory();
 
-        boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+        boolean mounted;
+        try {
+            mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+        } catch (RuntimeException e) {
+            mounted = false;
+        }
         externalStorageMounted = mounted;
         long storageTotal = 0;
         long storageFree = 0;

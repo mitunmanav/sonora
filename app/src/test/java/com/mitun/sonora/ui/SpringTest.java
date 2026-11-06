@@ -120,4 +120,27 @@ public class SpringTest {
         spring.setTarget(Float.NaN, 1f, 0.4f);
         assertTrue(spring.atRest());
     }
+
+    @Test
+    public void noDampingStillSettles() {
+        // A damping ratio of nothing would ring for good, so it is clamped.
+        Spring spring = new Spring(0f);
+        spring.setTarget(100f, 0f, 0.4f);
+        run(spring, 12f);
+        assertFalse("the spring flew off", Float.isInfinite(spring.value())
+                || Float.isNaN(spring.value()));
+        assertTrue("never arrived: " + spring.value(), spring.atRest());
+    }
+
+    @Test
+    public void negativeDampingDoesNotExplode() {
+        // Negative damping feeds energy in; the clamp turns it into the
+        // smallest useful damping instead.
+        Spring spring = new Spring(0f);
+        spring.setTarget(100f, -1f, 0.4f);
+        run(spring, 12f);
+        assertFalse("the spring flew off", Float.isInfinite(spring.value())
+                || Float.isNaN(spring.value()));
+        assertTrue("never arrived: " + spring.value(), spring.atRest());
+    }
 }

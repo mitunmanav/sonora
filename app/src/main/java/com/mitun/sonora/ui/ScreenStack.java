@@ -4,8 +4,10 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.FocusFinder;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewParent;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -70,6 +72,8 @@ public final class ScreenStack extends FrameLayout {
 
     private final List<Screen> stack = new ArrayList<>();
     private final Listener listener;
+    /** Bumped whenever the stack changes, so a late callback knows it is stale. */
+    private int generation;
 
     public ScreenStack(Context context, Listener listener) {
         super(context);
@@ -143,6 +147,9 @@ public final class ScreenStack extends FrameLayout {
         refresh(title, null, rows, true);
     }
 
+    // The rebuild must keep the same kind of screen — list for list, custom
+    // for custom. Whether the screen beneath shows or hides was decided for
+    // the old pairing, and nothing here recomputes it.
     private void refresh(String title, String subtitle, List<SettingRow> rows, boolean split) {
         if (stack.isEmpty()) {
             return;
@@ -267,11 +274,14 @@ public final class ScreenStack extends FrameLayout {
             return false;
         }
         final Screen screen = stack.remove(stack.size() - 1);
+        final int gen = ++generation;
         final int width = getWidth();
         if (stack.isEmpty()) {
             slideOut(screen, width, () -> {
                 removeView(screen.view);
-                if (listener != null) {
+                // A screen pushed while this one slid out makes this
+                // callback stale; the stack is not empty any more.
+                if (gen == generation && listener != null) {
                     listener.onEmpty();
                 }
             });
@@ -296,7 +306,9 @@ public final class ScreenStack extends FrameLayout {
             // nowhere. It gets the focus back as it comes in.
             slideOut(screen, width, () -> {
                 removeView(screen.view);
-                restoreFocus(under);
+                if (gen == generation) {
+                    restoreFocus(under);
+                }
             });
         }
         return true;
@@ -360,13 +372,40 @@ public final class ScreenStack extends FrameLayout {
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             int code = event.getKeyCode();
-            if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
-                    || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                Screen screen = stack.isEmpty() ? null : stack.get(stack.size() - 1);
-                if (screen != null && screen.list != null) {
+            Screen screen = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+            if (screen != null) {
+                if (screen.list != null
+                        && (code == KeyEvent.KEYCODE_DPAD_UP
+                                || code == KeyEvent.KEYCODE_DPAD_DOWN
+                                || code == KeyEvent.KEYCODE_DPAD_LEFT
+                                || code == KeyEvent.KEYCODE_DPAD_RIGHT)) {
                     if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        Ui.moveListFocus(screen.list, code == KeyEvent.KEYCODE_DPAD_UP);
+                        // A page with nothing focusable, like one that is all
+                        // notes and values, still has to move somewhere.
+                        if (!Ui.moveListFocus(screen.list, code == KeyEvent.KEYCODE_DPAD_UP)
+                                && screen.scroller != null) {
+                            int dy = code == KeyEvent.KEYCODE_DPAD_UP
+                                    ? -screen.scroller.getHeight()
+                                    : screen.scroller.getHeight();
+                            if (Motion.isReduced(getContext())) {
+                                screen.scroller.scrollBy(0, dy);
+                            } else {
+                                screen.scroller.smoothScrollBy(0, dy);
+                            }
+                        }
                     }
+                    // LEFT and RIGHT stop here too: the screen beneath is still
+                    // visible at the edge, and a framework focus search would
+                    // walk onto it.
+                    return true;
+                }
+                if ((code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
+                        || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                        || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER)
+                        && (screen.view == null || screen.view.findFocus() == null)) {
+                    // The top screen holds nothing focused, so the focus is
+                    // on the screen it covers: a key passed on would drive a
+                    // page the user cannot see, and OK would fire blind.
                     return true;
                 }
             }
@@ -374,7 +413,38 @@ public final class ScreenStack extends FrameLayout {
         return super.dispatchKeyEvent(event);
     }
 
+    /**
+     * The framework may look for the next focus anywhere in the stack, but
+     * only the top screen is a place focus may go: the page beneath is still
+     * visible at the edge, and landing on it would drive a covered screen.
+     */
+    @Override
+    public View focusSearch(View focused, int direction) {
+        Screen screen = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+        if (screen == null || screen.view == null || !inside(screen.view, focused)) {
+            return super.focusSearch(focused, direction);
+        }
+        View next = FocusFinder.getInstance().findNextFocus(
+                (ViewGroup) screen.view, focused, direction);
+        return next != null ? next : focused;
+    }
+
+    /** Whether {@code view} is {@code parent} or one of its descendants. */
+    private static boolean inside(View parent, View view) {
+        if (view == parent) {
+            return true;
+        }
+        for (ViewParent p = view == null ? null : view.getParent();
+                p != null; p = p.getParent()) {
+            if (p == parent) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void add(Screen screen) {
+        generation++;
         screen.view = buildScreen(screen);
         Screen previous = stack.isEmpty() ? null : stack.get(stack.size() - 1);
         if (previous != null) {
@@ -429,7 +499,14 @@ public final class ScreenStack extends FrameLayout {
                 // can show through. The one underneath steps out of the way
                 // instead of sitting there beside the new list.
                 Motion.spring(outgoing.view, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
-                        Motion.RESPONSE_MOVE, () -> outgoing.view.setVisibility(View.INVISIBLE));
+                        Motion.RESPONSE_MOVE, () -> {
+                            // BACK pressed mid-fade re-targets this alpha at
+                            // 1 but keeps this callback, so it must only hide
+                            // a screen that is still covered.
+                            if (stack.indexOf(outgoing) != stack.size() - 1) {
+                                outgoing.view.setVisibility(View.INVISIBLE);
+                            }
+                        });
             } else {
                 Motion.translateX(outgoing.view, -width * 0.22f, Motion.DAMPING_CRITICAL,
                         Motion.RESPONSE_MOVE);
@@ -502,6 +579,15 @@ public final class ScreenStack extends FrameLayout {
         }
 
         if (screen.custom != null) {
+            if (screen.custom instanceof ScrollView) {
+                // A pushed page of prose, like About or the log, holds
+                // nothing focusable inside. The scroller itself takes the
+                // focus so the D-pad can scroll it; real children still win.
+                screen.custom.setFocusable(true);
+                ((ScrollView) screen.custom).setDescendantFocusability(
+                        ViewGroup.FOCUS_AFTER_DESCENDANTS);
+                screen.scroller = (ScrollView) screen.custom;
+            }
             column.addView(screen.custom, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         } else {

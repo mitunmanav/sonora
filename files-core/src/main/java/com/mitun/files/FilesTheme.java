@@ -40,6 +40,11 @@ final class FilesTheme {
                 context.getResources().getDisplayMetrics()));
     }
 
+    static int sp(Context context, float value) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value,
+                context.getResources().getDisplayMetrics()));
+    }
+
     /** About 1 GB: no picture thumbnails, and Quick Look decodes at half size. */
     static boolean lowMemory(Context context) {
         android.app.ActivityManager manager = (android.app.ActivityManager)

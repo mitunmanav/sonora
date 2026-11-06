@@ -60,12 +60,60 @@ public class FileOpsTest {
     }
 
     @Test
+    public void aCopyKeepsTheOriginalsDate() throws IOException {
+        File a = write(from, "a.txt", "hello");
+        long then = 1_234_567_000L;
+        assertTrue(a.setLastModified(then));
+        FileOps.transfer(Collections.singletonList(a), to, false, go, null);
+        assertEquals(then, new File(to, "a.txt").lastModified());
+    }
+
+    @Test
+    public void aCopiedFolderKeepsItsDateToo() throws IOException {
+        File folder = new File(from, "album");
+        assertTrue(folder.mkdir());
+        File inner = write(folder, "1.jpg", "one");
+        long fileThen = 1_234_560_000L;
+        long dirThen = 1_234_561_000L;
+        assertTrue(inner.setLastModified(fileThen));
+        // The folder is stamped after its children exist, as the copy is too.
+        assertTrue(folder.setLastModified(dirThen));
+        FileOps.transfer(Collections.singletonList(folder), to, false, go, null);
+        assertEquals(dirThen, new File(to, "album").lastModified());
+        assertEquals(fileThen, new File(to, "album/1.jpg").lastModified());
+    }
+
+    @Test
     public void nothingIsEverOverwritten() throws IOException {
         File a = write(from, "a.txt", "new");
         write(to, "a.txt", "old");
         FileOps.transfer(Collections.singletonList(a), to, false, go, null);
         assertEquals("old", read(new File(to, "a.txt")));
         assertEquals("new", read(new File(to, "a copy.txt")));
+    }
+
+    @Test
+    public void takenNamesKeepTheirFilesAndTheCopyLandsElsewhere() throws IOException {
+        File a = write(from, "a.txt", "new");
+        write(to, "a.txt", "old");
+        write(to, "a copy.txt", "older copy");
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(a), to, false, go, null);
+        assertEquals(1, result.done);
+        assertEquals("old", read(new File(to, "a.txt")));
+        assertEquals("older copy", read(new File(to, "a copy.txt")));
+        assertEquals("new", read(new File(to, "a copy 2.txt")));
+    }
+
+    @Test(timeout = 10_000)
+    public void aPipeIsSkippedRatherThanOpened() throws Exception {
+        File pipe = new File(from, "pipe");
+        org.junit.Assume.assumeTrue(0 == new ProcessBuilder("mkfifo", pipe.getAbsolutePath())
+                .start().waitFor());
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(pipe), to, false, go, null);
+        assertEquals(0, result.done);
+        assertEquals(1, result.failed);
+        assertNotNull(result.problem);
+        assertFalse(new File(to, "pipe").exists());
     }
 
     @Test
@@ -106,6 +154,30 @@ public class FileOpsTest {
         FileOps.Result result = FileOps.transfer(Collections.singletonList(a), from, true, go, null);
         assertEquals(1, result.done);
         assertEquals(1, from.listFiles().length);
+    }
+
+    @Test
+    public void aMoveThroughAnAliasStillCountsAsTheSameFolder() throws IOException {
+        File a = write(from, "a.txt", "x");
+        File alias = new File(temp.getRoot(), "alias");
+        Files.createSymbolicLink(alias.toPath(), from.toPath());
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(a), alias, true, go, null);
+        assertEquals(1, result.done);
+        assertEquals(0, result.failed);
+        assertTrue(new File(from, "a.txt").exists());
+        assertFalse(new File(from, "a copy.txt").exists());
+    }
+
+    @Test
+    public void aStoppedFolderCopyLeavesNothingBehind() throws IOException {
+        File folder = new File(from, "album");
+        assertTrue(folder.mkdir());
+        write(folder, "a.txt", "x".repeat(300_000));
+        AtomicBoolean stop = new AtomicBoolean(false);
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(folder), to, false, stop,
+                (done, total, name) -> stop.set(true));
+        assertTrue(result.cancelled);
+        assertFalse(new File(to, "album").exists());
     }
 
     @Test
@@ -166,6 +238,15 @@ public class FileOpsTest {
                 Collections.singletonList(new File(from, "never-there")), go);
         assertEquals(1, result.done);
         assertEquals(0, result.failed);
+    }
+
+    @Test
+    public void twoPathsToTheSamePlaceCountAsOne() throws IOException {
+        File target = temp.newFolder("real");
+        File link = new File(temp.getRoot(), "alias");
+        Files.createSymbolicLink(link.toPath(), target.toPath());
+        assertTrue(Places.samePlace(link, target));
+        assertFalse(Places.samePlace(target, from));
     }
 
     @Test

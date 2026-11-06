@@ -29,15 +29,15 @@ public final class AppManager {
         public final boolean enabled;
         public final boolean hasLauncherEntry;
         public final long installTime;
-        public final int versionCode;
+        public final long versionCode;
         public final String versionName;
         /** Lazily loaded; loading every icon up front is what makes managers slow. */
-        public Bitmap icon;
+        public volatile Bitmap icon;
         /** Hidden from the home screen by the user. */
         public boolean hidden;
 
         Item(String packageName, String label, boolean systemApp, boolean updatedSystemApp,
-             boolean enabled, boolean hasLauncherEntry, long installTime, int versionCode,
+             boolean enabled, boolean hasLauncherEntry, long installTime, long versionCode,
              String versionName) {
             this.packageName = packageName;
             this.label = label;
@@ -86,7 +86,11 @@ public final class AppManager {
                 // touching it would kill the thread it is loaded on.
                 continue;
             }
-            CharSequence name = app.loadLabel(pm);
+            CharSequence name = null;
+            try {
+                name = app.loadLabel(pm);
+            } catch (RuntimeException ignored) {
+            }
             String label = name == null ? null : name.toString();
             if (label == null || label.length() == 0) {
                 label = info.packageName;
@@ -104,9 +108,13 @@ public final class AppManager {
                     hidden = false;
                 }
             }
+            @SuppressWarnings("deprecation")
+            long versionCode = android.os.Build.VERSION.SDK_INT >= 28
+                    ? info.getLongVersionCode() : info.versionCode;
+            String versionName = info.versionName == null ? "Unknown" : info.versionName;
             out.add(new Item(info.packageName, label, system, updated,
                     app.enabled, hasEntry,
-                    info.firstInstallTime, info.versionCode, info.versionName));
+                    info.firstInstallTime, versionCode, versionName));
             out.get(out.size() - 1).hidden = hidden;
         }
         Collections.sort(out, (a, b) -> a.label.compareToIgnoreCase(b.label));
@@ -118,9 +126,10 @@ public final class AppManager {
     /** The component that launches the app, or null when it has none. */
     private static ComponentName launcherComponent(PackageManager pm, String pkg) {
         try {
-            Intent intent = pm.getLaunchIntentForPackage(pkg);
+            // The TV entry comes first, the way the grid launches the app.
+            Intent intent = pm.getLeanbackLaunchIntentForPackage(pkg);
             if (intent == null) {
-                intent = pm.getLeanbackLaunchIntentForPackage(pkg);
+                intent = pm.getLaunchIntentForPackage(pkg);
             }
             return intent == null ? null : intent.getComponent();
         } catch (RuntimeException e) {

@@ -53,6 +53,14 @@ public final class ToolsPanel {
                     });
             return;
         }
-        BrowserActivity.start(host);
+        // A browser that can only be turned on is not honest about being on.
+        host.choose("Browser", new String[]{"Open", "Turn off"}, 0, index -> {
+            if (index == 0) {
+                BrowserActivity.start(host);
+            } else {
+                host.prefs().setBrowserEnabled(false);
+                SettingsPanel.refresh(host);
+            }
+        });
     }
 }

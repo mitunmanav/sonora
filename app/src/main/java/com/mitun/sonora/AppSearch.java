@@ -29,7 +29,7 @@ public final class AppSearch {
         if (apps == null) {
             return out;
         }
-        String needle = query == null ? "" : query.trim().toLowerCase(Locale.getDefault());
+        String needle = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (needle.isEmpty()) {
             out.addAll(apps);
             return out;
@@ -42,7 +42,7 @@ public final class AppSearch {
             if (entry == null || entry.label == null) {
                 continue;
             }
-            String label = entry.label.toLowerCase(Locale.getDefault());
+            String label = entry.label.toLowerCase(Locale.ROOT);
             if (label.startsWith(needle)) {
                 out.add(entry);
             } else if (initials(entry.label).startsWith(needle)) {
@@ -116,6 +116,6 @@ public final class AppSearch {
                 sb.append(c);
             }
         }
-        return sb.toString().toLowerCase(Locale.getDefault());
+        return sb.toString().toLowerCase(Locale.ROOT);
     }
 }

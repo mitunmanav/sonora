@@ -65,15 +65,49 @@ final class Places {
             }
             String path = dir.getAbsolutePath();
             int cut = path.indexOf("/Android/");
-            if (cut <= 0) {
+            // The drive's top is normally cut off above Android/. The rare path
+            // without it asks the volume for its mount instead of dropping the
+            // drive, and as a last resort lists the folder it was handed.
+            File top = cut > 0 ? new File(path.substring(0, cut)) : mountRoot(context, dir);
+            if (top == null) {
+                top = dir;
+            }
+            if (samePlace(top, internal) || inside(internal, top)) {
                 continue;
             }
-            File top = new File(path.substring(0, cut));
-            if (!top.equals(internal)) {
-                out.add(new Place(volumeName(context, dir), Marks.DRIVE, top, true));
-            }
+            out.add(new Place(volumeName(context, dir), Marks.DRIVE, top, true));
         }
         return out;
+    }
+
+    /** The mount a volume reports, for a path with no Android folder to cut at. */
+    private static File mountRoot(Context context, File dir) {
+        // The mount path is only public from API 30; older answers fall back to
+        // the folder the platform handed out.
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            return null;
+        }
+        StorageManager manager = (StorageManager) context.getSystemService(Context.STORAGE_SERVICE);
+        StorageVolume volume = manager == null ? null : manager.getStorageVolume(dir);
+        return volume == null ? null : volume.getDirectory();
+    }
+
+    /** Whether child sits inside parent, after links are resolved. */
+    private static boolean inside(File parent, File child) {
+        try {
+            return FileLogic.isInside(parent.getCanonicalPath(), child.getCanonicalPath());
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    /** Same drive even when it answers to two paths, like /sdcard and its real one. */
+    static boolean samePlace(File a, File b) {
+        try {
+            return a.getCanonicalPath().equals(b.getCanonicalPath());
+        } catch (java.io.IOException e) {
+            return a.equals(b);
+        }
     }
 
     private static String volumeName(Context context, File onVolume) {

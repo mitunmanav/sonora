@@ -59,6 +59,8 @@ public final class SearchOverlay extends FrameLayout {
     private final int maxResults;
     private String query = "";
     private int shown;
+    /** Once the dismiss fade starts, keys stop meaning anything. */
+    private boolean dismissed;
 
     public SearchOverlay(Context context, List<AppEntry> apps, int cardWidth, int cardHeight,
                          int gap, int columns, int marginPx, Bitmap blurred, Listener listener) {
@@ -172,6 +174,7 @@ public final class SearchOverlay extends FrameLayout {
 
     /** Takes the screen away, and runs the work once it has gone. */
     public void dismiss(Runnable after) {
+        dismissed = true;
         Motion.spring(backdrop, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
         Motion.spring(column, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL,
                 after);
@@ -180,6 +183,9 @@ public final class SearchOverlay extends FrameLayout {
     }
 
     private void onKeyPressed(String key) {
+        if (dismissed) {
+            return;
+        }
         if (SearchKeys.VOICE.equals(key)) {
             openAssistant();
             return;
@@ -223,7 +229,8 @@ public final class SearchOverlay extends FrameLayout {
 
         List<AppEntry> matches = AppSearch.filter(apps, query);
         int focusedIndex = focusedCard();
-        String focusedName = focusedIndex >= 0 ? cards.get(focusedIndex).entry().packageName : null;
+        AppEntry focusedEntry = focusedIndex >= 0 ? cards.get(focusedIndex).entry() : null;
+        String focusedName = focusedEntry == null ? null : focusedEntry.packageName;
 
         shown = Math.min(matches.size(), maxResults);
         ensureCards(shown);
@@ -316,7 +323,7 @@ public final class SearchOverlay extends FrameLayout {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN || dismissed) {
             return super.dispatchKeyEvent(event);
         }
         int code = event.getKeyCode();
@@ -337,7 +344,7 @@ public final class SearchOverlay extends FrameLayout {
         if (focused >= 0 && (code == KeyEvent.KEYCODE_DPAD_LEFT
                 || code == KeyEvent.KEYCODE_DPAD_RIGHT || code == KeyEvent.KEYCODE_DPAD_UP
                 || code == KeyEvent.KEYCODE_DPAD_DOWN)) {
-            int target = Grid.moveTarget(focused, columns, shown, code);
+            int target = Grid.moveTarget(focused, columns, shown, dpadKey(code));
             if (target >= 0) {
                 focusResult(target);
             } else if (code == KeyEvent.KEYCODE_DPAD_UP) {
@@ -346,6 +353,24 @@ public final class SearchOverlay extends FrameLayout {
             return true;
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    /**
+     * The result rows mirror in a right-to-left language, so LEFT and RIGHT
+     * swap before they are turned into a grid position.
+     */
+    private int dpadKey(int key) {
+        if (getLayoutDirection() != LAYOUT_DIRECTION_RTL) {
+            return key;
+        }
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                return KeyEvent.KEYCODE_DPAD_RIGHT;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                return KeyEvent.KEYCODE_DPAD_LEFT;
+            default:
+                return key;
+        }
     }
 
     @Override

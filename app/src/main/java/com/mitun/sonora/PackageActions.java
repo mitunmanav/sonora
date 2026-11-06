@@ -17,9 +17,13 @@ import java.util.List;
  *
  * On a retail, non-rooted Android TV a normal app can:
  *   - hide an app from every launcher by disabling its launcher activity
- *     (CHANGE_COMPONENT_ENABLED_STATE is a normal permission);
+ *     (CHANGE_COMPONENT_ENABLED_STATE is signature|privileged: it works on
+ *     builds where Sonora ships as a privileged app and fails honestly
+ *     everywhere else);
  *   - uninstall an app with the user's confirmation (REQUEST_DELETE_PACKAGES);
- *   - clear an app's data and force-stop it (both normal permissions).
+ *   - force-stop a background app (KILL_BACKGROUND_PROCESSES). Clearing an
+ *     app's data takes a privileged permission, so the user is sent to the
+ *     system page that has it.
  *
  * What it cannot do is delete a preinstalled app from /system: the uninstall
  * is applied per-user, which hides the app but leaves the system copy in place.
@@ -41,59 +45,101 @@ public final class PackageActions {
     }
 
     /**
-     * Disables the launcher activity of a package, which hides it from the
+     * Disables the launcher activities of a package, which hides it from the
      * home screen and from other launchers.
+     *
+     * Every launcher component is switched, not just the first: a package with
+     * both a TV and a phone entry would stay launchable through the one left
+     * alone, while the app reported itself hidden.
      */
     public static Result setHidden(Context context, String packageName, boolean hidden) {
         PackageManager pm = context.getPackageManager();
-        Intent launchIntent = null;
         try {
-            launchIntent = pm.getLaunchIntentForPackage(packageName);
-            if (launchIntent == null) {
-                launchIntent = pm.getLeanbackLaunchIntentForPackage(packageName);
-            }
-        } catch (RuntimeException e) {
-            return new Result(false, "Cannot change this app");
-        }
-        if (launchIntent == null) {
-            // No launcher entry: disable the whole application's components.
-            try {
-                pm.setApplicationEnabledSetting(packageName,
-                        hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                                : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                        PackageManager.DONT_KILL_APP);
-                if (isOff(pm, packageName, null) != hidden) {
-                    return new Result(false, hidden
-                            ? "This device did not hide the app"
-                            : "This device did not restore the app");
+            if (hidden) {
+                java.util.List<ComponentName> launchers =
+                        launcherComponents(pm, packageName);
+                if (launchers.isEmpty()) {
+                    // No launcher entry at all: disable the whole application's
+                    // components, the only "hidden" such an app can have.
+                    pm.setApplicationEnabledSetting(packageName,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP);
+                    if (!isOff(pm, packageName, null)) {
+                        return new Result(false, "This device did not hide the app");
+                    }
+                    return new Result(true, "Hidden");
                 }
-                return new Result(true, hidden ? "Hidden" : "Restored");
-            } catch (RuntimeException e) {
-                return new Result(false, "Cannot change this app");
+                for (ComponentName component : launchers) {
+                    pm.setComponentEnabledSetting(component,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP);
+                }
+                // The state is read back: a launcher that still resolves
+                // means the device ignored the request.
+                if (pm.getLeanbackLaunchIntentForPackage(packageName) != null
+                        || pm.getLaunchIntentForPackage(packageName) != null) {
+                    return new Result(false, "This device did not hide the app");
+                }
+                return new Result(true, "Hidden from the home screen");
             }
-        }
-        ComponentName component = launchIntent.getComponent();
-        if (component == null) {
-            return new Result(false, "Cannot find this app's launcher");
-        }
-        try {
-            pm.setComponentEnabledSetting(component,
-                    hidden ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                            : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                    PackageManager.DONT_KILL_APP);
-            // The state is read back: a device that quietly ignores the
-            // request must not be told the app was hidden.
-            if (isOff(pm, packageName, component) != hidden) {
-                return new Result(false, hidden
-                        ? "This device did not hide the app"
-                        : "This device did not restore the app");
+            // Restoring has to find the disabled components itself: the
+            // launch-intent queries cannot see them, so a package info read
+            // is what hands their names back.
+            android.content.pm.PackageInfo info =
+                    pm.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES);
+            if (info.activities != null) {
+                for (android.content.pm.ActivityInfo activity : info.activities) {
+                    ComponentName component = new ComponentName(packageName, activity.name);
+                    if (pm.getComponentEnabledSetting(component)
+                            == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        pm.setComponentEnabledSetting(component,
+                                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                                PackageManager.DONT_KILL_APP);
+                    }
+                }
             }
-            return new Result(true, hidden ? "Hidden from the home screen" : "Restored");
+            if (pm.getApplicationEnabledSetting(packageName)
+                    == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                // DISABLED_USER is left alone: it came from Debloat, not hiding.
+                pm.setApplicationEnabledSetting(packageName,
+                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                        PackageManager.DONT_KILL_APP);
+            }
+            Intent restored = pm.getLeanbackLaunchIntentForPackage(packageName);
+            if (restored == null) {
+                restored = pm.getLaunchIntentForPackage(packageName);
+            }
+            if (restored != null || !isOff(pm, packageName, null)) {
+                return new Result(true, "Restored");
+            }
+            return new Result(false, "This device did not restore the app");
         } catch (SecurityException e) {
             return new Result(false, "Not allowed by this device");
+        } catch (PackageManager.NameNotFoundException e) {
+            return new Result(false, "This app is not installed");
         } catch (RuntimeException e) {
-            return new Result(false, "Could not hide this app");
+            return new Result(false, hidden ? "Could not hide this app"
+                    : "Could not restore this app");
         }
+    }
+
+    /** The components that make a package launchable, TV entries first. */
+    private static java.util.List<ComponentName> launcherComponents(
+            PackageManager pm, String packageName) {
+        java.util.List<ComponentName> out = new java.util.ArrayList<>();
+        Intent leanback = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER).setPackage(packageName);
+        Intent regular = new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName);
+        for (android.content.pm.ResolveInfo info
+                : pm.queryIntentActivities(leanback, 0)) {
+            out.add(new ComponentName(packageName, info.activityInfo.name));
+        }
+        for (android.content.pm.ResolveInfo info
+                : pm.queryIntentActivities(regular, 0)) {
+            out.add(new ComponentName(packageName, info.activityInfo.name));
+        }
+        return out;
     }
 
     /**
@@ -128,6 +174,13 @@ public final class PackageActions {
                     enabled ? PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
                             : PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
                     PackageManager.DONT_KILL_APP);
+            // The state is read back: a device that quietly ignores the
+            // request must not be told it worked.
+            if (isOff(pm, packageName, null) == enabled) {
+                return new Result(false, enabled
+                        ? "This device did not restore the app"
+                        : "This device did not turn the app off");
+            }
             return new Result(true, enabled ? "Restored" : "Turned off");
         } catch (SecurityException e) {
             return new Result(false, "This device does not allow it");
@@ -208,6 +261,10 @@ public final class PackageActions {
             if (am == null) {
                 return new Result(false, "No activity manager");
             }
+            if (!isRunning(context, packageName)) {
+                // Nothing was asked to stop, so "Stopped" would be a lie.
+                return new Result(true, "Not running");
+            }
             am.killBackgroundProcesses(packageName);
             if (isRunning(context, packageName)) {
                 return new Result(false, "Still running: only background apps can be stopped");
@@ -232,8 +289,14 @@ public final class PackageActions {
                 return false;
             }
             for (android.app.ActivityManager.RunningAppProcessInfo info : running) {
-                if (info != null && packageName.equals(info.processName)) {
-                    return true;
+                // pkgList names every package inside the process, which a
+                // "pkg:remote" style processName comparison would miss.
+                if (info != null && info.pkgList != null) {
+                    for (String pkg : info.pkgList) {
+                        if (packageName.equals(pkg)) {
+                            return true;
+                        }
+                    }
                 }
             }
         } catch (RuntimeException ignored) {
@@ -258,9 +321,10 @@ public final class PackageActions {
     public static Result launch(Context context, String packageName) {
         try {
             PackageManager pm = context.getPackageManager();
-            Intent intent = pm.getLaunchIntentForPackage(packageName);
+            // The TV entry comes first, the way the grid launches the app.
+            Intent intent = pm.getLeanbackLaunchIntentForPackage(packageName);
             if (intent == null) {
-                intent = pm.getLeanbackLaunchIntentForPackage(packageName);
+                intent = pm.getLaunchIntentForPackage(packageName);
             }
             if (intent == null) {
                 return new Result(false, "This app cannot be started");

@@ -142,7 +142,8 @@ public final class DebugPanel {
         long total = 0;
         for (android.os.Debug.MemoryInfo info : memory) {
             if (info != null) {
-                total += info.getTotalPrivateDirty();
+                // getTotalPrivateDirty answers in kB, not bytes.
+                total += info.getTotalPrivateDirty() * 1024L;
             }
         }
         rows.add(SettingRow.header("Running"));
@@ -150,8 +151,10 @@ public final class DebugPanel {
         rows.add(SettingRow.value("Private memory in use", SystemInfo.bytes(total)));
         for (int i = 0; i < processes.size(); i++) {
             long bytes = i < memory.length && memory[i] != null
-                    ? memory[i].getTotalPrivateDirty() : 0;
-            rows.add(SettingRow.value(processes.get(i).processName, SystemInfo.bytes(bytes)));
+                    ? memory[i].getTotalPrivateDirty() * 1024L : 0;
+            String name = processes.get(i).processName;
+            rows.add(SettingRow.value(name == null ? "Unnamed" : name,
+                    SystemInfo.bytes(bytes)));
         }
         return rows;
     }
@@ -179,7 +182,8 @@ public final class DebugPanel {
             rows.add(SettingRow.value("Charge", Math.round(level * 100f / scale) + "%"));
         }
         rows.add(SettingRow.value("Status", status));
-        rows.add(SettingRow.value("Power", plugged == 0 ? "On battery" : "Plugged in"));
+        rows.add(SettingRow.value("Power", plugged < 0 ? "Unknown"
+                : plugged == 0 ? "On battery" : "Plugged in"));
         rows.add(SettingRow.value("Low power mode", isPowerSaver(host) ? "On" : "Off"));
         host.stack().pushSettings("Battery", rows);
     }
@@ -234,7 +238,17 @@ public final class DebugPanel {
             if (wifi == null || !wifi.isWifiEnabled()) {
                 return "Off";
             }
-            return wifi.getConnectionInfo().getSSID().replace("\"", "");
+            android.net.wifi.WifiInfo connection = wifi.getConnectionInfo();
+            if (connection == null) {
+                return "Unknown";
+            }
+            String ssid = connection.getSSID();
+            // getSSID answers "<unknown ssid>" when it cannot name the
+            // network; that is still a connection, just an unnamed one.
+            if (ssid == null || ssid.startsWith("<unknown")) {
+                return "Connected";
+            }
+            return ssid.replace("\"", "");
         } catch (RuntimeException e) {
             return "Unknown";
         }
@@ -259,8 +273,20 @@ public final class DebugPanel {
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();
             try {
-                Process process = new ProcessBuilder("logcat", "-d", "-v", "time",
+                final Process process = new ProcessBuilder("logcat", "-d", "-v", "time",
                         "-t", String.valueOf(LOG_LINES)).redirectErrorStream(true).start();
+                // A wedged logd keeps readLine blocked and waitFor can only
+                // bound a process that has ended; destroying it breaks the
+                // read, so the watchdog does that after the deadline.
+                Thread watchdog = new Thread(() -> {
+                    try {
+                        Thread.sleep(4000);
+                        process.destroy();
+                    } catch (InterruptedException ignored) {
+                    }
+                }, "sonora-logcat-watchdog");
+                watchdog.setDaemon(true);
+                watchdog.start();
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(process.getInputStream()))) {
                     String line;
@@ -268,13 +294,31 @@ public final class DebugPanel {
                         sb.append(line).append('\n');
                     }
                 }
-                process.waitFor();
+                watchdog.interrupt();
+                waitFor(process);
             } catch (Exception e) {
                 sb.append("Could not read the log: ").append(e.getMessage());
             }
             final String result = sb.toString();
             host.runOnUiThread(() -> text.setText(result));
         }, "sonora-logcat").start();
+    }
+
+    /**
+     * Waits for a process, but not forever: waitFor(time, unit) needs API 26
+     * and a hung logcat must not keep this thread.
+     */
+    private static void waitFor(Process process) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                process.exitValue();
+                return;
+            } catch (IllegalThreadStateException e) {
+                Thread.sleep(40);
+            }
+        }
+        process.destroy();
     }
 
     private static void showSelfCheck(ToolActivity host) {

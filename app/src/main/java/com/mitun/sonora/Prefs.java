@@ -33,11 +33,11 @@ public final class Prefs {
     }
 
     public int wallpaper() {
-        return sp.getInt("wallpaper", 0);
+        return getInt("wallpaper", 0);
     }
 
     public String wallpaperUri() {
-        return sp.getString("wallpaper_uri", null);
+        return getString("wallpaper_uri", null);
     }
 
     public void setWallpaper(int index, String uri) {
@@ -46,7 +46,7 @@ public final class Prefs {
 
     /** 0 means "fit the screen", which is what every resolution should do. */
     public int columns() {
-        return Math.max(0, Math.min(Grid.MAX_COLUMNS, sp.getInt("columns", 0)));
+        return Math.max(0, Math.min(Grid.MAX_COLUMNS, getInt("columns", 0)));
     }
 
     public void setColumns(int columns) {
@@ -54,7 +54,7 @@ public final class Prefs {
     }
 
     public int labels() {
-        return Math.max(0, Math.min(2, sp.getInt("labels", LABELS_OFF)));
+        return Math.max(0, Math.min(2, getInt("labels", LABELS_OFF)));
     }
 
     public void setLabels(int mode) {
@@ -62,7 +62,7 @@ public final class Prefs {
     }
 
     public boolean clock24() {
-        return sp.getBoolean("clock24", android.text.format.DateFormat.is24HourFormat(appContext));
+        return getBoolean("clock24", android.text.format.DateFormat.is24HourFormat(appContext));
     }
 
     public void setClock24(boolean value) {
@@ -70,7 +70,7 @@ public final class Prefs {
     }
 
     public boolean showDate() {
-        return sp.getBoolean("show_date", false);
+        return getBoolean("show_date", false);
     }
 
     public void setShowDate(boolean value) {
@@ -78,7 +78,7 @@ public final class Prefs {
     }
 
     public boolean showSeconds() {
-        return sp.getBoolean("show_seconds", false);
+        return getBoolean("show_seconds", false);
     }
 
     public void setShowSeconds(boolean value) {
@@ -86,7 +86,7 @@ public final class Prefs {
     }
 
     public boolean reduceMotion() {
-        return sp.getBoolean("reduce_motion", false);
+        return getBoolean("reduce_motion", false);
     }
 
     public void setReduceMotion(boolean value) {
@@ -95,7 +95,7 @@ public final class Prefs {
 
     /** The light appearance for Settings, Search and Control Center. Dark by default. */
     public boolean lightAppearance() {
-        return sp.getBoolean("light", false);
+        return getBoolean("light", false);
     }
 
     public void setLightAppearance(boolean value) {
@@ -104,7 +104,7 @@ public final class Prefs {
 
     /** The tier chosen in Settings, or {@link DeviceTier#AUTO} to decide from the RAM. */
     public int performance() {
-        return sp.getInt("performance", DeviceTier.AUTO);
+        return getInt("performance", DeviceTier.AUTO);
     }
 
     public void setPerformance(int tier) {
@@ -118,7 +118,7 @@ public final class Prefs {
      * what a person pressing the search key on their remote is asking for.
      */
     public boolean searchKey() {
-        return sp.getBoolean("search_key", true);
+        return getBoolean("search_key", true);
     }
 
     public void setSearchKey(boolean value) {
@@ -127,7 +127,7 @@ public final class Prefs {
 
     /** The browser is bundled but off until the user asks for it. */
     public boolean browserEnabled() {
-        return sp.getBoolean("browser", false);
+        return getBoolean("browser", false);
     }
 
     public void setBrowserEnabled(boolean value) {
@@ -136,7 +136,7 @@ public final class Prefs {
 
     /** The file manager and the LAN share are bundled but off by default. */
     public boolean filesEnabled() {
-        return sp.getBoolean("files", false);
+        return getBoolean("files", false);
     }
 
     public void setFilesEnabled(boolean value) {
@@ -144,7 +144,7 @@ public final class Prefs {
     }
 
     public boolean browserAdBlock() {
-        return sp.getBoolean("browser_adblock", true);
+        return getBoolean("browser_adblock", true);
     }
 
     public void setBrowserAdBlock(boolean value) {
@@ -153,7 +153,7 @@ public final class Prefs {
 
     /** The bookmarked addresses, one per line. */
     public List<String> browserBookmarks() {
-        String raw = sp.getString("browser_bookmarks", "");
+        String raw = getString("browser_bookmarks", "");
         List<String> out = new ArrayList<>();
         if (raw != null) {
             for (String line : raw.split("\\n")) {
@@ -182,7 +182,7 @@ public final class Prefs {
     }
 
     public int screensaverDelaySec() {
-        return Math.max(0, sp.getInt("ss_delay", 300));
+        return Math.max(0, getInt("ss_delay", 300));
     }
 
     public void setScreensaverDelaySec(int value) {
@@ -190,7 +190,7 @@ public final class Prefs {
     }
 
     public int screensaverSceneSec() {
-        return Math.max(15, sp.getInt("ss_scene", 60));
+        return Math.max(15, getInt("ss_scene", 60));
     }
 
     public void setScreensaverSceneSec(int value) {
@@ -199,7 +199,7 @@ public final class Prefs {
 
     /** 0 = on input, 1 = always, 2 = never. */
     public int screensaverClock() {
-        return Math.max(0, Math.min(2, sp.getInt("ss_clock", 0)));
+        return Math.max(0, Math.min(2, getInt("ss_clock", 0)));
     }
 
     public void setScreensaverClock(int value) {
@@ -208,7 +208,7 @@ public final class Prefs {
 
     /** The aerials left out of the screen saver, by name. */
     public List<String> hiddenScenes() {
-        return lines(sp.getString("ss_hidden", ""));
+        return lines(getString("ss_hidden", ""));
     }
 
     public void setHiddenScenes(List<String> names) {
@@ -217,7 +217,7 @@ public final class Prefs {
 
     /** The apps the user pinned, in the order they pinned them. */
     public List<String> favourites() {
-        return lines(sp.getString("favourites", ""));
+        return lines(getString("favourites", ""));
     }
 
     public void setFavourites(List<String> packages) {
@@ -229,7 +229,7 @@ public final class Prefs {
     }
 
     public String order() {
-        return sp.getString("order", "");
+        return getString("order", "");
     }
 
     public void setOrder(String order) {
@@ -237,7 +237,7 @@ public final class Prefs {
     }
 
     public Set<String> hidden() {
-        Set<String> copy = sp.getStringSet("hidden", Collections.emptySet());
+        Set<String> copy = getStringSet("hidden", Collections.emptySet());
         return new HashSet<>(copy);
     }
 
@@ -246,12 +246,12 @@ public final class Prefs {
     }
 
     public boolean welcomeSeen() {
-        return sp.getBoolean("welcome", false);
+        return getBoolean("welcome", false);
     }
 
     /** Which setup the user picked. */
     public int mode() {
-        return sp.getInt("mode", MODE_DEFAULT) == MODE_TECHNICAL ? MODE_TECHNICAL : MODE_DEFAULT;
+        return getInt("mode", MODE_DEFAULT) == MODE_TECHNICAL ? MODE_TECHNICAL : MODE_DEFAULT;
     }
 
     public void setMode(int mode) {
@@ -260,7 +260,7 @@ public final class Prefs {
 
     /** Screensaver photo source: 0 = bundled only, 1 = device storage, 2 = both. */
     public int screensaverPhotoSource() {
-        return Math.max(0, Math.min(2, sp.getInt("ss_photo_source", 0)));
+        return Math.max(0, Math.min(2, getInt("ss_photo_source", 0)));
     }
 
     public void setScreensaverPhotoSource(int value) {
@@ -269,7 +269,7 @@ public final class Prefs {
 
     /** Custom photo folder path for device storage photos. */
     public String screensaverPhotoFolder() {
-        return sp.getString("ss_photo_folder", null);
+        return getString("ss_photo_folder", null);
     }
 
     public void setScreensaverPhotoFolder(String path) {
@@ -288,7 +288,7 @@ public final class Prefs {
      */
     public String gridKey() {
         return columns() + "|" + labels() + "|" + order() + "|" + sortedHidden()
-                + "|" + appsEpoch() + "|" + sp.getString("favourites", "");
+                + "|" + appsEpoch() + "|" + getString("favourites", "");
     }
 
     private String sortedHidden() {
@@ -314,7 +314,7 @@ public final class Prefs {
      * changing, so the launcher needs a way to notice.
      */
     public int appsEpoch() {
-        return sp.getInt("apps_epoch", 0);
+        return getInt("apps_epoch", 0);
     }
 
     public void bumpAppsEpoch() {
@@ -330,8 +330,41 @@ public final class Prefs {
     public void reset() {
         boolean welcome = welcomeSeen();
         int mode = mode();
-        sp.edit().clear().apply();
-        sp.edit().putBoolean("welcome", welcome).putInt("mode", mode).apply();
+        // One write: a process death between the two would lose them both.
+        sp.edit().clear().putBoolean("welcome", welcome).putInt("mode", mode).apply();
+    }
+
+    // A value stored under the wrong type reads as the default, not a crash.
+    private int getInt(String key, int fallback) {
+        try {
+            return sp.getInt(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
+    }
+
+    private String getString(String key, String fallback) {
+        try {
+            return sp.getString(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
+    }
+
+    private boolean getBoolean(String key, boolean fallback) {
+        try {
+            return sp.getBoolean(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
+    }
+
+    private Set<String> getStringSet(String key, Set<String> fallback) {
+        try {
+            return sp.getStringSet(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
     }
 
     /** Splits a stored list of packages, one per line. */

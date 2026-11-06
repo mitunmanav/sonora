@@ -9,6 +9,9 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /** A tvOS-style list picker: focus moves with the D-pad, OK picks, BACK cancels. */
 public final class ChoiceOverlay extends FrameLayout {
     public interface Callback {
@@ -18,9 +21,12 @@ public final class ChoiceOverlay extends FrameLayout {
     private final LinearLayout list;
     private final LinearLayout column;
     private final Callback callback;
-    /** How many rows are real options, as opposed to a message. */
-    private int optionCount;
+    /** The options index each row stands for; rows and indices differ once a null is skipped. */
+    private final List<Integer> optionIndex = new ArrayList<>();
     private int selected = -1;
+    /** Once the dismiss fade starts the rows are gone for good: a second OK
+     *  mid-fade must not answer the picker twice. */
+    private boolean dismissed;
 
     public ChoiceOverlay(Context context, String title, String[] options, int selectedIndex,
                          Callback callback) {
@@ -82,14 +88,18 @@ public final class ChoiceOverlay extends FrameLayout {
 
         addView(column, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        optionCount = options.length;
         for (int i = 0; i < options.length; i++) {
+            if (options[i] == null) {
+                continue;
+            }
             addOption(context, options[i], i == selected);
+            optionIndex.add(i);
         }
-        if (options.length == 0) {
+        if (optionIndex.isEmpty()) {
             // A picker with no options would be a modal the remote cannot
             // use, so it says there is nothing to choose.
             addOption(context, "There is nothing to choose", false);
+            list.getChildAt(list.getChildCount() - 1).setFocusable(false);
         }
 
         // The picker arrives: it grows out of the place it came from rather
@@ -109,6 +119,7 @@ public final class ChoiceOverlay extends FrameLayout {
      * view when the movement is done.
      */
     public void dismiss(Runnable after) {
+        dismissed = true;
         Motion.spring(column, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL,
                 after);
         Motion.spring(column, Motion.TRANSLATION_Y, Ui.dp(getContext(), 26),
@@ -129,6 +140,8 @@ public final class ChoiceOverlay extends FrameLayout {
         label.setText(text);
         label.setTextColor(Theme.inkSoft());
         Type.apply(label, Type.HEADING);
+        label.setSingleLine(true);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -141,32 +154,37 @@ public final class ChoiceOverlay extends FrameLayout {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         final float[] focus = {0f};
+        // One property per row, so a focus change allocates nothing.
+        final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return focus[0];
+            }
+
+            @Override
+            public void set(float value) {
+                focus[0] = value;
+                bg.setFocus(value);
+                int ink = Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value);
+                label.setTextColor(ink);
+                check.setTextColor(ink);
+            }
+        };
         line.setOnFocusChangeListener((v, focused) -> {
             Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
-                        @Override
-                        public float get() {
-                            return focus[0];
-                        }
-
-                        @Override
-                        public void set(float value) {
-                            focus[0] = value;
-                            bg.setFocus(value);
-                            int ink = Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value);
-                            label.setTextColor(ink);
-                            check.setTextColor(ink);
-                        }
-                    });
+                    Motion.RESPONSE_FOCUS, focusValue);
             v.setElevation(focused ? Ui.dpf(getContext(), 8f) : 0f);
         });
         line.setOnClickListener(v -> {
+            if (dismissed) {
+                return;
+            }
             int index = list.indexOfChild(v);
-            if (index < 0 || index >= optionCount) {
+            if (index < 0 || index >= optionIndex.size()) {
                 // The "nothing to choose" row is a message, not an option.
                 return;
             }
-            selected = index;
+            selected = optionIndex.get(index);
             if (callback != null) {
                 callback.onPicked(selected);
             }
@@ -180,7 +198,10 @@ public final class ChoiceOverlay extends FrameLayout {
     public void focusSelected() {
         // The row that is ticked, or the first row when nothing is ticked:
         // a picker with no focus is a picker the remote cannot use.
-        int index = (selected >= 0 && selected < list.getChildCount()) ? selected : 0;
+        int index = optionIndex.indexOf(selected);
+        if (index < 0) {
+            index = 0;
+        }
         if (index < list.getChildCount()) {
             list.getChildAt(index).requestFocus();
         }

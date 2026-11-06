@@ -23,6 +23,20 @@ public final class GlyphPillView extends FrameLayout {
     private final Glyph glyph;
     private final int restInk;
     private float focus;
+    /** One property per pill, so a focus change allocates nothing. */
+    private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+        @Override
+        public float get() {
+            return focus;
+        }
+
+        @Override
+        public void set(float value) {
+            focus = value;
+            material.setFocus(value);
+            glyph.setInk(Ui.mix(restInk, Ui.INK_ON_LIT, value));
+        }
+    };
 
     public GlyphPillView(Context context, int mark, String label) {
         this(context, mark, label, Theme.ink());
@@ -49,19 +63,7 @@ public final class GlyphPillView extends FrameLayout {
                     Motion.RESPONSE_FOCUS);
             setElevation(Ui.dpf(context, hasFocus ? 10f : 0f));
             Motion.springCustom(this, 0, hasFocus ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
-                        @Override
-                        public float get() {
-                            return focus;
-                        }
-
-                        @Override
-                        public void set(float value) {
-                            focus = value;
-                            material.setFocus(value);
-                            glyph.setInk(Ui.mix(restInk, Ui.INK_ON_LIT, value));
-                        }
-                    });
+                    Motion.RESPONSE_FOCUS, focusValue);
         });
     }
 

@@ -149,8 +149,17 @@ public final class AppIconView extends View {
         iconRect.set(w / 2f - artSize / 2f, h * 0.35f - artSize / 2f,
                 w / 2f + artSize / 2f, h * 0.35f + artSize / 2f);
         labelPaint.setTextSize(h * 0.145f);
-        cardLabel = TextUtils.ellipsize(entry.label, labelPaint, w * 0.84f,
-                TextUtils.TruncateAt.END);
+        cardLabel = TextUtils.ellipsize(entry.label == null ? entry.packageName : entry.label,
+                labelPaint, w * 0.84f, TextUtils.TruncateAt.END);
+        // The cut is made in chars and can land inside a surrogate pair; a
+        // lone half would draw as a box, so it is dropped.
+        int n = cardLabel.length();
+        if (n >= 2 && cardLabel.charAt(n - 1) == '…'
+                && Character.isHighSurrogate(cardLabel.charAt(n - 2))) {
+            cardLabel = cardLabel.subSequence(0, n - 2) + "…";
+        } else if (n >= 1 && Character.isHighSurrogate(cardLabel.charAt(n - 1))) {
+            cardLabel = cardLabel.subSequence(0, n - 1);
+        }
     }
 
     /** A five-pointed star, drawn from the outside in. */

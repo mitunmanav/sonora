@@ -56,7 +56,8 @@ public final class RecentApps {
     public static boolean usageGranted(Context context) {
         try {
             AppOpsManager ops = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-            int mode = ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
+            // checkOpNoThrow exists since API 23; the unsafe variant is API 29.
+            int mode = ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
                     android.os.Process.myUid(), context.getPackageName());
             return mode == AppOpsManager.MODE_ALLOWED;
         } catch (RuntimeException e) {
@@ -110,24 +111,28 @@ public final class RecentApps {
             return lastUsed;
         }
         long now = System.currentTimeMillis();
-        UsageEvents events = stats.queryEvents(now - WINDOW_MS, now);
-        if (events == null) {
-            return lastUsed;
-        }
-        UsageEvents.Event event = new UsageEvents.Event();
-        while (events.hasNextEvent()) {
-            if (!events.getNextEvent(event)
-                    || event.getEventType() != UsageEvents.Event.ACTIVITY_RESUMED) {
-                continue;
+        try {
+            UsageEvents events = stats.queryEvents(now - WINDOW_MS, now);
+            if (events == null) {
+                return lastUsed;
             }
-            String pkg = event.getPackageName();
-            if (pkg == null || pkg.equals(context.getPackageName())) {
-                continue;
+            UsageEvents.Event event = new UsageEvents.Event();
+            while (events.hasNextEvent()) {
+                if (!events.getNextEvent(event)
+                        || event.getEventType() != UsageEvents.Event.ACTIVITY_RESUMED) {
+                    continue;
+                }
+                String pkg = event.getPackageName();
+                if (pkg == null || pkg.equals(context.getPackageName())) {
+                    continue;
+                }
+                Long seen = lastUsed.get(pkg);
+                if (seen == null || event.getTimeStamp() > seen) {
+                    lastUsed.put(pkg, event.getTimeStamp());
+                }
             }
-            Long seen = lastUsed.get(pkg);
-            if (seen == null || event.getTimeStamp() > seen) {
-                lastUsed.put(pkg, event.getTimeStamp());
-            }
+        } catch (RuntimeException e) {
+            // A device that refuses the query gets no history, not a crash.
         }
         return lastUsed;
     }

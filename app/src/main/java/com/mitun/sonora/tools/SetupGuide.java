@@ -34,6 +34,16 @@ public final class SetupGuide {
         host.stack().pushSettings("Setup guide", rows(host));
     }
 
+    /**
+     * Rebuilds the steps when the screen is back on top: debugging can be
+     * turned on or off while the guide sits under a system screen.
+     */
+    static void resumed(ToolActivity host) {
+        if ("Setup guide".equals(host.stack().topTitle())) {
+            host.stack().refreshSettings("Setup guide", rows(host));
+        }
+    }
+
     private static List<SettingRow> rows(ToolActivity host) {
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.note("Turn on debugging, then connect from your computer."));
@@ -142,7 +152,11 @@ public final class SetupGuide {
                 return;
             }
             clipboard.setPrimaryClip(ClipData.newPlainText("Sonora", text));
-            Ui.toast(host, "Copied");
+            // Android 13 shows its own clipboard preview; a toast would
+            // say the same thing twice.
+            if (Build.VERSION.SDK_INT < 33) {
+                Ui.toast(host, "Copied");
+            }
         } catch (RuntimeException e) {
             Ui.toast(host, "Could not copy");
         }
@@ -163,16 +177,42 @@ public final class SetupGuide {
             if (interfaces == null) {
                 return "";
             }
+            String fallback = "";
+            String fallback6 = "";
             for (NetworkInterface network : Collections.list(interfaces)) {
                 if (!network.isUp() || network.isLoopback()) {
                     continue;
                 }
+                // A VPN or a tethered phone has an address too, but a computer
+                // on the same network can only reach the Wi-Fi or wired one.
+                boolean lan = network.getName().startsWith("wlan")
+                        || network.getName().startsWith("eth");
                 for (InetAddress address : Collections.list(network.getInetAddresses())) {
-                    if (address instanceof Inet4Address && !address.isLoopbackAddress()) {
-                        return address.getHostAddress();
+                    // A link-local address is only good on its own segment;
+                    // adb on the computer cannot reach the TV through it.
+                    if (address.isLoopbackAddress() || address.isLinkLocalAddress()) {
+                        continue;
+                    }
+                    if (address instanceof Inet4Address) {
+                        if (lan) {
+                            return address.getHostAddress();
+                        }
+                        if (fallback.isEmpty()) {
+                            fallback = address.getHostAddress();
+                        }
+                    } else if (fallback6.isEmpty()) {
+                        // IPv6 in an address takes brackets, like a URL does.
+                        String v6 = address.getHostAddress();
+                        int scope = v6.indexOf('%');
+                        if (scope >= 0) {
+                            // A scope id ("%wlan0") is for this stack, not an address bar.
+                            v6 = v6.substring(0, scope);
+                        }
+                        fallback6 = "[" + v6 + "]";
                     }
                 }
             }
+            return fallback.isEmpty() ? fallback6 : fallback;
         } catch (Exception ignored) {
         }
         return "";

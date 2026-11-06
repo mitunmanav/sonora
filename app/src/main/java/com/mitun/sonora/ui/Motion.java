@@ -91,6 +91,7 @@ public final class Motion {
                 dt = 0.064f;
             }
             boolean busy = false;
+            java.util.List<Runnable> settled = null;
             for (int i = 0; i < tracks.length; i++) {
                 Track track = tracks[i];
                 if (track == null) {
@@ -104,17 +105,38 @@ public final class Motion {
                     Runnable callback = track.onSettled;
                     track.onSettled = null;
                     if (callback != null) {
-                        callback.run();
+                        if (settled == null) {
+                            settled = new java.util.ArrayList<>(4);
+                        }
+                        settled.add(callback);
                     }
                 } else {
                     busy = true;
                 }
             }
-            if (busy) {
+            if (!busy) {
+                // A settle callback may have aimed a new spring at this view;
+                // those tracks arrived after the scan above, so look again
+                // before the clock stops.
+                for (int i = 0; i < tracks.length; i++) {
+                    if (tracks[i] != null) {
+                        busy = true;
+                        break;
+                    }
+                }
+            }
+            // The clock decision comes before the callbacks: a callback that
+            // throws, or one that cancels this runner, must not strand it.
+            if (busy && running) {
                 Choreographer.getInstance().postFrameCallback(frame);
-            } else {
+            } else if (!busy) {
                 running = false;
                 lastNanos = 0L;
+            }
+            if (settled != null) {
+                for (int i = 0; i < settled.size(); i++) {
+                    settled.get(i).run();
+                }
             }
         }
     }
@@ -167,6 +189,15 @@ public final class Motion {
     /** As above, and runs a callback once the spring comes to rest. */
     public static void spring(View view, int kind, float target,
                               float dampingRatio, float response, Runnable onSettled) {
+        if (Float.isNaN(target) || Float.isInfinite(target)) {
+            // A target that is not a number can never arrive, so the spring
+            // is not started. The callback still runs, or a chain that
+            // removes the view would leave it on the screen for good.
+            if (onSettled != null) {
+                onSettled.run();
+            }
+            return;
+        }
         if (isReduced(view.getContext())) {
             // Reduced motion is a gentler equivalent, not no feedback: the
             // value still changes, it just does not travel.
@@ -208,12 +239,15 @@ public final class Motion {
     public static void springCustom(View owner, int slot, float target,
                                      float dampingRatio, float response,
                                      FloatProperty property) {
+        if (Float.isNaN(target) || Float.isInfinite(target)) {
+            return;
+        }
         if (isReduced(owner.getContext())) {
             property.set(target);
             return;
         }
         Runner runner = runner(owner);
-        int index = KINDS + slot;
+        int index = KINDS + Math.max(0, Math.min(7, slot));
         Track track = runner.tracks[index];
         if (track == null) {
             track = new Track(property, property.get());
@@ -238,7 +272,17 @@ public final class Motion {
     public static void set(View view, int kind, float value) {
         Runner runner = runners.get(view);
         if (runner != null) {
+            Track track = runner.tracks[kind];
             runner.tracks[kind] = null;
+            // The rule in spring(): a settled callback usually takes the view
+            // out of its parent, so a dropped one leaves the view behind.
+            if (track != null) {
+                Runnable callback = track.onSettled;
+                track.onSettled = null;
+                if (callback != null) {
+                    callback.run();
+                }
+            }
         }
         write(view, kind, value);
     }
@@ -249,6 +293,16 @@ public final class Motion {
         if (runner != null) {
             runner.running = false;
             Choreographer.getInstance().removeFrameCallback(runner.frame);
+            for (int i = 0; i < runner.tracks.length; i++) {
+                Track track = runner.tracks[i];
+                if (track != null) {
+                    Runnable callback = track.onSettled;
+                    track.onSettled = null;
+                    if (callback != null) {
+                        callback.run();
+                    }
+                }
+            }
         }
     }
 

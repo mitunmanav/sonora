@@ -94,6 +94,7 @@ public final class QuickPanel {
         openFirst(context,
                 component("com.android.tv.settings",
                         "com.android.tv.settings.inputmethod.KeyboardActivity"),
+                new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS),
                 new Intent(Settings.ACTION_SETTINGS));
     }
 
@@ -111,6 +112,7 @@ public final class QuickPanel {
         openFirst(context,
                 component("com.android.tv.settings",
                         "com.android.tv.settings.system.LanguageActivity"),
+                new Intent(Settings.ACTION_LOCALE_SETTINGS),
                 new Intent(Settings.ACTION_SETTINGS));
     }
 
@@ -182,7 +184,10 @@ public final class QuickPanel {
                 return "";
             }
             NetworkInfo info = network.getActiveNetworkInfo();
-            if (info != null && info.isConnected()) {
+            // Connected over Ethernet is not a Wi-Fi state; the row names
+            // what it is, not what the device happens to be plugged into.
+            if (info != null && info.isConnected()
+                    && info.getType() == ConnectivityManager.TYPE_WIFI) {
                 return "Connected";
             }
             return "Not connected";
@@ -191,6 +196,9 @@ public final class QuickPanel {
         }
     }
 
+    /** True while a tidy-up run is going; a second tap must not start another. */
+    private static volatile boolean tidyRunning;
+
     /**
      * Turns off everything that a system update put back.
      *
@@ -198,14 +206,23 @@ public final class QuickPanel {
      * about and to change, and the screen must not stutter while it happens.
      */
     public static void tidyUpNow(final ToolActivity host) {
+        if (tidyRunning) {
+            return;
+        }
+        tidyRunning = true;
         new Thread(() -> {
-            final Cleanup.Result result = Cleanup.run(host);
-            host.runOnUiThread(() -> {
-                Ui.toast(host, result.message());
-                if (!Ui.isDefaultLauncher(host)) {
-                    Ui.toast(host, "Sonora is not the home screen any more");
-                }
-            });
+            try {
+                final Cleanup.Result result = Cleanup.run(host);
+                host.runOnUiThread(() -> {
+                    String message = result.message();
+                    if (!Ui.isDefaultLauncher(host)) {
+                        message += ". Sonora is not the home screen any more";
+                    }
+                    Ui.toast(host, message);
+                });
+            } finally {
+                tidyRunning = false;
+            }
         }, "sonora-cleanup").start();
     }
 }

@@ -54,13 +54,21 @@ public final class Scenes {
     public static List<Scene> all(Context context) {
         Prefs prefs = new Prefs(context);
         int source = prefs.screensaverPhotoSource();
-        List<Scene> out = new ArrayList<>(bundled());
+        List<Scene> out = new ArrayList<>();
+        // "Device photos" means photos only; bundled comes back in "Both".
+        if (source != 1) {
+            out.addAll(bundled());
+        }
         if (source == 1 || source == 2) {
             List<String> photoPaths = PhotoLoader.photoPaths(context);
             for (String path : photoPaths) {
                 String name = new java.io.File(path).getName();
                 out.add(new Scene(path, name));
             }
+        }
+        if (out.isEmpty()) {
+            // Photos-only with nothing readable would leave the saver black.
+            out.addAll(bundled());
         }
         return out;
     }
@@ -73,27 +81,11 @@ public final class Scenes {
         return Math.max(0, Math.min(ALL.size() - 1, index));
     }
 
-    /** Full list safe index including device photos. */
-    public static int safeIndex(int index, Context context) {
-        List<Scene> all = all(context);
-        return Math.max(0, Math.min(all.size() - 1, index));
-    }
-
     /** Bundled-only regions for settings UI. */
     public static String[] regions() {
         String[] out = new String[ALL.size()];
         for (int i = 0; i < out.length; i++) {
             out[i] = ALL.get(i).region;
-        }
-        return out;
-    }
-
-    /** Full list regions including device photos. */
-    public static String[] regions(Context context) {
-        List<Scene> all = all(context);
-        String[] out = new String[all.size()];
-        for (int i = 0; i < out.length; i++) {
-            out[i] = all.get(i).region;
         }
         return out;
     }
@@ -108,13 +100,14 @@ public final class Scenes {
         return out;
     }
 
-    /** Full list hidden flags including device photos. */
-    public static boolean[] hiddenFlags(Prefs prefs, Context context) {
+    /** Full list hidden flags for the given resolved scene list. */
+    public static boolean[] hiddenFlags(Prefs prefs, List<Scene> all) {
         List<String> hidden = prefs.hiddenScenes();
-        List<Scene> all = all(context);
         boolean[] out = new boolean[all.size()];
         for (int i = 0; i < out.length; i++) {
-            out[i] = hidden.contains(all.get(i).name);
+            // Photos are keyed by path: two files can share one filename.
+            Scene scene = all.get(i);
+            out[i] = hidden.contains(scene.path == null ? scene.name : scene.path);
         }
         return out;
     }

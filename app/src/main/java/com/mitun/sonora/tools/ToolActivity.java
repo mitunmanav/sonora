@@ -3,8 +3,10 @@ package com.mitun.sonora.tools;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -15,6 +17,7 @@ import android.widget.ImageView;
 import com.mitun.sonora.AppManager;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.Scenes;
 import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.Glyph;
@@ -54,6 +57,8 @@ public final class ToolActivity extends Activity {
     /** The package an uninstall was asked for, so the result can be reported. */
     private String pendingUninstall;
     private String pendingUninstallLabel;
+    /** When the ask was made; an answer cannot come back faster than this. */
+    private long uninstallAskedAt;
 
     public static void open(Context context, String screen) {
         Intent intent = new Intent(context, ToolActivity.class);
@@ -69,8 +74,10 @@ public final class ToolActivity extends Activity {
         Ui.immersive(this);
 
         root = new FrameLayout(this);
-        root.addView(new BackdropView(this), new FrameLayout.LayoutParams(
+        BackdropView backdrop = new BackdropView(this);
+        root.addView(backdrop, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        loadBackdrop(backdrop);
 
         // The settings pages are transparent on the left, so the mark stays
         // still while their lists slide over it, and changes with the page.
@@ -92,6 +99,11 @@ public final class ToolActivity extends Activity {
         stack = new ScreenStack(this, new ScreenStack.Listener() {
             @Override
             public void onEmpty() {
+                // Leaving the first-run setup with BACK is still having seen
+                // it; otherwise it would come back at every launch.
+                if (wizard != null) {
+                    prefs.setWelcomeSeen(true);
+                }
                 finish();
             }
 
@@ -134,9 +146,57 @@ public final class ToolActivity extends Activity {
     void reopenAt(String page) {
         // After the picker has let go of the focus and its callback has returned.
         root.post(() -> {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
             setIntent(getIntent().putExtra(EXTRA_PAGE, page));
             recreate();
         });
+    }
+
+    /**
+     * Hands the backdrop its blur when the launcher has not made one already.
+     * The view only checks the shared blur itself, so a miss is decoded here,
+     * off the main thread, and handed over when it lands.
+     */
+    private void loadBackdrop(final BackdropView backdrop) {
+        final int index = prefs.wallpaper();
+        final String uri = prefs.wallpaperUri();
+        final String key = BackdropView.key(index, uri);
+        Bitmap ready = BackdropView.remembered(key);
+        if (ready != null) {
+            backdrop.setSoftened(ready);
+            return;
+        }
+        new Thread(() -> {
+            Bitmap soft = null;
+            try {
+                Bitmap decoded = null;
+                if (index < 0 && uri != null) {
+                    decoded = Ui.decodeUri(getResources(), getContentResolver(),
+                            Uri.parse(uri), 96);
+                }
+                if (decoded == null) {
+                    decoded = Ui.decodeScene(getResources(),
+                            Scenes.ALL.get(Scenes.safeIndex(index)).res, 96, 54);
+                }
+                soft = BackdropView.soften(decoded);
+                if (decoded != null) {
+                    decoded.recycle();
+                }
+            } catch (RuntimeException | OutOfMemoryError ignored) {
+            }
+            if (soft == null) {
+                return;
+            }
+            BackdropView.remember(key, soft);
+            final Bitmap blur = soft;
+            runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    backdrop.setSoftened(blur);
+                }
+            });
+        }, "sonora-backdrop").start();
     }
 
     private static int markInk() {
@@ -197,7 +257,16 @@ public final class ToolActivity extends Activity {
         // move to.
         stackFocus = stack.findFocus();
         stackDepthAtChoice = stack.depth();
+        // A screen that is sliding out still holds the focus for a moment.
+        // A row that is not on the screen on top must not get the focus
+        // back later: by the time the picker closes it is gone.
+        View topScreen = stackTopView(stack);
+        if (stackFocus != null && (topScreen == null || !inside(stackFocus, topScreen))) {
+            stackFocus = null;
+        }
         ChoiceOverlay overlay = new ChoiceOverlay(this, title, options, selected, index -> {
+            // A second OK during the fade is already ignored inside the
+            // overlay: its rows stop answering once dismiss() runs.
             dismissChoice();
             if (callback != null) {
                 callback.onPicked(index);
@@ -242,12 +311,37 @@ public final class ToolActivity extends Activity {
         stackFocus = null;
         boolean sameScreen = stack.depth() == stackDepthAtChoice;
         stackDepthAtChoice = -1;
-        if (sameScreen && target != null && target.isFocusable() && target.isAttachedToWindow()) {
+        View topScreen = stackTopView(stack);
+        if (sameScreen && target != null && target.isFocusable() && target.isAttachedToWindow()
+                && topScreen != null && inside(target, topScreen)) {
             target.requestFocus();
         } else if (stack.findFocus() == null) {
             // The screen was rebuilt while the picker was open.
             stack.focusTop();
         }
+    }
+
+    /**
+     * The view of the screen on top of the stack, or null while a screen is
+     * still sliding out - its view stays a child until the move is done.
+     */
+    static View stackTopView(ScreenStack stack) {
+        int depth = stack.depth();
+        if (depth == 0 || stack.getChildCount() != depth) {
+            return null;
+        }
+        return stack.getChildAt(depth - 1);
+    }
+
+    /** True when the view sits inside the screen's view tree. */
+    private static boolean inside(View view, View screen) {
+        for (android.view.ViewParent parent = view.getParent(); parent != null;
+             parent = parent.getParent()) {
+            if (parent == screen) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Asks the system for a picture to use as the wallpaper. */
@@ -271,7 +365,8 @@ public final class ToolActivity extends Activity {
                 try {
                     getContentResolver().takePersistableUriPermission(uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                } catch (SecurityException ignored) {
+                } catch (SecurityException e) {
+                    Ui.toast(this, "The photo may not survive a restart");
                 }
                 prefs.setWallpaper(-1, uri.toString());
                 if (wizard != null) {
@@ -313,11 +408,19 @@ public final class ToolActivity extends Activity {
         if (result.ok) {
             pendingUninstall = packageName;
             pendingUninstallLabel = label;
+            uninstallAskedAt = SystemClock.elapsedRealtime();
         }
     }
 
     private void reportUninstall() {
         if (pendingUninstall == null) {
+            return;
+        }
+        // A resume that comes straight after the ask cannot be its answer:
+        // the confirmation needs a pause to arrive, so the dialog may still
+        // be up and "not uninstalled" would be a guess. The report waits
+        // for the next resume, where it asks the package manager again.
+        if (SystemClock.elapsedRealtime() - uninstallAskedAt < 2000) {
             return;
         }
         String packageName = pendingUninstall;
@@ -343,19 +446,43 @@ public final class ToolActivity extends Activity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // The relaunch is singleTask: the screen it asks for comes from the
+        // new intent, so the instance starts over the way a fresh open would.
+        setIntent(intent);
+        recreate();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         Ui.immersive(this);
         reportUninstall();
+        Motion.refresh(this);
         // A system screen can change what a row says - the network, the
         // screen saver, the home-screen role - so the settings are rebuilt
         // on the way back. Screens with content of their own (the app list,
-        // the log, the aerials) are left alone.
-        View top = stack.topContent();
-        if (top instanceof SettingsHomeView
-                || top == null && SettingsPanel.isPage(stack.topTitle())) {
-            SettingsPanel.refresh(this);
+        // the log, the aerials) are left alone. A screen under an open picker
+        // is left alone too: rebuilding it would yank the rows the picker is
+        // talking about.
+        if (choiceOverlay == null) {
+            if (wizard != null) {
+                // The setup is not a settings page, but its steps track the
+                // same things, like the home-screen role.
+                wizard.refreshCurrent();
+            } else {
+                View top = stack.topContent();
+                if (top instanceof SettingsHomeView || SettingsPanel.isPage(this)) {
+                    SettingsPanel.refresh(this);
+                }
+                DebloatPanel.resumed(this);
+                SetupGuide.resumed(this);
+                SettingsPanel.resumedFavourites(this);
+            }
         }
+        // An uninstall confirmed on a system dialog leaves the app list stale.
+        AppPanel.resumed(this);
     }
 
     @Override

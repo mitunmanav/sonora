@@ -8,6 +8,7 @@ import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.net.Uri;
 import android.util.TypedValue;
 import android.view.FocusFinder;
 import android.view.Gravity;
@@ -85,8 +86,10 @@ final class AerialsView extends FrameLayout {
         setClipChildren(false);
         // Unlike a settings page this has no mark on its left, so it brings a
         // wallpaper of its own to cover the one the activity draws.
-        addView(new BackdropView(context), new LayoutParams(
+        BackdropView backdrop = new BackdropView(context);
+        addView(backdrop, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        loadBackdrop(backdrop);
 
         TextView title = new TextView(context);
         title.setText("Choose Aerials");
@@ -100,8 +103,20 @@ final class AerialsView extends FrameLayout {
         addView(title, titleParams);
 
         TextView subtitle = new TextView(context);
-        subtitle.setText("The screen saver rotates through these pictures. Hide any you "
-                + "don't want. If you hide them all, it shows them all.");
+        // The toggles only reach the bundled pictures. When the screen saver
+        // plays the TV's own photos the screen says so, and that they cannot
+        // be hidden here, instead of offering switches that do nothing.
+        int photoSource = prefs.screensaverPhotoSource();
+        subtitle.setText(photoSource == 1
+                ? "The screen saver is playing the photos on this TV, not these "
+                    + "pictures. Photos always rotate and cannot be hidden here; "
+                    + "Photo source in the screen saver settings chooses what plays."
+                : photoSource == 2
+                    ? "The screen saver rotates through these pictures and the photos "
+                        + "on this TV. Hide any pictures you don't want; the photos "
+                        + "always play and cannot be hidden here."
+                    : "The screen saver rotates through these pictures. Hide any you "
+                        + "don't want. If you hide them all, it shows them all.");
         subtitle.setTextColor(Theme.inkSecondary());
         Type.apply(subtitle, Type.CAPTION);
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
@@ -164,6 +179,16 @@ final class AerialsView extends FrameLayout {
         grid.removeAllViews();
         tiles.clear();
         List<Integer> scenes = SceneChoice.inRegion(Scenes.regions(), region);
+        if (scenes.isEmpty()) {
+            // An empty grid would be a silent dead end for RIGHT.
+            TextView empty = new TextView(getContext());
+            empty.setText("No pictures in this category");
+            empty.setTextColor(Theme.inkSecondary());
+            Type.apply(empty, Type.CAPTION);
+            grid.addView(empty, new LinearLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+            return;
+        }
         LinearLayout row = null;
         for (int i = 0; i < scenes.size(); i++) {
             if (i % COLUMNS == 0) {
@@ -193,6 +218,50 @@ final class AerialsView extends FrameLayout {
                 row.addView(new View(getContext()), spacer);
             }
         }
+    }
+
+    /**
+     * Hands the backdrop its blur. The view only takes the shared one the
+     * launcher already made; a miss is decoded on the thumbnail worker.
+     */
+    private void loadBackdrop(final BackdropView backdrop) {
+        final int index = prefs.wallpaper();
+        final String uri = prefs.wallpaperUri();
+        final String key = BackdropView.key(index, uri);
+        Bitmap ready = BackdropView.remembered(key);
+        if (ready != null) {
+            backdrop.setSoftened(ready);
+            return;
+        }
+        decoder.execute(() -> {
+            Bitmap soft = null;
+            try {
+                Bitmap decoded = null;
+                if (index < 0 && uri != null) {
+                    decoded = Ui.decodeUri(getResources(),
+                            getContext().getContentResolver(), Uri.parse(uri), 96);
+                }
+                if (decoded == null) {
+                    decoded = Ui.decodeScene(getResources(),
+                            Scenes.ALL.get(Scenes.safeIndex(index)).res, 96, 54);
+                }
+                soft = BackdropView.soften(decoded);
+                if (decoded != null) {
+                    decoded.recycle();
+                }
+            } catch (RuntimeException | OutOfMemoryError ignored) {
+            }
+            if (soft == null) {
+                return;
+            }
+            BackdropView.remember(key, soft);
+            final Bitmap blur = soft;
+            post(() -> {
+                if (!decoder.isShutdown()) {
+                    backdrop.setSoftened(blur);
+                }
+            });
+        });
     }
 
     private void loadThumbs() {
