@@ -41,12 +41,6 @@ public final class ScreensaverView extends FrameLayout {
     private static final float ZOOM_START = 1.04f;
     private static final float ZOOM_END = 1.10f;
 
-    public interface Listener {
-        void onSceneChanged(int index);
-
-        void onDismiss();
-    }
-
     /**
      * One aerial, drawn once to cover its bounds and then only ever moved by
      * RenderNode properties. {@link #applyProgress} turns the scene clock into
@@ -107,7 +101,8 @@ public final class ScreensaverView extends FrameLayout {
             setScaleX(zoom);
             setScaleY(zoom);
             float drawnWidth = bitmap.getWidth() * fit * zoom;
-            setTranslationX((getWidth() - drawnWidth) * 0.5f * panDirection * t);
+            setTranslationX(reduced ? 0f
+                    : (getWidth() - drawnWidth) * 0.5f * panDirection * t);
         }
 
         @Override
@@ -135,6 +130,8 @@ public final class ScreensaverView extends FrameLayout {
         private final Prefs prefs;
         private int sceneIndex = -1;
         private boolean show;
+        /** The resolved scene list; a photo scan in onDraw would stall the frame. */
+        private java.util.List<Scenes.Scene> scenes = Scenes.ALL;
 
         OverlayView(Context context) {
             super(context);
@@ -157,6 +154,11 @@ public final class ScreensaverView extends FrameLayout {
             invalidate();
         }
 
+        void setScenes(java.util.List<Scenes.Scene> list) {
+            scenes = list;
+            invalidate();
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
             int w = getWidth();
@@ -174,7 +176,7 @@ public final class ScreensaverView extends FrameLayout {
             if (!show || sceneIndex < 0) {
                 return;
             }
-            java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+            java.util.List<Scenes.Scene> all = scenes;
             if (all.isEmpty()) {
                 // Every aerial is hidden: there is no place name to show.
                 return;
@@ -209,6 +211,8 @@ public final class ScreensaverView extends FrameLayout {
     private int currentIndex = -1;
     private int incomingIndex = -1;
     private long sceneStartedAt;
+    /** When the next scene is tried after a failed decode; zero when healthy. */
+    private long retryAt;
     private long fadeStart;
     private boolean running;
     private boolean tickerPosted;
@@ -217,11 +221,15 @@ public final class ScreensaverView extends FrameLayout {
     private boolean showOverlay = true;
     private int sceneDurationMs = 60000;
     private float panDirection = 1f;
-    private Listener listener;
     private final boolean reduced;
     private final int tier;
+    private final Prefs prefs;
+    /** The storage walk that resolves the full scene list; dies with the view. */
+    private final Thread scanThread;
     /** The aerials the user left out in Choose Aerials. */
-    private final boolean[] hidden;
+    private boolean[] hidden;
+    /** The resolved scenes, index-aligned with {@link #hidden}. */
+    private volatile java.util.List<Scenes.Scene> scenes = Scenes.ALL;
 
     public ScreensaverView(Context context) {
         super(context);
@@ -230,7 +238,9 @@ public final class ScreensaverView extends FrameLayout {
         // meant to stop, so the stills hold still and only cross-fade.
         reduced = Motion.isReduced(context);
         tier = DeviceTier.get(context);
-        hidden = Scenes.hiddenFlags(new Prefs(context), context);
+        prefs = new Prefs(context);
+        // The bundled-only flags until the photo scan lands below.
+        hidden = Scenes.hiddenFlags(prefs);
         sceneA = new SceneView(context);
         sceneB = new SceneView(context);
         overlay = new OverlayView(context);
@@ -239,18 +249,30 @@ public final class ScreensaverView extends FrameLayout {
         addView(overlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         setFocusable(true);
         setFocusableInTouchMode(true);
-    }
-
-    public void setListener(Listener listener) {
-        this.listener = listener;
+        // The full scene list scans storage, which does not belong on the
+        // thread that starts the dream — and must not queue ahead of the
+        // first scene decode, or the panel stays black while it walks.
+        scanThread = new Thread(() -> {
+            final java.util.List<Scenes.Scene> all = Scenes.all(context);
+            final boolean[] flags = Scenes.hiddenFlags(prefs, all);
+            post(() -> {
+                scenes = all;
+                hidden = flags;
+                overlay.setScenes(all);
+            });
+        }, "sonora-screensaver-scan");
+        scanThread.setDaemon(true);
+        scanThread.start();
     }
 
     public void setSceneDurationSec(int seconds) {
-        sceneDurationMs = Math.max(10, seconds) * 1000;
+        // Ten minutes is longer than any aerial should stay; a corrupt pref
+        // must not overflow into a negative duration.
+        sceneDurationMs = Math.max(10, Math.min(600, seconds)) * 1000;
     }
 
     public void setSceneDurationMs(int ms) {
-        sceneDurationMs = Math.max(10000, ms);
+        sceneDurationMs = Math.max(10000, Math.min(600000, ms));
     }
 
     public void setShowOverlay(boolean show) {
@@ -259,7 +281,11 @@ public final class ScreensaverView extends FrameLayout {
     }
 
     public void showInfoOverlay() {
-        setShowOverlay(!showOverlay);
+        // Only the "on input" clock mode answers OK; "always" already shows
+        // it and "never" must not.
+        if (prefs.screensaverClock() == 0) {
+            setShowOverlay(!showOverlay);
+        }
     }
 
     public void start() {
@@ -280,9 +306,11 @@ public final class ScreensaverView extends FrameLayout {
         tickerPosted = false;
         if (current != null) {
             current.setSceneBitmap(null);
+            current.setAlpha(1f);
         }
         if (incoming != null) {
             incoming.setSceneBitmap(null);
+            incoming.setAlpha(1f);
         }
         current = null;
         incoming = null;
@@ -305,16 +333,20 @@ public final class ScreensaverView extends FrameLayout {
      * @param step 1 for the next scene, -1 for the one before this one.
      */
     private void showNextScene(int step) {
-        if (loadingNext) {
+        if (loadingNext || decodeExecutor.isShutdown()) {
             return;
         }
-        final int targetIndex = SceneChoice.next(currentIndex, step, hidden);
+        // Mid-fade the scene on its way in is the current one; skipping from
+        // the outgoing index would turn around and show it again.
+        final int targetIndex = SceneChoice.next(
+                incomingIndex >= 0 ? incomingIndex : currentIndex, step, hidden);
         if (targetIndex < 0) {
             return;
         }
         final float direction = step < 0 ? -1f : 1f;
         loadingNext = true;
-        decodeExecutor.execute(() -> {
+        try {
+            decodeExecutor.execute(() -> {
             final Bitmap bitmap = load(targetIndex);
             post(() -> {
                 loadingNext = false;
@@ -324,10 +356,15 @@ public final class ScreensaverView extends FrameLayout {
                 panDirection = direction;
                 if (bitmap == null) {
                     // A scene that will not decode must not be tried again on
-                    // every frame: wait for the next turn instead.
+                    // every frame: wait for the next turn instead, and count
+                    // it as current so the turn moves past it. The retry is a
+                    // beat away, not a whole scene of black away.
                     sceneStartedAt = System.currentTimeMillis();
+                    retryAt = sceneStartedAt + 2500;
+                    currentIndex = targetIndex;
                     return;
                 }
+                retryAt = 0;
                 if (current == null || current.getSceneBitmap() == null) {
                     // The first scene has nothing to fade out of.
                     current = sceneA;
@@ -339,9 +376,6 @@ public final class ScreensaverView extends FrameLayout {
                     sceneStartedAt = System.currentTimeMillis();
                     fadeStart = 0;
                     overlay.setInfo(currentIndex, showOverlay);
-                    if (listener != null) {
-                        listener.onSceneChanged(currentIndex);
-                    }
                 } else {
                     incoming.setSceneBitmap(bitmap);
                     incoming.resetDrift();
@@ -355,15 +389,20 @@ public final class ScreensaverView extends FrameLayout {
                 }
             });
         });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // shutdown() raced the isShutdown() check: nothing runs, so the
+            // flag goes back or every step() after this thinks a load is up.
+            loadingNext = false;
+        }
     }
 
     /** The index after the current one, wrapping round at both ends. */
     public static int wrap(int index, int count) {
-        return ((index % count) + count) % count;
+        return count <= 0 ? 0 : ((index % count) + count) % count;
     }
 
     private Bitmap load(int index) {
-        java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+        java.util.List<Scenes.Scene> all = scenes;
         if (index < 0 || index >= all.size()) {
             return null;
         }
@@ -376,7 +415,8 @@ public final class ScreensaverView extends FrameLayout {
                 return Ui.decodeScene(getResources(), scene.res, width, height,
                         tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
             } else if (scene.path != null) {
-                return PhotoLoader.decode(scene.path, width, height);
+                return PhotoLoader.decode(scene.path, width, height,
+                        tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
             }
         } catch (RuntimeException | OutOfMemoryError e) {
             // A TV with little memory can refuse the decode. The saver says so
@@ -425,24 +465,28 @@ public final class ScreensaverView extends FrameLayout {
                 fadeStart = 0;
                 sceneStartedAt = now;
                 overlay.setInfo(currentIndex, showOverlay);
-                if (listener != null) {
-                    listener.onSceneChanged(currentIndex);
-                }
             }
         }
         if (current != null && current.getSceneBitmap() != null) {
-            long elapsed = now - sceneStartedAt;
+            // A wall-clock jump backwards must not run the drift in reverse.
+            long elapsed = Math.max(0L, now - sceneStartedAt);
             float t = Math.min(1f, elapsed / (float) sceneDurationMs);
             current.applyProgress(t, panDirection, reduced);
             if (elapsed > sceneDurationMs && fadeStart == 0 && !loadingNext) {
                 showNextScene(1);
             }
+        } else if (!loadingNext && (now - sceneStartedAt > sceneDurationMs
+                || (retryAt > 0 && now >= retryAt))) {
+            // Nothing has decoded yet. Without a retry here a first scene
+            // that fails would leave the screen black for good.
+            showNextScene(1);
         }
     }
 
     @Override
     protected void onDetachedFromWindow() {
         stop();
+        scanThread.interrupt();
         decodeExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }

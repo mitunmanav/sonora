@@ -8,6 +8,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 public class AppSearchTest {
     private static AppEntry app(String pkg, String label) {
@@ -88,5 +89,20 @@ public class AppSearchTest {
         assertEquals(-1, AppSearch.focusedIndex("com.gone", APPS));
         assertEquals(-1, AppSearch.focusedIndex(null, APPS));
         assertEquals(-1, AppSearch.focusedIndex("com.netflix", null));
+    }
+
+    @Test
+    public void matchesUnderTheTurkishLocale() {
+        // Turkish folds "I" to dotless "ı", which must not hide "IMDb" from "i".
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(new Locale("tr", "TR"));
+            List<AppEntry> apps = Collections.singletonList(app("com.imdb", "IMDb"));
+            List<AppEntry> found = AppSearch.filter(apps, "i");
+            assertEquals(1, found.size());
+            assertEquals("com.imdb", found.get(0).packageName);
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 }

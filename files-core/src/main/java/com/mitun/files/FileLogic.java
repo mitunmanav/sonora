@@ -118,6 +118,14 @@ public final class FileLogic {
                         return "video/mp2t";
                     case "m4v":
                         return "video/x-m4v";
+                    case "3gp":
+                        return "video/3gpp";
+                    case "mpg":
+                        return "video/mpeg";
+                    case "wmv":
+                        return "video/x-ms-wmv";
+                    case "flv":
+                        return "video/x-flv";
                     default:
                         return "video/" + ext;
                 }
@@ -127,6 +135,10 @@ public final class FileLogic {
                         return "audio/mpeg";
                     case "m4a":
                         return "audio/mp4";
+                    case "wma":
+                        return "audio/x-ms-wma";
+                    case "opus":
+                        return "audio/ogg";
                     default:
                         return "audio/" + ext;
                 }
@@ -256,8 +268,22 @@ public final class FileLogic {
         if (name.contains("/") || name.indexOf('\0') >= 0) {
             return "A name cannot contain a slash.";
         }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c < 0x20 || c == 0x7F) {
+                return "A name cannot contain control characters.";
+            }
+            // A USB stick is usually FAT or exFAT, where none of these may appear.
+            if ("\\?*:\"<>|".indexOf(c) >= 0) {
+                return "A name cannot contain “" + c + "”.";
+            }
+        }
         if (name.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
             return "That name is too long.";
+        }
+        // FAT drops a trailing dot or space, so the file could not be found back.
+        if (name.endsWith(".") || name.endsWith(" ")) {
+            return "A name cannot end with a dot or a space.";
         }
         return null;
     }

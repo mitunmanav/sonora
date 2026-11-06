@@ -8,6 +8,7 @@ import android.widget.TextView;
 import com.mitun.sonora.AppEntry;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.DeviceTier;
+import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.PhotoLoader;
 import com.mitun.sonora.RecentApps;
@@ -61,17 +62,20 @@ public final class SettingsPanel {
 
     /** Rebuilds the screen the user is on, with the new values. */
     public static void refresh(ToolActivity host) {
-        Page page = pageFor(host.stack().topTitle());
+        Page page = topPage(host);
         if (page == null) {
             // The index is rebuilt in place when the mode changes, so it has
-            // to stay on the category the user was on.
+            // to stay on the category the user was on. A screen that is not
+            // the index keeps what it has: it is not the settings.
             View top = host.stack().topContent();
-            int selected = top instanceof SettingsHomeView
-                    ? ((SettingsHomeView) top).selectedCategory() : 0;
-            host.stack().refreshContent(TITLE, null, homeView(host, selected), true);
+            if (top instanceof SettingsHomeView) {
+                int selected = ((SettingsHomeView) top).selectedCategory();
+                host.stack().refreshContent(TITLE, null, homeView(host, selected), true);
+            }
             return;
         }
         host.stack().refreshSettings(page.title, rowsFor(host, page));
+        tagTop(host, page);
         // The index behind the page shows the values this page edits, so it
         // is rebuilt too; otherwise BACK reveals the values from before.
         View below = host.stack().topContentBelow();
@@ -81,9 +85,36 @@ public final class SettingsPanel {
         }
     }
 
-    /** True when the title is one of the settings pages. */
-    static boolean isPage(String title) {
-        return pageFor(title) != null;
+    /** True when the screen on top is one of the settings pages. */
+    static boolean isPage(ToolActivity host) {
+        return topPage(host) != null;
+    }
+
+    /** True when the screen on top is the settings page with this title. */
+    static boolean topIsPage(ToolActivity host, String title) {
+        Page page = topPage(host);
+        return page != null && page.title.equals(title);
+    }
+
+    /**
+     * The page the screen on top is, or null when it is something else.
+     *
+     * Pages are matched by the tag their view was pushed with, not by the
+     * title: a screen of its own can share a page's name, and it must not
+     * be rebuilt into a settings page on resume.
+     */
+    private static Page topPage(ToolActivity host) {
+        View top = ToolActivity.stackTopView(host.stack());
+        Object tag = top == null ? null : top.getTag();
+        return tag instanceof Page ? (Page) tag : null;
+    }
+
+    /** Marks the screen just pushed as a settings page. */
+    private static void tagTop(ToolActivity host, Page page) {
+        int count = host.stack().getChildCount();
+        if (count > 0) {
+            host.stack().getChildAt(count - 1).setTag(page);
+        }
     }
 
     private static Page pageFor(String title) {
@@ -177,8 +208,8 @@ public final class SettingsPanel {
                 () -> open(host, SAVER)));
         categories.add(new SettingsHomeView.Category(APPS.title,
                 "Pick favourites, hide apps and manage what is installed.",
-                detail("Favourites", Pickers.favouritesName(prefs)),
-                detail("Hidden apps", Pickers.hiddenName(prefs)),
+                detail("Favourites", Pickers.favouritesName(host)),
+                detail("Hidden apps", Pickers.hiddenName(host)),
                 () -> open(host, APPS)));
         categories.add(new SettingsHomeView.Category(TOOLS.title,
                 "Files, a browser and info about this TV.",
@@ -365,23 +396,33 @@ public final class SettingsPanel {
         Prefs prefs = host.prefs();
         host.choose("Photo source", new String[]{"Bundled only", "Device photos", "Both"},
                 prefs.screensaverPhotoSource(), index -> {
-                    if (index != prefs.screensaverPhotoSource()) {
-                        prefs.setScreensaverPhotoSource(index);
-                        PhotoLoader.invalidateCache();
-                        refresh(host);
+                    if (index == prefs.screensaverPhotoSource()) {
+                        return;
                     }
+                    if (index != 0 && !PhotoLoader.hasStorageAccess(host)) {
+                        // Without access the setting would claim photos it
+                        // cannot read, while the saver quietly plays the
+                        // bundled set: say so and land the user where access
+                        // can actually be granted.
+                        Ui.toast(host, "Allow photo access for Sonora here, then try again");
+                        PackageActions.openAppInfo(host, host.getPackageName());
+                        return;
+                    }
+                    prefs.setScreensaverPhotoSource(index);
+                    PhotoLoader.invalidateCache();
+                    refresh(host);
                 });
     }
 
     private static List<SettingRow> appsRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
-        rows.add(SettingRow.push("Favourites", Pickers.favouritesName(prefs),
+        rows.add(SettingRow.push("Favourites", Pickers.favouritesName(host),
                 () -> openFavourites(host)));
         rows.add(SettingRow.push("Manage apps", "", () -> AppPanel.show(host)));
         rows.add(SettingRow.push("Debloat", "Turn off apps you do not use",
                 () -> DebloatPanel.show(host)));
-        rows.add(SettingRow.choice("Hidden apps", Pickers.hiddenName(prefs),
+        rows.add(SettingRow.choice("Hidden apps", Pickers.hiddenName(host),
                 () -> Pickers.hiddenApps(host, () -> refresh(host))));
         if (prefs.technical()) {
             rows.add(SettingRow.action("Reset app order", () -> {
@@ -394,6 +435,7 @@ public final class SettingsPanel {
             // The launcher compares this key on resume, so this is how it
             // learns that the app list has to be read again.
             prefs.bumpAppsEpoch();
+            refresh(host);
             Ui.toast(host, "Apps will reload when you go back");
         }));
         return rows;
@@ -410,8 +452,20 @@ public final class SettingsPanel {
         // for every installed app. That is not work for the main thread.
         host.stack().pushSettings("Favourites",
                 Collections.singletonList(SettingRow.value("Reading", "…")));
+        reloadFavourites(host);
+    }
+
+    /** Rebuilds the check rows the way the screen first loads: off the main thread. */
+    private static void reloadFavourites(ToolActivity host) {
         new Thread(() -> {
-            final List<SettingRow> rows = favouriteRows(host);
+            List<SettingRow> built;
+            try {
+                built = favouriteRows(host);
+            } catch (RuntimeException e) {
+                built = new ArrayList<>();
+                built.add(SettingRow.note("The list of apps could not be read."));
+            }
+            final List<SettingRow> rows = built;
             host.runOnUiThread(() -> {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
@@ -423,6 +477,13 @@ public final class SettingsPanel {
                 host.stack().refreshSettings("Favourites", rows);
             });
         }, "sonora-favourites").start();
+    }
+
+    /** The screen is not a settings page, so it asks for its own rebuild on resume. */
+    static void resumedFavourites(ToolActivity host) {
+        if ("Favourites".equals(host.stack().topTitle())) {
+            reloadFavourites(host);
+        }
     }
 
     private static List<SettingRow> favouriteRows(ToolActivity host) {
@@ -441,7 +502,9 @@ public final class SettingsPanel {
                     pinned2.add(0, pkg);
                 }
                 host.prefs().setFavourites(pinned2);
-                host.stack().refreshSettings("Favourites", favouriteRows(host));
+                // A cold app list would put the package scan on the key
+                // handler's thread, which is the main one.
+                reloadFavourites(host);
             }));
         }
         if (rows.isEmpty()) {
@@ -488,13 +551,18 @@ public final class SettingsPanel {
                     }
                     host.prefs().reset();
                     Motion.refresh(host);
+                    DeviceTier.refresh();
+                    Theme.load(host);
                     Ui.toast(host, "Settings reset");
-                    refresh(host);
+                    // The reset can change the theme and the motion, which a
+                    // rebuilt row cannot repaint - the screens are remade.
+                    host.reopenAt(SYSTEM.title);
                 });
     }
 
     private static void open(ToolActivity host, Page page) {
         host.stack().pushSettings(page.title, rowsFor(host, page));
+        tagTop(host, page);
     }
 
     /**
@@ -504,7 +572,7 @@ public final class SettingsPanel {
      * that is the one worth changing.
      */
     public static void openScreenSaver(ToolActivity host) {
-        host.stack().pushSettings(SAVER.title, saverRows(host));
+        open(host, SAVER);
     }
 
     private static void showAbout(ToolActivity host) {

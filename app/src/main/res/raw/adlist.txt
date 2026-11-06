@@ -21,7 +21,6 @@ adtechus.com
 advertising.com
 advertsource.com
 afspartners.com
-amazonaws.com.trakc
 analytics.yahoo.com
 app-measurement.com
 appsflyer.com
@@ -71,8 +70,6 @@ serving-sys.com
 sharethrough.com
 simpli.fi
 scorecardresearch.com
-serving-sys.com
-sharethrough.com
 smartadserver.com
 taboola.com
 tapad.com
@@ -80,22 +77,13 @@ teads.tv
 turn.com
 twitter.com
 twimg.com
-adsrvr.org
 ads.linkedin.com
 licdn.com
-outbrain.com
-advertising.com
 ads-twitter.com
-ad.criteo.com
 socdm.com
-scorecardresearch.com
 ads.creativecdn.com
-ib.adnxs.com
-bidswitch.net
 casalemedia.com
 contextweb.com
-media.adnxs.com
-open.spotify.com
 spotify.com
 segment.io
 segment.com
@@ -117,12 +105,11 @@ kochava.com
 singular.net
 apsalar.com
 adjust.com
-appsflyer.com
 # Path fragments that are ads wherever they appear.
 |/ads/
 |/adserver/
 |/adframe.
-/banner_ad
+|/banner_ad
 |/pixel.gif
 |/track?
 |/analytics.js

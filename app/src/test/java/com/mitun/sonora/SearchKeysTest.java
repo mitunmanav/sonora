@@ -44,6 +44,13 @@ public class SearchKeysTest {
     }
 
     @Test
+    public void deletingRemovesAWholeCodePoint() {
+        String emoji = new String(Character.toChars(0x1F600));
+        assertEquals("a", SearchKeys.apply("a" + emoji, SearchKeys.DELETE));
+        assertEquals("", SearchKeys.apply(emoji, SearchKeys.DELETE));
+    }
+
+    @Test
     public void aSpaceOnlyGoesBetweenWords() {
         assertEquals("", SearchKeys.apply("", SearchKeys.SPACE));
         assertEquals("prime ", SearchKeys.apply("prime", SearchKeys.SPACE));

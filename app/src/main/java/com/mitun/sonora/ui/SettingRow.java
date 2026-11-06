@@ -34,7 +34,7 @@ public final class SettingRow {
     private String value = "";
 
     private SettingRow(String title, int type, Runnable action) {
-        this.title = title;
+        this.title = title == null ? "" : title;
         this.type = type;
         this.action = action;
     }
@@ -45,7 +45,7 @@ public final class SettingRow {
 
     public static SettingRow value(String title, String value) {
         SettingRow row = new SettingRow(title, VALUE, null);
-        row.value = value;
+        row.value = value == null ? "" : value;
         return row;
     }
 
@@ -61,14 +61,14 @@ public final class SettingRow {
 
     public static SettingRow push(String title, String value, Runnable action) {
         SettingRow row = new SettingRow(title, PUSH, action);
-        row.value = value;
+        row.value = value == null ? "" : value;
         return row;
     }
 
     /** A value that opens a picker. No chevron: it picks, it does not navigate. */
     public static SettingRow choice(String title, String value, Runnable action) {
         SettingRow row = new SettingRow(title, CHOICE, action);
-        row.value = value;
+        row.value = value == null ? "" : value;
         return row;
     }
 
@@ -79,7 +79,7 @@ public final class SettingRow {
     /** A line of prose under a row. */
     public static SettingRow note(String text) {
         SettingRow row = new SettingRow(text, NOTE, null);
-        row.value = text;
+        row.value = row.title();
         return row;
     }
 
@@ -202,26 +202,27 @@ public final class SettingRow {
         final int chevronOff = Theme.inkTertiary();
         final int chevronOn = 0x99101C26;
         final float[] focus = {0f};
-        line.setOnFocusChangeListener((view, focused) -> {
-            final RowDrawable bg = (RowDrawable) view.getBackground();
-            Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
-                        @Override
-                        public float get() {
-                            return focus[0];
-                        }
+        // One property per row, so a focus change allocates nothing.
+        final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return focus[0];
+            }
 
-                        @Override
-                        public void set(float value) {
-                            focus[0] = value;
-                            bg.setFocus(value);
-                            labelText.setTextColor(Ui.lerpColor(labelOff, labelOn, value));
-                            valueText.setTextColor(Ui.lerpColor(valueOff, valueOn, value));
-                            if (chevronText != null) {
-                                chevronText.setTextColor(Ui.lerpColor(chevronOff, chevronOn, value));
-                            }
-                        }
-                    });
+            @Override
+            public void set(float value) {
+                focus[0] = value;
+                material.setFocus(value);
+                labelText.setTextColor(Ui.lerpColor(labelOff, labelOn, value));
+                valueText.setTextColor(Ui.lerpColor(valueOff, valueOn, value));
+                if (chevronText != null) {
+                    chevronText.setTextColor(Ui.lerpColor(chevronOff, chevronOn, value));
+                }
+            }
+        };
+        line.setOnFocusChangeListener((view, focused) -> {
+            Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, focusValue);
             // Lift the row, so its small focus scale is not covered by the
             // row below it. The scale itself is the row's (PressRow).
             view.setElevation(focused ? Ui.dpf(context, 8f) : 0f);

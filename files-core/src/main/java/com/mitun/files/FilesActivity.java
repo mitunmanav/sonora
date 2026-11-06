@@ -34,12 +34,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.IOException;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -97,6 +99,8 @@ public class FilesActivity extends Activity {
     private final List<Places.Place> places = new ArrayList<>();
     private LinearLayout toolbar;
     private View backButton;
+    private View viewButton;
+    private Marks viewGlyph;
     private TextView titleView;
     private TextView countView;
     private TextView pasteButton;
@@ -112,6 +116,8 @@ public class FilesActivity extends Activity {
     private Places.Place place;
     private File folder;
     private List<FileLogic.Entry> entries = new ArrayList<>();
+    /** The folder a listing was last asked for, so a resume does not list it twice. */
+    private File listed;
     private int generation;
     private boolean gridMode;
     private int sortMode;
@@ -121,6 +127,7 @@ public class FilesActivity extends Activity {
     private File clipboard;
     private boolean clipboardMove;
     private AtomicBoolean running;
+    private AtomicBoolean sizing;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -128,21 +135,65 @@ public class FilesActivity extends Activity {
         prefs = getSharedPreferences("files", MODE_PRIVATE);
         bundled = getIntent().hasExtra(EXTRA_LIGHT);
         boolean light = bundled ? getIntent().getBooleanExtra(EXTRA_LIGHT, false)
-                : prefs.getBoolean("light", false);
+                : getBoolean("light", false);
         theme = new FilesTheme(light);
         low = FilesTheme.lowMemory(this);
-        gridMode = prefs.getBoolean("grid", true);
-        sortMode = prefs.getInt("sort", FileLogic.SORT_NAME);
-        showHidden = prefs.getBoolean("hidden", false);
+        gridMode = getBoolean("grid", true);
+        sortMode = getInt("sort", FileLogic.SORT_NAME);
+        showHidden = getBoolean("hidden", false);
         dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM);
         immersive();
         buildWindow();
         setContentView(root);
         readPlaces();
-        if (!places.isEmpty()) {
+        if (savedInstanceState != null) {
+            restore(savedInstanceState);
+        }
+        if (place == null && !places.isEmpty()) {
             open(places.get(0), places.get(0).folder, null);
         }
         sideRows.get(0).post(() -> focusSidebar());
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        // A rebuild for a new look must not lose where the user was.
+        if (place != null) {
+            state.putString("place", place.folder.getAbsolutePath());
+        }
+        if (folder != null) {
+            state.putString("folder", folder.getAbsolutePath());
+        }
+        if (clipboard != null) {
+            state.putString("clipboard", clipboard.getAbsolutePath());
+            state.putBoolean("move", clipboardMove);
+        }
+        state.putSerializable("last", new HashMap<>(lastSelected));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void restore(Bundle state) {
+        String at = state.getString("place");
+        if (at != null) {
+            for (Places.Place candidate : places) {
+                if (candidate.folder.getAbsolutePath().equals(at)) {
+                    place = candidate;
+                }
+            }
+        }
+        String dir = state.getString("folder");
+        if (place != null && dir != null) {
+            open(place, new File(dir), null);
+        }
+        String held = state.getString("clipboard");
+        if (held != null) {
+            setClipboard(new File(held), state.getBoolean("move"));
+        }
+        Object last = state.getSerializable("last");
+        if (last instanceof Map) {
+            lastSelected.putAll((Map<String, String>) last);
+        }
     }
 
     private void immersive() {
@@ -154,6 +205,23 @@ public class FilesActivity extends Activity {
 
     private int dp(float value) {
         return FilesTheme.dp(this, value);
+    }
+
+    // A value stored under the wrong type reads as the default, not a crash.
+    private boolean getBoolean(String key, boolean fallback) {
+        try {
+            return prefs.getBoolean(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
+    }
+
+    private int getInt(String key, int fallback) {
+        try {
+            return prefs.getInt(key, fallback);
+        } catch (ClassCastException e) {
+            return fallback;
+        }
     }
 
     // --- The window ---------------------------------------------------------
@@ -248,8 +316,10 @@ public class FilesActivity extends Activity {
         pasteParams.setMarginEnd(dp(8));
         toolbar.addView(pasteButton, pasteParams);
 
-        toolbar.addView(toolButton(gridMode ? Marks.LIST : Marks.GRID,
-                gridMode ? "View as list" : "View as icons", this::toggleView));
+        viewGlyph = new Marks(gridMode ? Marks.LIST : Marks.GRID);
+        viewButton = toolButton(viewGlyph, gridMode ? "View as list" : "View as icons",
+                this::toggleView);
+        toolbar.addView(viewButton);
         toolbar.addView(toolButton(Marks.SORT, "Sort", this::showSortMenu));
         toolbar.addView(toolButton(Marks.NEW_FOLDER, "New folder", this::askNewFolder));
         toolbar.addView(toolButton(Marks.MORE, "Actions", this::showSelectedMenu));
@@ -323,6 +393,8 @@ public class FilesActivity extends Activity {
         label.setText(text);
         label.setTextColor(theme.inkSecondary);
         label.setTextSize(11.5f);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
         return label;
     }
 
@@ -331,11 +403,14 @@ public class FilesActivity extends Activity {
     }
 
     private View toolButton(int mark, String description, Runnable action) {
+        return toolButton(new Marks(mark), description, action);
+    }
+
+    private View toolButton(Marks glyph, String description, Runnable action) {
         FrameLayout button = new FrameLayout(this);
         button.setFocusable(true);
         button.setClickable(true);
         button.setContentDescription(description);
-        Marks glyph = new Marks(mark);
         glyph.setInk(theme.ink);
         ImageView image = new ImageView(this);
         image.setImageDrawable(glyph);
@@ -418,6 +493,9 @@ public class FilesActivity extends Activity {
             return false;
         }
         int position = itemsView.getSelectedItemPosition();
+        if (position < 0) {
+            return false;
+        }
         int columns = gridMode ? ((GridView) itemsView).getNumColumns() : 1;
         columns = Math.max(1, columns);
         switch (code) {
@@ -591,9 +669,16 @@ public class FilesActivity extends Activity {
         }
         place = target;
         folder = dir;
+        // The old folder's entries leave now: while the new listing is read the
+        // grid must not keep acting on them under the new path.
+        entries = new ArrayList<>();
+        adapter.notifyDataSetChanged();
         markOpenPlace();
-        titleView.setText(dir.equals(target.folder) ? target.label : dir.getName());
-        backButton.setAlpha(dir.equals(target.folder) ? 0.4f : 1f);
+        boolean atTop = dir.equals(target.folder);
+        titleView.setText(atTop ? target.label : dir.getName());
+        backButton.setAlpha(atTop ? 0.4f : 1f);
+        backButton.setEnabled(!atTop);
+        backButton.setFocusable(!atTop);
         updatePathBar();
         if (target.needsAccess && !hasStorageAccess()) {
             showAccessNeeded();
@@ -639,23 +724,29 @@ public class FilesActivity extends Activity {
                 }
             }
             final boolean failed = children == null;
+            // This too waits on the drive, so it is answered here, off the screen.
+            final boolean gone = failed && !dir.exists();
             final List<FileLogic.Entry> sorted = FileLogic.sorted(read, mode, hidden);
             runOnUiThread(() -> {
                 if (ticket == generation && !isDestroyed()) {
-                    show(sorted, failed, select);
+                    show(sorted, failed, gone, select);
                 }
             });
         });
     }
 
-    private void show(List<FileLogic.Entry> list, boolean failed, String select) {
+    private void show(List<FileLogic.Entry> list, boolean failed, boolean gone, String select) {
         boolean hadFocus = itemsView.hasFocus();
         entries = list;
         adapter.notifyDataSetChanged();
+        // A listing that failed is asked again on the next resume.
+        if (!failed) {
+            listed = folder;
+        }
         countView.setText(FileLogic.itemCount(list.size()));
         actionButton.setVisibility(View.GONE);
         if (failed) {
-            showMessage(dir404() ? "This location is no longer available."
+            showMessage(gone ? "This location is no longer available."
                     : "This folder cannot be opened.");
         } else if (list.isEmpty()) {
             showMessage("This folder is empty.");
@@ -675,10 +766,6 @@ public class FilesActivity extends Activity {
         if (hadFocus && list.isEmpty()) {
             focusToolbar();
         }
-    }
-
-    private boolean dir404() {
-        return !folder.exists();
     }
 
     private void showMessage(String text) {
@@ -793,8 +880,8 @@ public class FilesActivity extends Activity {
             startActivity(intent);
         } catch (ActivityNotFoundException e) {
             sheet = Sheets.alert(root, theme, "No App Can Open This",
-                    "Nothing on this TV opens " + FileLogic.kindName(entry.kind).toLowerCase()
-                            + " files like “" + entry.name + "”.",
+                    "Nothing on this TV opens " + FileLogic.kindName(entry.kind)
+                            .toLowerCase(Locale.ROOT) + " files like “" + entry.name + "”.",
                     new String[]{"OK"}, 0, -1, this::backToItems, index -> backToItems());
         } catch (RuntimeException e) {
             toast("Could not open " + entry.name);
@@ -820,12 +907,22 @@ public class FilesActivity extends Activity {
         }
     }
 
+    /** Where this entry sits now; a copy kept since a reload is found by its path. */
+    private int positionOf(FileLogic.Entry entry) {
+        for (int i = 0; i < entries.size(); i++) {
+            if (entries.get(i).file.getPath().equals(entry.file.getPath())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private void showItemMenu(final FileLogic.Entry entry) {
         final String shareClass = getIntent().getStringExtra(EXTRA_SHARE_CLASS);
         List<String> rows = new ArrayList<>();
         final List<Runnable> actions = new ArrayList<>();
         rows.add("Open");
-        actions.add(() -> openEntry(entries.indexOf(entry)));
+        actions.add(() -> openEntry(positionOf(entry)));
         rows.add("Copy");
         actions.add(() -> setClipboard(entry.file, false));
         rows.add("Move");
@@ -884,8 +981,19 @@ public class FilesActivity extends Activity {
         rememberSelection();
         gridMode = !gridMode;
         prefs.edit().putBoolean("grid", gridMode).apply();
-        // The toolbar button shows the other view, so the window is rebuilt with it.
-        recreate();
+        // The button offers the other view, so it gets the other mark: the list is
+        // the only thing that actually needs rebuilding, and the window stays.
+        viewGlyph.setKind(gridMode ? Marks.LIST : Marks.GRID);
+        viewButton.setContentDescription(gridMode ? "View as list" : "View as icons");
+        boolean hadFocus = itemsView.hasFocus();
+        int position = itemsView.getSelectedItemPosition();
+        buildItemsView();
+        if (position > 0) {
+            itemsView.setSelection(position);
+        }
+        if (hadFocus) {
+            itemsView.requestFocus();
+        }
     }
 
     private void toggleAppearance() {
@@ -896,19 +1004,37 @@ public class FilesActivity extends Activity {
     private void showInfo(final FileLogic.Entry entry) {
         final String kind = FileLogic.kindName(entry.kind);
         final String when = dateFormat.format(new Date(entry.modified));
+        final String where = entry.file.getParent() == null
+                ? entry.file.getPath() : entry.file.getParent();
         final View back = getCurrentFocus();
-        final AtomicBoolean never = new AtomicBoolean(false);
-        lister.execute(() -> {
-            final long size = FileOps.sizeOf(Collections.singletonList(entry.file), never);
+        // Counting a whole tree runs on its own thread so the listings behind it
+        // are never held up; answering the sheet stops the count.
+        final AtomicBoolean stop = new AtomicBoolean(false);
+        sizing = stop;
+        final Sheets.Sheet info = sheet = Sheets.alert(root, theme, entry.name,
+                kind + "\n…\nModified " + when + "\n" + where,
+                new String[]{"OK"}, 0, -1,
+                () -> { stop.set(true); refocus(back); },
+                i -> { stop.set(true); refocus(back); });
+        Thread counting = new Thread(() -> {
+            long size;
+            try {
+                size = FileOps.sizeOf(Collections.singletonList(entry.file), stop);
+            } catch (Throwable failure) {
+                // A tree too deep for the stack still answers rather than hangs.
+                size = -1L;
+            }
+            final long counted = size;
             runOnUiThread(() -> {
-                if (!isDestroyed()) {
-                    sheet = Sheets.alert(root, theme, entry.name,
-                            kind + "\n" + FileLogic.formatSize(size) + "\nModified " + when
-                                    + "\n" + entry.file.getParent(),
-                            new String[]{"OK"}, 0, -1, () -> refocus(back), i -> refocus(back));
+                if (!isDestroyed() && !info.closed()) {
+                    info.message(kind + "\n" + (counted < 0L ? "Cannot be counted"
+                            : FileLogic.formatSize(counted))
+                            + "\nModified " + when + "\n" + where);
                 }
             });
-        });
+        }, "files-info");
+        counting.setDaemon(true);
+        counting.start();
     }
 
     private void askNewFolder() {
@@ -916,43 +1042,102 @@ public class FilesActivity extends Activity {
         if (folder == null) {
             return;
         }
-        sheet = Sheets.input(root, theme, "New Folder", FileLogic.freeName("untitled folder", folder, false),
-                "Create", name -> {
+        final File dir = folder;
+        // Even the first free name is found off the screen: a dead drive can hold
+        // these calls for seconds.
+        lister.execute(() -> {
+            final String free = FileLogic.freeName("untitled folder", dir, false);
+            runOnUiThread(() -> {
+                if (isDestroyed() || !dir.equals(folder) || quickLook != null) {
+                    return;
+                }
+                // A sheet that appeared during the wait answers first rather
+                // than stacking under a second one.
+                if (sheet != null && !sheet.closed()) {
+                    sheet.cancel();
+                }
+                sheet = Sheets.input(root, theme, "New Folder", free, "Create",
+                        () -> refocus(back), name -> {
                     refocus(back);
                     String problem = FileLogic.nameProblem(name);
                     if (problem != null) {
                         complain("That Name Cannot Be Used", problem);
-                    } else if (new File(folder, name).exists()) {
-                        complain("That Name Is Taken", "Something in this folder is already called “"
-                                + name + "”.");
-                    } else if (new File(folder, name).mkdir()) {
-                        load(name);
-                    } else {
-                        complain("The Folder Was Not Created",
-                                "This location does not allow new folders.");
+                        return;
                     }
+                    final File made = new File(dir, name);
+                    lister.execute(() -> {
+                        final boolean taken = made.exists();
+                        final boolean created = !taken && made.mkdir();
+                        runOnUiThread(() -> {
+                            if (isDestroyed()) {
+                                return;
+                            }
+                            if (taken) {
+                                complain("That Name Is Taken",
+                                        "Something in this folder is already called “"
+                                                + name + "”.");
+                            } else if (created) {
+                                load(name);
+                            } else {
+                                complain("The Folder Was Not Created",
+                                        "This location does not allow new folders.");
+                            }
+                        });
+                    });
                 });
+            });
+        });
     }
 
     private void askRename(final FileLogic.Entry entry) {
-        sheet = Sheets.input(root, theme, "Rename", entry.name, "Rename", name -> {
+        sheet = Sheets.input(root, theme, "Rename", entry.name, "Rename",
+                this::backToItems, name -> {
             backToItems();
             if (name.equals(entry.name)) {
                 return;
             }
             String problem = FileLogic.nameProblem(name);
-            File target = new File(entry.file.getParentFile(), name);
             if (problem != null) {
                 complain("That Name Cannot Be Used", problem);
-            } else if (target.exists()) {
-                complain("That Name Is Taken",
-                        "Something in this folder is already called “" + name + "”.");
-            } else if (entry.file.renameTo(target)) {
-                load(name);
-            } else {
-                complain("It Was Not Renamed", "This location does not allow changes.");
+                return;
             }
+            final File target = new File(entry.file.getParentFile(), name);
+            lister.execute(() -> {
+                // A filesystem that cannot tell letter cases apart reports the very
+                // file being renamed as taken; that rename is allowed.
+                final boolean taken = target.exists() && !sameFile(entry.file, target);
+                final boolean renamed = !taken && entry.file.renameTo(target);
+                runOnUiThread(() -> {
+                    if (isDestroyed()) {
+                        return;
+                    }
+                    if (taken) {
+                        complain("That Name Is Taken",
+                                "Something in this folder is already called “" + name + "”.");
+                    } else if (renamed) {
+                        load(name);
+                    } else {
+                        complain("It Was Not Renamed", "This location does not allow changes.");
+                    }
+                });
+            });
         });
+    }
+
+    /** Whether two paths arrive at the same file, however they were written. */
+    private static boolean sameFile(File a, File b) {
+        try {
+            return a.getCanonicalPath().equals(b.getCanonicalPath());
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** The name a paste lands under, picked the way FileOps.transfer picks it. */
+    private static String pastedName(File source, File into, boolean move) {
+        File parent = source.getParentFile();
+        boolean same = parent != null && sameFile(parent, into);
+        return move && same ? source.getName() : FileLogic.freeName(source.getName(), into, same);
     }
 
     private void complain(String title, String why) {
@@ -971,8 +1156,20 @@ public class FilesActivity extends Activity {
                     }
                     runJob("Deleting", cancel -> {
                         return FileOps.delete(Collections.singletonList(entry.file), cancel);
-                    });
+                    }, after(entry));
                 });
+    }
+
+    /** The row to land on once this one is gone: the next, or the one above it. */
+    private String after(FileLogic.Entry entry) {
+        int at = positionOf(entry);
+        if (at < 0) {
+            return null;
+        }
+        if (at + 1 < entries.size()) {
+            return entries.get(at + 1).name;
+        }
+        return at > 0 ? entries.get(at - 1).name : null;
     }
 
     private void setClipboard(File file, boolean move) {
@@ -983,8 +1180,19 @@ public class FilesActivity extends Activity {
     }
 
     private static String ellipsized(String name) {
-        return name.length() <= 18 ? name : name.substring(0, 8) + "…"
-                + name.substring(name.length() - 8);
+        if (name.length() <= 18) {
+            return name;
+        }
+        // A surrogate pair is kept whole rather than cut in half.
+        int head = 8;
+        while (head > 0 && Character.isHighSurrogate(name.charAt(head - 1))) {
+            head--;
+        }
+        int tail = name.length() - 8;
+        while (tail < name.length() && Character.isLowSurrogate(name.charAt(tail))) {
+            tail++;
+        }
+        return name.substring(0, head) + "…" + name.substring(tail);
     }
 
     private void askPaste() {
@@ -1004,9 +1212,16 @@ public class FilesActivity extends Activity {
                         return;
                     }
                     final File into = folder;
-                    runJob(move ? "Moving" : "Copying", cancel -> FileOps.transfer(
-                            Collections.singletonList(source), into, move, cancel,
-                            (done, total, name) -> reportProgress(done, total, name)));
+                    // The name it lands under is what gets selected after, so a
+                    // copy arriving as "a copy" is the row that lights. It is
+                    // found inside the job, where the disk calls belong.
+                    final String[] pasted = {source.getName()};
+                    runJob(move ? "Moving" : "Copying", cancel -> {
+                        pasted[0] = pastedName(source, into, move);
+                        return FileOps.transfer(Collections.singletonList(source), into, move,
+                                cancel,
+                                (done, total, name) -> reportProgress(done, total, name));
+                    }, pasted);
                 });
     }
 
@@ -1033,41 +1248,56 @@ public class FilesActivity extends Activity {
         });
     }
 
-    private void runJob(String title, final Job job) {
+    private void runJob(String title, final Job job, final String select) {
+        runJob(title, job, new String[]{select});
+    }
+
+    /** The select is a box so the job can put in the name it actually used. */
+    private void runJob(String title, final Job job, final String[] select) {
         final AtomicBoolean cancel = new AtomicBoolean(false);
         running = cancel;
         progress = new Sheets.Progress(root, theme, title, () -> cancel.set(true));
         sheet = progress.sheet;
-        new Thread(() -> {
-            FileOps.Result computed;
+        Thread worker = new Thread(() -> {
+            FileOps.Result computed = null;
             try {
                 computed = job.run(cancel);
             } catch (RuntimeException e) {
                 computed = new FileOps.Result();
                 computed.failed = 1;
                 computed.problem = "Something went wrong and the job stopped.";
+            } finally {
+                if (computed == null) {
+                    // Even an Error answers the sheet rather than leaving it stuck.
+                    computed = new FileOps.Result();
+                    computed.failed = 1;
+                    computed.problem = "Something went wrong and the job stopped.";
+                }
+                final FileOps.Result result = computed;
+                runOnUiThread(() -> {
+                    if (isDestroyed()) {
+                        return;
+                    }
+                    running = null;
+                    if (progress != null) {
+                        progress.sheet.close();
+                        progress = null;
+                    }
+                    backToItems();
+                    load(select[0]);
+                    if (result.failed > 0) {
+                        complain(result.done > 0 ? "Some Items Were Not Finished"
+                                        : "That Did Not Work",
+                                result.problem == null ? "This location does not allow it."
+                                        : result.problem);
+                    } else if (result.cancelled) {
+                        toast("Stopped. Anything not finished was left out.");
+                    }
+                });
             }
-            final FileOps.Result result = computed;
-            runOnUiThread(() -> {
-                if (isDestroyed()) {
-                    return;
-                }
-                running = null;
-                if (progress != null) {
-                    progress.sheet.close();
-                    progress = null;
-                }
-                backToItems();
-                load(null);
-                if (result.failed > 0) {
-                    complain(result.done > 0 ? "Some Items Were Not Finished" : "That Did Not Work",
-                            result.problem == null ? "This location does not allow it."
-                                    : result.problem);
-                } else if (result.cancelled) {
-                    toast("Stopped. Anything not finished was left out.");
-                }
-            });
-        }, "files-job").start();
+        }, "files-job");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void toast(String text) {
@@ -1098,7 +1328,10 @@ public class FilesActivity extends Activity {
         View focused = getCurrentFocus();
         if (sheet == null || sheet.closed()) {
             readPlaces();
-            if (quickLook == null && place != null && folder != null) {
+            // A resume over the folder already shown lists nothing again; a place
+            // that dropped out of the sidebar, or a folder never listed, does.
+            if (quickLook == null && place != null && folder != null
+                    && (!folder.equals(listed) || !places.contains(place))) {
                 open(place, folder, null);
             }
             if (focused == null || !focused.isAttachedToWindow()) {
@@ -1127,6 +1360,9 @@ public class FilesActivity extends Activity {
         if (running != null) {
             running.set(true);
         }
+        if (sizing != null) {
+            sizing.set(true);
+        }
         lister.shutdownNow();
         thumbnailer.shutdownNow();
         thumbs.evictAll();
@@ -1143,7 +1379,7 @@ public class FilesActivity extends Activity {
 
         @Override
         public FileLogic.Entry getItem(int position) {
-            return entries.get(position);
+            return position < 0 || position >= entries.size() ? null : entries.get(position);
         }
 
         @Override
@@ -1195,6 +1431,11 @@ public class FilesActivity extends Activity {
     }
 
     private static Bitmap decodeThumb(File file, int side) {
+        // A pipe or socket wearing a picture's name would hold the one
+        // thumbnailer thread forever.
+        if (!file.isFile()) {
+            return null;
+        }
         try {
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;

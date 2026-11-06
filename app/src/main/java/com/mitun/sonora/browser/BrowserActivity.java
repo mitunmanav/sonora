@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -15,9 +14,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.CookieManager;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
@@ -56,11 +60,27 @@ public final class BrowserActivity extends Activity {
             + "<a href=\"https://news.ycombinator.com\">Hacker News</a>"
             + "</body></html>";
 
+    private static final String BLOCKED_PAGE =
+            "<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
+            + "content=\"width=device-width,initial-scale=1\">"
+            + "<style>body{font-family:sans-serif;background:#0d0f14;color:#f5f6f8;"
+            + "margin:0;padding:8vh 8vw}h1{font-weight:300;font-size:42px;margin:0 0 8px}"
+            + "p{color:#9aa0aa;font-size:20px}</style></head><body>"
+            + "<h1>Blocked</h1><p>Sonora's ad blocker stopped this page. "
+            + "If the page was not an ad, choose Menu and turn the ad blocker "
+            + "off to load it.</p></body></html>";
+
+    /** Typed schemes that need another app, which a TV does not have. */
+    private static final String[] APP_SCHEMES = {
+            "tel:", "mailto:", "sms:", "intent:", "geo:", "market:", "ftp:",
+            "file:", "data:", "javascript:"};
+
     private WebView web;
     private EditText address;
     private TextView status;
     private AdBlock adBlock;
     private Prefs prefs;
+    private boolean pageFailed;
 
     public static void start(Context context) {
         context.startActivity(new Intent(context, BrowserActivity.class));
@@ -71,22 +91,25 @@ public final class BrowserActivity extends Activity {
         super.onCreate(savedInstanceState);
         Ui.immersive(this);
         prefs = new Prefs(this);
+        if (!prefs.browserEnabled()) {
+            Ui.toast(this, "The browser is off");
+            finish();
+            return;
+        }
         adBlock = new AdBlock(this);
         adBlock.setEnabled(prefs.browserAdBlock());
         try {
             setContentView(build());
+            boolean restored = savedInstanceState != null
+                    && web.restoreState(savedInstanceState) != null;
+            if (!restored) {
+                web.loadDataWithBaseURL(null, START_PAGE, "text/html", "utf-8", null);
+            }
         } catch (RuntimeException | Error e) {
             // A TV with no web engine has no WebView to make. The screen says
             // so rather than taking the whole app down with it.
             releaseWeb();
             setContentView(noWebView());
-            return;
-        }
-        if (savedInstanceState == null) {
-            web.loadUrl("about:blank");
-            web.loadDataWithBaseURL(null, START_PAGE, "text/html", "utf-8", null);
-        } else {
-            web.restoreState(savedInstanceState);
         }
     }
 
@@ -116,7 +139,10 @@ public final class BrowserActivity extends Activity {
         if (web.getParent() instanceof android.view.ViewGroup) {
             ((android.view.ViewGroup) web.getParent()).removeView(web);
         }
-        web.destroy();
+        try {
+            web.destroy();
+        } catch (RuntimeException | Error ignored) {
+        }
         web = null;
     }
 
@@ -178,28 +204,147 @@ public final class BrowserActivity extends Activity {
         settings.setAllowFileAccess(false);
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Schemes match case-insensitively: "HTTPS://" is still web.
+                if (url != null && (url.regionMatches(true, 0, "http://", 0, 7)
+                        || url.regionMatches(true, 0, "https://", 0, 8)
+                        || url.regionMatches(true, 0, "about:", 0, 6))) {
+                    String upgraded = localOrHttps(url);
+                    if (!upgraded.equals(url)) {
+                        view.loadUrl(upgraded);
+                        return true;
+                    }
+                    return false;
+                }
+                Ui.toast(BrowserActivity.this,
+                        "That link needs an app this TV does not have");
+                return true;
+            }
+
+            @Override
             public WebResourceResponse shouldInterceptRequest(WebView view,
                                                              WebResourceRequest request) {
                 if (adBlock.isBlocked(request.getUrl().toString())) {
+                    if (request.isForMainFrame()) {
+                        view.post(() -> view.loadDataWithBaseURL(
+                                null, BLOCKED_PAGE, "text/html", "utf-8", null));
+                    }
                     return blocked();
                 }
                 return null;
             }
 
             @Override
+            public void onPageStarted(WebView view, String url,
+                                       android.graphics.Bitmap favicon) {
+                pageFailed = false;
+                status.setText("Loading…");
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
-                address.setText(url);
-                status.setText("");
+                if (!pageFailed) {
+                    status.setText("");
+                }
+                if (!address.hasFocus() && url != null
+                        && !url.startsWith("about:") && !url.startsWith("data:")) {
+                    address.setText(url);
+                }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request,
                                          android.webkit.WebResourceError error) {
                 if (request.isForMainFrame()) {
-                    status.setText("That page could not be loaded");
+                    pageFailed = true;
+                    status.setText(loadError(error));
                 }
             }
         });
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onProgressChanged(WebView view, int progress) {
+                if (!pageFailed && progress < 100) {
+                    status.setText("Loading… " + progress + "%");
+                }
+            }
+
+            @Override
+            public boolean onCreateWindow(WebView view, boolean dialog,
+                                           boolean userGesture,
+                                           android.os.Message resultMsg) {
+                Ui.toast(BrowserActivity.this,
+                        "This browser can only show one page at a time");
+                return false;
+            }
+
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message,
+                                      JsResult result) {
+                Ui.toast(BrowserActivity.this,
+                        "This TV cannot show that page's dialog");
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message,
+                                        JsResult result) {
+                Ui.toast(BrowserActivity.this,
+                        "This TV cannot show that page's dialog");
+                result.cancel();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message,
+                                       String defaultValue, JsPromptResult result) {
+                Ui.toast(BrowserActivity.this,
+                        "This TV cannot show that page's dialog");
+                result.cancel();
+                return true;
+            }
+
+            @Override
+            public boolean onShowFileChooser(WebView view,
+                    android.webkit.ValueCallback<android.net.Uri[]> callback,
+                    FileChooserParams params) {
+                Ui.toast(BrowserActivity.this, "This browser cannot pick files");
+                callback.onReceiveValue(null);
+                return true;
+            }
+
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                Ui.toast(BrowserActivity.this,
+                        "This browser cannot play fullscreen video");
+                callback.onCustomViewHidden();
+            }
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin,
+                    android.webkit.GeolocationPermissions.Callback callback) {
+                // Left pending, the page would wait on a location that never
+                // comes: a TV with no GPS service says no out loud instead.
+                callback.invoke(origin, false, false);
+                Ui.toast(BrowserActivity.this,
+                        "This browser cannot share your location");
+            }
+
+            @Override
+            public void onPermissionRequest(
+                    android.webkit.PermissionRequest request) {
+                // Camera, microphone, midi: a page asking for hardware this
+                // TV cannot offer gets a denial, not a silent wait.
+                request.deny();
+                Ui.toast(BrowserActivity.this,
+                        "This browser cannot use that hardware");
+            }
+        });
+        // There is nowhere on a TV a download could go, and a click that
+        // silently does nothing is worse than saying so.
+        web.setDownloadListener((url, userAgent, disposition, mime, length) ->
+                Ui.toast(this, "This browser cannot download files"));
         column.addView(web, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -225,6 +370,26 @@ public final class BrowserActivity extends Activity {
                 new ByteArrayInputStream(new byte[0]));
     }
 
+    /** Names why a page failed the way the system would to a person. */
+    private static String loadError(android.webkit.WebResourceError error) {
+        switch (error.getErrorCode()) {
+            case WebViewClient.ERROR_HOST_LOOKUP:
+                return "There is no site at that address";
+            case WebViewClient.ERROR_CONNECT:
+            case WebViewClient.ERROR_IO:
+                return "The site could not be reached";
+            case WebViewClient.ERROR_TIMEOUT:
+                return "The site took too long to answer";
+            case WebViewClient.ERROR_FAILED_SSL_HANDSHAKE:
+                return "The secure connection failed";
+            default:
+                CharSequence description = error.getDescription();
+                return description != null && description.length() > 0
+                        ? description.toString()
+                        : "That page could not be loaded";
+        }
+    }
+
     private View button(String text, Runnable action) {
         TextView view = new TextView(this);
         view.setText(text);
@@ -247,7 +412,85 @@ public final class BrowserActivity extends Activity {
             return;
         }
         hideKeyboard();
-        web.loadUrl(normalise(text));
+        if (needsAnApp(text)) {
+            Ui.toast(this, "That address needs an app this TV does not have");
+            return;
+        }
+        web.loadUrl(localOrHttps(normalise(text)));
+    }
+
+    /**
+     * http is only trusted on the local network — the router's page, a
+     * computer's share, Sonora's own share server. Anywhere else it is
+     * quietly upgraded to https.
+     */
+    public static String localOrHttps(String url) {
+        if (url == null || !url.startsWith("http://")) {
+            return url;
+        }
+        return isLocalHost(url.substring("http://".length()))
+                ? url
+                : "https://" + url.substring("http://".length());
+    }
+
+    private static boolean isLocalHost(String rest) {
+        String host = rest;
+        int slash = host.indexOf('/');
+        if (slash >= 0) {
+            host = host.substring(0, slash);
+        }
+        int at = host.lastIndexOf('@');
+        if (at >= 0) {
+            host = host.substring(at + 1);
+        }
+        if (host.startsWith("[")) {
+            int close = host.indexOf(']');
+            host = close >= 0 ? host.substring(1, close) : host.substring(1);
+        } else {
+            int colon = host.indexOf(':');
+            if (colon >= 0) {
+                host = host.substring(0, colon);
+            }
+        }
+        host = host.toLowerCase(Locale.US);
+        if (host.contains(":")) {
+            return host.equals("::1") || host.startsWith("fe80:")
+                    || host.startsWith("fc") || host.startsWith("fd");
+        }
+        if (host.equals("localhost") || host.endsWith(".local")
+                || host.indexOf('.') < 0) {
+            return true;
+        }
+        // Only a real IPv4 literal is a private address; a name like
+        // "10.evil.com" merely starts the way one does.
+        if (!host.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
+            return false;
+        }
+        if (host.startsWith("10.") || host.startsWith("127.")
+                || host.startsWith("169.254.") || host.startsWith("192.168.")) {
+            return true;
+        }
+        if (host.startsWith("172.")) {
+            String[] parts = host.split("\\.");
+            if (parts.length == 4) {
+                try {
+                    int second = Integer.parseInt(parts[1]);
+                    return second >= 16 && second <= 31;
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean needsAnApp(String text) {
+        String lower = text.toLowerCase(Locale.US);
+        for (String scheme : APP_SCHEMES) {
+            if (lower.startsWith(scheme)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Turns what the user typed into something the WebView can load. */
@@ -265,11 +508,17 @@ public final class BrowserActivity extends Activity {
         if (text.contains("://")) {
             return text;
         }
+        // about:blank and its kin are pages the WebView itself serves.
+        if (text.startsWith("about:")) {
+            return text;
+        }
         if (text.contains(" ")) {
             return "https://duckduckgo.com/?q=" + encodeQuery(text);
         }
+        // host:port is a local address; a bare ::1 or a scheme-looking word
+        // like "foo:" is nobody's address and falls through to the search.
         if (text.equalsIgnoreCase("localhost") || text.toLowerCase(Locale.US).startsWith("localhost:")
-                || text.startsWith("[") || text.contains(":")) {
+                || text.startsWith("[") || text.matches("[^:\\s]+:\\d+\\S*")) {
             return "http://" + text;
         }
         if (text.contains(".")) {
@@ -330,6 +579,8 @@ public final class BrowserActivity extends Activity {
                             break;
                         case 3:
                             web.clearHistory();
+                            CookieManager.getInstance().removeAllCookies(null);
+                            WebStorage.getInstance().deleteAllData();
                             Ui.toast(this, "History cleared");
                             break;
                         default:
@@ -355,7 +606,8 @@ public final class BrowserActivity extends Activity {
         }
         new AlertDialog.Builder(this)
                 .setTitle("Bookmarks")
-                .setItems(names, (dialog, which) -> web.loadUrl(bookmarks.get(which)))
+                .setItems(names, (dialog, which) ->
+                        web.loadUrl(localOrHttps(bookmarks.get(which))))
                 .setNegativeButton("Close", null)
                 .show();
     }
@@ -364,7 +616,9 @@ public final class BrowserActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
             if (event.getAction() == KeyEvent.ACTION_UP) {
-                if (web != null && web.canGoBack()) {
+                if (typing()) {
+                    hideKeyboard();
+                } else if (web != null && web.canGoBack()) {
                     web.goBack();
                 } else {
                     finish();
@@ -375,11 +629,42 @@ public final class BrowserActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
 
+    /** The address bar is the only place the on-screen keyboard ever opens. */
+    private boolean typing() {
+        try {
+            InputMethodManager keyboard = (InputMethodManager)
+                    getSystemService(Context.INPUT_METHOD_SERVICE);
+            return keyboard != null && keyboard.isActive(address);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         if (web != null) {
-            web.saveState(outState);
+            try {
+                web.saveState(outState);
+            } catch (RuntimeException | Error ignored) {
+            }
+        }
+    }
+
+    /** singleTask: an intent for the browser comes back to this screen. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (!prefs.browserEnabled()) {
+            finish();
+            return;
+        }
+        if (address != null) {
+            android.net.Uri data = intent.getData();
+            if (data != null) {
+                address.setText(data.toString());
+            }
+            address.requestFocus();
         }
     }
 
@@ -387,6 +672,7 @@ public final class BrowserActivity extends Activity {
     protected void onPause() {
         if (web != null) {
             web.onPause();
+            web.pauseTimers();
         }
         super.onPause();
     }
@@ -395,12 +681,16 @@ public final class BrowserActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (web != null) {
+            web.resumeTimers();
             web.onResume();
         }
     }
 
     @Override
     protected void onDestroy() {
+        if (web != null) {
+            web.pauseTimers();
+        }
         // A destroyed WebView that is still in the tree keeps the activity
         // alive with it.
         releaseWeb();

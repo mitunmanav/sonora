@@ -33,6 +33,8 @@ public final class ShareActivity extends Activity {
     private File shared;
     private File root;
     private TextView address;
+    private TextView hint;
+    private boolean stopStarted;
 
     public static void start(Context context, File file) {
         Intent intent = new Intent(context, ShareActivity.class);
@@ -47,6 +49,11 @@ public final class ShareActivity extends Activity {
         Ui.immersive(this);
         String path = getIntent().getStringExtra(EXTRA_PATH);
         shared = path == null ? FileServer.appFolder(this) : new File(path);
+        if (path != null && !shared.exists()) {
+            // What it pointed at is gone; the app's own folder is the fallback.
+            Ui.toast(this, "That file is gone, so Sonora's own folder is shared");
+            shared = FileServer.appFolder(this);
+        }
 
         root = shared.isDirectory() ? shared : shared.getParentFile();
         if (root == null) {
@@ -82,14 +89,18 @@ public final class ShareActivity extends Activity {
         column.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText(shared.getName());
+        // A file is served as its whole folder, so the subtitle says what is
+        // really shared, not just the name the share was opened with.
+        subtitle.setText(shared.isDirectory() ? shared.getName()
+                : shared.getName() + " · the whole folder is shared");
         subtitle.setTextColor(0xB3FFFFFF);
         subtitle.setTextSize(15);
         subtitle.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 28));
         column.addView(subtitle);
 
+        String url = port > 0 ? server.address() : "";
         address = new TextView(this);
-        address.setText(port > 0 ? server.address() : "No address available");
+        address.setText(url.isEmpty() ? "No network address" : url);
         address.setTextColor(Color.WHITE);
         address.setTextSize(38);
         address.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -99,10 +110,9 @@ public final class ShareActivity extends Activity {
         address.setBackground(Ui.rounded(0x1FFFFFFF, Ui.dpf(this, 18)));
         column.addView(address);
 
-        TextView hint = new TextView(this);
-        hint.setText(port > 0
-                ? "Open this address in a browser on the same network."
-                : "Connect this TV to a network and try again.");
+        hint = new TextView(this);
+        // A port that would not open is not the network's fault.
+        hint.setText(hintText(port));
         hint.setTextColor(0xB3FFFFFF);
         hint.setTextSize(15);
         hint.setGravity(Gravity.CENTER);
@@ -136,32 +146,73 @@ public final class ShareActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
 
+    /** The line under the address, which tracks the same restart it does. */
+    private String hintText(int port) {
+        if (port <= 0) {
+            return "The share could not start on this TV.";
+        }
+        return server.address().isEmpty()
+                ? "Connect this TV to a network and try again."
+                : "Open this address in a browser on the same network.";
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // The relaunch is singleTask: what is shared comes from the new
+        // intent, so the screen starts over the way a fresh open would.
+        setIntent(intent);
+        recreate();
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
+        stopStarted = false;
         // The screen came back: the server was stopped when it went away.
         if (server != null && !server.isRunning()) {
             int port = startServer();
+            String url = port > 0 ? server.address() : "";
             if (address != null) {
-                address.setText(port > 0 ? server.address() : "No address available");
+                address.setText(url.isEmpty() ? "No network address" : url);
             }
+            // The hint says what the address does, or it lies about a restart.
+            if (hint != null) {
+                hint.setText(hintText(port));
+            }
+        }
+    }
+
+    /**
+     * Stops the server off the main thread: stop() joins the accept thread,
+     * which is up to half a second the UI is not allowed to spend.
+     */
+    private void stopServer() {
+        final FileServer stopping = server;
+        if (stopping == null || stopStarted || !stopping.isRunning()) {
+            return;
+        }
+        stopStarted = true;
+        Thread stopper = new Thread(stopping::stop, "sonora-share-stop");
+        stopper.setDaemon(true);
+        try {
+            stopper.start();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A thread that cannot start must not leave the port listening.
+            stopping.stop();
         }
     }
 
     @Override
     protected void onStop() {
         // Nothing keeps listening once the user has left this screen.
-        if (server != null) {
-            server.stop();
-        }
+        stopServer();
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        if (server != null) {
-            server.stop();
-        }
+        stopServer();
         super.onDestroy();
     }
 }

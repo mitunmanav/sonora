@@ -25,10 +25,14 @@ import java.util.Set;
 public final class AdBlock {
     private final Set<String> hosts = new HashSet<>();
     private final List<String> fragments = new ArrayList<>();
-    private boolean enabled = true;
+    private volatile boolean enabled = true;
 
     public AdBlock(Context context) {
         load(context);
+    }
+
+    /** Tests build the list line by line instead of reading the resource. */
+    AdBlock() {
     }
 
     private void load(Context context) {
@@ -37,18 +41,31 @@ public final class AdBlock {
                     new InputStreamReader(in, StandardCharsets.UTF_8));
             String line;
             while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.length() == 0 || line.startsWith("#")) {
-                    continue;
-                }
-                if (line.startsWith("|")) {
-                    fragments.add(line.substring(1).toLowerCase(Locale.US));
-                } else {
-                    hosts.add(line.toLowerCase(Locale.US));
-                }
+                addLine(line);
             }
         } catch (IOException | RuntimeException ignored) {
         }
+        // A missing or corrupt list is a blocker that blocks nothing.
+        if (size() == 0) {
+            enabled = false;
+        }
+    }
+
+    void addLine(String line) {
+        line = line.trim();
+        if (line.length() == 0 || line.startsWith("#")) {
+            return;
+        }
+        if (line.startsWith("|")) {
+            String fragment = line.substring(1).toLowerCase(Locale.US);
+            if (fragment.length() > 0) {
+                fragments.add(fragment);
+            }
+            return;
+        }
+        // A hosts line can carry an address first: "0.0.0.0 ads.example".
+        String[] parts = line.split("\\s+");
+        hosts.add(parts[parts.length - 1].toLowerCase(Locale.US));
     }
 
     public boolean isEnabled() {
@@ -56,7 +73,7 @@ public final class AdBlock {
     }
 
     public void setEnabled(boolean value) {
-        enabled = value;
+        enabled = value && size() > 0;
     }
 
     public int size() {
@@ -92,7 +109,7 @@ public final class AdBlock {
         return false;
     }
 
-    private static String hostOf(String url) {
+    static String hostOf(String url) {
         int scheme = url.indexOf("://");
         int start = scheme < 0 ? 0 : scheme + 3;
         int end = url.indexOf('/', start);
@@ -111,10 +128,19 @@ public final class AdBlock {
         if (cut >= 0) {
             host = host.substring(0, cut);
         }
-        // And the port is not part of it either.
-        int colon = host.indexOf(':');
-        if (colon >= 0) {
-            host = host.substring(0, colon);
+        // An IPv6 literal keeps its colons: "[2001:db8::1]:8080" is "2001:db8::1".
+        if (host.startsWith("[") && host.indexOf(']') > 0) {
+            host = host.substring(1, host.indexOf(']'));
+        } else {
+            // And the port is not part of it either.
+            int colon = host.indexOf(':');
+            if (colon >= 0) {
+                host = host.substring(0, colon);
+            }
+        }
+        // A fully-qualified name ends in a dot; the list spells it without.
+        if (host.endsWith(".")) {
+            host = host.substring(0, host.length() - 1);
         }
         return host;
     }

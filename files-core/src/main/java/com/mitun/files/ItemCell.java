@@ -48,9 +48,9 @@ final class ItemCell extends View {
         this.dates = dates;
         iconSize = FilesTheme.dp(context, grid ? 62 : 20);
         pad = FilesTheme.dp(context, 8);
-        namePaint.setTextSize(FilesTheme.dp(context, grid ? 13 : 13.5f));
+        namePaint.setTextSize(FilesTheme.sp(context, grid ? 13 : 13.5f));
         namePaint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-        smallPaint.setTextSize(FilesTheme.dp(context, grid ? 11 : 12.5f));
+        smallPaint.setTextSize(FilesTheme.sp(context, grid ? 11 : 12.5f));
     }
 
     @Override
@@ -64,7 +64,8 @@ final class ItemCell extends View {
         this.striped = striped;
         thumb = null;
         thumbPaint.setShader(null);
-        shownDate = dates.format(new Date(entry.modified));
+        // A file that will not say when it changed gets a dash, not the epoch.
+        shownDate = entry.modified <= 0 ? "--" : dates.format(new Date(entry.modified));
         shownSize = entry.folder ? "--" : FileLogic.formatSize(entry.size);
         shownKind = FileLogic.kindName(entry.kind);
         updateName();
@@ -112,7 +113,7 @@ final class ItemCell extends View {
     }
 
     private float nameColumnEnd() {
-        return getWidth() * 0.50f;
+        return getWidth() * 0.52f;
     }
 
     private boolean lit() {
@@ -185,9 +186,15 @@ final class ItemCell extends View {
         namePaint.setColor(lit ? 0xFFFFFFFF : theme.ink);
         canvas.drawText(shownName, 0, shownName.length(), nameStart(), baseline, namePaint);
         smallPaint.setColor(lit ? 0xE6FFFFFF : theme.inkSecondary);
-        canvas.drawText(shownDate, w * 0.52f, baseline, smallPaint);
-        canvas.drawText(shownSize, w * 0.72f, baseline, smallPaint);
-        canvas.drawText(shownKind, w * 0.84f, baseline, smallPaint);
+        drawColumn(canvas, shownDate, w * 0.52f, w * 0.20f, baseline);
+        drawColumn(canvas, shownSize, w * 0.72f, w * 0.12f, baseline);
+        drawColumn(canvas, shownKind, w * 0.84f, w * 0.16f, baseline);
+    }
+
+    private void drawColumn(Canvas canvas, String text, float left, float width, float baseline) {
+        CharSequence clipped = TextUtils.ellipsize(text, smallPaint, width - pad,
+                TextUtils.TruncateAt.END);
+        canvas.drawText(clipped, 0, clipped.length(), left, baseline, smallPaint);
     }
 
     private void drawIcon(Canvas canvas, float left, float top) {
