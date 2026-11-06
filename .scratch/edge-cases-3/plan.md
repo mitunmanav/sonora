@@ -40,7 +40,7 @@ covering both call sites.
 
 | What | Why |
 |---|---|
-| `Cleanup.PACKAGES`: `com.xiaomo.tv.milegal`, `android.autinstalls.config.xioami.mibox3` look misspelled | Blindly "correcting" a disable-list package could match and disable a real system app. Needs verification against a Xiaomi device. |
+| ~~`Cleanup.PACKAGES`: `com.xiaomo.tv.milegal`, `android.autinstalls.config.xioami.mibox3` look misspelled~~ | Verified on a MiTV-AYFR0 (2026-11-06): both names exist exactly as written — Xiaomi misspelled them itself. Correct as-is. |
 | `screenRect` ignores translations | Cosmetic: the glass can lag one frame on a fast-scrolling row. Rare, harmless. |
 | `glassKey` uses `identityHashCode` | A reused view id could serve a stale bake for one frame. Corrects itself on the next bake. |
 | Settings tile not searchable | Intended: it is a pinned tile, not an app row. |
