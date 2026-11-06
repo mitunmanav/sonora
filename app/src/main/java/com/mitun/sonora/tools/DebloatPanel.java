@@ -66,9 +66,26 @@ public final class DebloatPanel {
         reload(host);
     }
 
+    /**
+     * Re-reads the toggles when the screen is back on top: an app can be
+     * turned off or removed while the panel sits under a system screen.
+     */
+    static void resumed(ToolActivity host) {
+        if (TITLE.equals(host.stack().topTitle())) {
+            reload(host);
+        }
+    }
+
     private static void reload(ToolActivity host) {
         new Thread(() -> {
-            final List<SettingRow> rows = rows(host);
+            List<SettingRow> built;
+            try {
+                built = rows(host);
+            } catch (RuntimeException e) {
+                built = new ArrayList<>();
+                built.add(SettingRow.note("The list of apps could not be read."));
+            }
+            final List<SettingRow> rows = built;
             host.runOnUiThread(() -> {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
@@ -99,8 +116,16 @@ public final class DebloatPanel {
             if (item.warn != null) {
                 rows.add(SettingRow.note(item.warn));
             }
-            rows.add(SettingRow.toggle(item.name, enabled,
-                    () -> toggle(host, item, enabled)));
+            if (enabled && "com.google.android.tvlauncher".equals(item.packageName)
+                    && !Ui.isDefaultLauncher(host)) {
+                // Turning off the launcher that still answers HOME leaves the
+                // button with nowhere to go, so there is no switch to flip.
+                rows.add(SettingRow.value(item.name,
+                        "On. Set Sonora as the home screen before turning it off."));
+            } else {
+                rows.add(SettingRow.toggle(item.name, enabled,
+                        () -> toggle(host, item, enabled)));
+            }
         }
         if (!any) {
             rows.add(SettingRow.note("No known bloatware found on this TV."));

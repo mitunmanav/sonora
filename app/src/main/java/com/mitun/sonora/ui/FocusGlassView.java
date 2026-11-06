@@ -32,15 +32,6 @@ public final class FocusGlassView extends View {
     private final float pad;
     private final boolean shadow;
 
-    private final Motion.FloatProperty posX = new Motion.FloatProperty() {
-        @Override public float get() { return getTranslationX(); }
-        @Override public void set(float v) { setTranslationX(v); }
-    };
-    private final Motion.FloatProperty posY = new Motion.FloatProperty() {
-        @Override public float get() { return getTranslationY(); }
-        @Override public void set(float v) { setTranslationY(v); }
-    };
-
     public FocusGlassView(Context context) {
         super(context);
         pad = Ui.dp(context, PAD_DP);
@@ -82,10 +73,12 @@ public final class FocusGlassView extends View {
         final float tx = centerX - w / 2f;
         final float ty = centerY - h / 2f;
         if (animate) {
-            Motion.springCustom(this, 0, tx, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_MOVE, posX);
-            Motion.springCustom(this, 1, ty, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_MOVE, posY);
+            // The real translation tracks, so a scroll frame's Motion.set
+            // stops the same springs this started.
+            Motion.spring(this, Motion.TRANSLATION_X, tx,
+                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
+            Motion.spring(this, Motion.TRANSLATION_Y, ty,
+                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
         } else {
             Motion.set(this, Motion.TRANSLATION_X, tx);
             Motion.set(this, Motion.TRANSLATION_Y, ty);

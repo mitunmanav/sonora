@@ -18,13 +18,19 @@ import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.RowDrawable;
+import com.mitun.sonora.ui.ScreenStack;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * The app manager: every package on the device, not just the launchable ones.
@@ -66,12 +72,79 @@ public final class AppPanel {
                 showDetail(host, adapter, item);
             }
         });
+        // The adapter is how onResume finds the list to reload it.
+        content.setTag(adapter);
+        content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View view) {
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View view) {
+                adapter.shutdown();
+            }
+        });
         host.stack().pushContent("Apps", "Everything installed on this TV", content);
         adapter.load();
     }
 
+    /**
+     * Reloads the app list when the screen on top is one, or a detail pushed
+     * over one. Coming back from an uninstall or a settings screen can leave
+     * an app that is gone still listed - or a detail screen for it open.
+     */
+    static void resumed(ToolActivity host) {
+        ScreenStack stack = host.stack();
+        View topView = ToolActivity.stackTopView(stack);
+        Object tag = topView == null ? null : topView.getTag();
+        if (tag instanceof AppManager.Item) {
+            AppManager.Item item = (AppManager.Item) tag;
+            if (!isInstalled(host, item.packageName)) {
+                // A detail screen for a package that left is a dead end.
+                stack.pop();
+            } else {
+                View below = stack.topContentBelow();
+                if (below != null && below.getTag() instanceof AppAdapter) {
+                    stack.refreshSettings(item.label,
+                            detailRows(host, (AppAdapter) below.getTag(), item));
+                    tagDetail(host, item);
+                }
+            }
+        }
+        reloadIfAppList(stack.topContent());
+        reloadIfAppList(stack.topContentBelow());
+    }
+
+    private static boolean isInstalled(ToolActivity host, String packageName) {
+        try {
+            host.getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        } catch (RuntimeException e) {
+            // The system cannot say: keep the screen rather than drop it on
+            // a maybe.
+            return true;
+        }
+    }
+
+    private static void reloadIfAppList(View content) {
+        if (content != null && content.getTag() instanceof AppAdapter) {
+            ((AppAdapter) content.getTag()).load();
+        }
+    }
+
     private static void showDetail(ToolActivity host, AppAdapter adapter, AppManager.Item item) {
         host.stack().pushSettings(item.label, detailRows(host, adapter, item));
+        tagDetail(host, item);
+    }
+
+    /** Marks the detail screen with its app, so a resume can rebuild or drop it. */
+    private static void tagDetail(ToolActivity host, AppManager.Item item) {
+        int count = host.stack().getChildCount();
+        if (count > 0) {
+            host.stack().getChildAt(count - 1).setTag(item);
+        }
     }
 
     private static List<SettingRow> detailRows(ToolActivity host, AppAdapter adapter,
@@ -79,7 +152,8 @@ public final class AppPanel {
         List<SettingRow> rows = new ArrayList<>();
         rows.add(SettingRow.header(item.label));
         rows.add(SettingRow.value("Package", item.packageName));
-        rows.add(SettingRow.value("Version", item.versionName + " (" + item.versionCode + ")"));
+        rows.add(SettingRow.value("Version", (item.versionName == null
+                ? "Unknown" : item.versionName) + " (" + item.versionCode + ")"));
         rows.add(SettingRow.value("Type", item.systemApp ? "System app" : "Installed app"));
         rows.add(SettingRow.value("State", item.enabled ? "Enabled" : "Disabled"));
         rows.add(SettingRow.value("Home screen", item.hasLauncherEntry ? "Yes" : "No"));
@@ -102,13 +176,29 @@ public final class AppPanel {
                         Ui.toast(host, result.message);
                     }
                 }));
-        if (item.hasLauncherEntry) {
-            rows.add(SettingRow.toggle("Hidden from home screen", item.hidden, () -> {
+        // Sonora itself gets no switch that could strand the remote: hiding
+        // it or removing it while it answers HOME leaves the button with
+        // nowhere to go.
+        boolean self = item.packageName.equals(host.getPackageName());
+        if (item.hasLauncherEntry && !self) {
+            // Two stores say "hidden": the system's disabled component and the
+            // tile menu's pref. The row is honest only if it reads and writes
+            // both, so a hide from either side shows and undoes the same way.
+            boolean hidden = item.hidden || host.prefs().hidden().contains(item.packageName);
+            rows.add(SettingRow.toggle("Hidden from home screen", hidden, () -> {
+                boolean target = !hidden;
                 PackageActions.Result result =
-                        PackageActions.setHidden(host, item.packageName, !item.hidden);
+                        PackageActions.setHidden(host, item.packageName, target);
                 Ui.toast(host, result.message);
                 if (result.ok) {
-                    item.hidden = !item.hidden;
+                    Set<String> homeHidden = host.prefs().hidden();
+                    if (target) {
+                        homeHidden.add(item.packageName);
+                    } else {
+                        homeHidden.remove(item.packageName);
+                    }
+                    host.prefs().setHidden(homeHidden);
+                    item.hidden = target;
                     adapter.reload();
                     // The home screen has to forget the app list, or the app
                     // stays on it until the app is restarted.
@@ -118,8 +208,9 @@ public final class AppPanel {
                 // value it had before the tap.
                 host.stack().refreshSettings(item.label,
                         detailRows(host, adapter, item));
+                tagDetail(host, item);
             }));
-        } else {
+        } else if (!item.hasLauncherEntry) {
             rows.add(SettingRow.value("Home screen", "No launcher entry, so nothing to hide"));
         }
         if (androidControlsStop) {
@@ -141,12 +232,14 @@ public final class AppPanel {
         }
         rows.add(SettingRow.value("Note",
                 "Disabling an app hides it from every launcher, including this one."));
-        rows.add(SettingRow.danger("Uninstall", () -> {
-            host.uninstallApp(item.packageName, item.label);
-            // The package may be gone by the time the home screen looks at
-            // its list again.
-            appsChanged(host);
-        }));
+        if (!self) {
+            rows.add(SettingRow.danger("Uninstall", () -> {
+                host.uninstallApp(item.packageName, item.label);
+                // The package may be gone by the time the home screen looks at
+                // its list again.
+                appsChanged(host);
+            }));
+        }
         return rows;
     }
 
@@ -205,6 +298,17 @@ public final class AppPanel {
         private final List<AppManager.Item> shown = new ArrayList<>();
         private int filter = FILTER_ALL;
         private final List<TextView> tabs = new ArrayList<>();
+        /** One decoder for every icon, like the thumbnails in the file manager. */
+        private final ExecutorService icons = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "sonora-icons");
+            thread.setDaemon(true);
+            thread.setPriority(Thread.MIN_PRIORITY);
+            return thread;
+        });
+        /** Icons already being decoded, so a rebind does not queue them again. */
+        private final Set<AppManager.Item> decoding = new HashSet<>();
+        /** A reload that is still running; a second ask is already covered. */
+        private boolean loading;
 
         AppAdapter(ToolActivity host) {
             this.host = host;
@@ -259,9 +363,17 @@ public final class AppPanel {
         }
 
         void load() {
+            if (loading) {
+                return;
+            }
+            loading = true;
             new Thread(() -> {
                 List<AppManager.Item> loaded = AppManager.load(host);
                 host.runOnUiThread(() -> {
+                    loading = false;
+                    if (host.isFinishing() || host.isDestroyed()) {
+                        return;
+                    }
                     all.clear();
                     all.addAll(loaded);
                     applyFilter();
@@ -272,6 +384,10 @@ public final class AppPanel {
 
         void reload() {
             load();
+        }
+
+        void shutdown() {
+            icons.shutdownNow();
         }
 
         private void applyFilter() {
@@ -326,6 +442,12 @@ public final class AppPanel {
 
             AppManager.Item item = getItem(position);
             if (item == null) {
+                // A recycled row still wears the app it last showed; without
+                // a clear it would present that app as this one.
+                label.setText("");
+                pkg.setText("");
+                icon.setTag(null);
+                icon.setImageDrawable(null);
                 return view;
             }
             label.setText(item.label);
@@ -340,27 +462,34 @@ public final class AppPanel {
             return view;
         }
 
-        /** Decodes one icon off the main thread and drops it in when it is ready. */
+        /** Decodes one icon on the shared worker and drops it in when it is ready. */
         private void loadIcon(AppManager.Item item, ImageView target) {
-            new Thread(() -> {
-                Bitmap bitmap = null;
-                try {
-                    PackageManager pm = host.getPackageManager();
-                    bitmap = Ui.drawableToBitmap(pm.getApplicationIcon(item.packageName),
-                            96, 96, true);
-                } catch (Exception | OutOfMemoryError ignored) {
-                }
-                if (bitmap == null) {
-                    return;
-                }
-                item.icon = bitmap;
-                final Bitmap ready = bitmap;
-                host.runOnUiThread(() -> {
-                    if (item.packageName.equals(target.getTag())) {
-                        target.setImageBitmap(ready);
+            if (!decoding.add(item)) {
+                return;
+            }
+            try {
+                icons.execute(() -> {
+                    Bitmap bitmap = null;
+                    try {
+                        PackageManager pm = host.getPackageManager();
+                        bitmap = Ui.drawableToBitmap(pm.getApplicationIcon(item.packageName),
+                                96, 96, true);
+                    } catch (Exception | OutOfMemoryError ignored) {
                     }
+                    if (bitmap != null) {
+                        item.icon = bitmap;
+                    }
+                    final Bitmap ready = bitmap;
+                    host.runOnUiThread(() -> {
+                        decoding.remove(item);
+                        if (ready != null && item.packageName.equals(target.getTag())) {
+                            target.setImageBitmap(ready);
+                        }
+                    });
                 });
-            }, "sonora-icon").start();
+            } catch (RejectedExecutionException e) {
+                decoding.remove(item);
+            }
         }
     }
 }

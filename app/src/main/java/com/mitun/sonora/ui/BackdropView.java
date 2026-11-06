@@ -6,7 +6,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.net.Uri;
 import android.view.View;
 
 import com.mitun.sonora.Prefs;
@@ -33,28 +32,15 @@ public final class BackdropView extends View {
     private final Paint scrim = new Paint();
     private final RectF destination = new RectF();
 
+    /**
+     * Cheap: it only looks in the shared blur. A miss draws the scrim over
+     * black until the caller hands a bitmap to {@link #setSoftened}; decoding
+     * here would run on whatever thread constructed the view.
+     */
     public BackdropView(Context context) {
         super(context);
         Prefs prefs = new Prefs(context);
-        String uri = prefs.wallpaperUri();
-        int index = prefs.wallpaper();
-        String key = key(index, uri);
-        bitmap = remembered(key);
-        if (bitmap == null) {
-            Bitmap decoded;
-            if (index < 0 && uri != null) {
-                decoded = Ui.decodeUri(getResources(), context.getContentResolver(),
-                        Uri.parse(uri), WIDTH);
-            } else {
-                decoded = Ui.decodeScene(getResources(),
-                        Scenes.ALL.get(Scenes.safeIndex(index)).res, WIDTH, HEIGHT);
-            }
-            bitmap = soften(decoded);
-            if (decoded != null) {
-                decoded.recycle();
-            }
-            remember(key, bitmap);
-        }
+        bitmap = remembered(key(prefs.wallpaper(), prefs.wallpaperUri()));
         scrim.setColor(Theme.backdropScrim());
     }
 

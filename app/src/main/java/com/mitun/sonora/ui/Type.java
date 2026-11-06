@@ -45,6 +45,9 @@ public final class Type {
 
     /** Applies a style to a text view. */
     public static void apply(TextView view, int style) {
+        if (style < 0 || style >= SIZES.length) {
+            style = BODY;
+        }
         view.setTextSize(SIZES[style]);
         view.setTypeface(Typeface.create(FACES[style], Typeface.NORMAL));
         view.setLetterSpacing(TRACKING[style]);
@@ -56,6 +59,9 @@ public final class Type {
      * in pixels rather than scaled units.
      */
     public static void apply(Paint paint, int style, Context context) {
+        if (style < 0 || style >= SIZES.length) {
+            style = BODY;
+        }
         paint.setTextSize(Ui.spf(context, SIZES[style]));
         paint.setTypeface(Typeface.create(FACES[style], Typeface.NORMAL));
         paint.setLetterSpacing(TRACKING[style]);

@@ -48,7 +48,9 @@ public final class SearchKeys {
     /** The query after a key. PAGE and VOICE do not change it. */
     public static String apply(String query, String key) {
         if (DELETE.equals(key)) {
-            return query.isEmpty() ? query : query.substring(0, query.length() - 1);
+            // Whole code points: halving an emoji would leave a lone surrogate.
+            return query.isEmpty() ? query
+                    : query.substring(0, query.offsetByCodePoints(query.length(), -1));
         }
         if (SPACE.equals(key)) {
             // A space only means something between two words.

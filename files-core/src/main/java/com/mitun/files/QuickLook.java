@@ -16,6 +16,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Quick Look: a picture or a text file on the whole screen, without leaving the
@@ -33,6 +35,13 @@ final class QuickLook extends FrameLayout {
     private final TextView caption;
     private final int maxSide;
     private final boolean low;
+    /** One decoder, so a held-down direction key cannot start a decode storm. */
+    private final ExecutorService decoder = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "files-quicklook");
+        thread.setDaemon(true);
+        thread.setPriority(Thread.MIN_PRIORITY);
+        return thread;
+    });
     private int index;
     private int generation;
 
@@ -84,30 +93,43 @@ final class QuickLook extends FrameLayout {
         final int ticket = ++generation;
         caption.setText(entry.name + "  ·  " + FileLogic.formatSize(entry.size));
         final boolean picture = entry.kind == FileLogic.IMAGE;
+        // The last picture goes at once rather than waiting under the new caption.
+        image.setImageDrawable(null);
         image.setVisibility(picture ? VISIBLE : GONE);
         textScroller.setVisibility(picture ? GONE : VISIBLE);
-        new Thread(() -> {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-            final Bitmap bitmap = picture ? decode(entry.file) : null;
-            final String content = picture ? null : readText(entry.file);
-            post(() -> {
+        try {
+            decoder.execute(() -> {
+                // Out of date already, so it never even reaches the disk.
                 if (ticket != generation) {
                     return;
                 }
-                if (picture) {
-                    image.setImageBitmap(bitmap);
-                    if (bitmap == null) {
-                        caption.setText(entry.name + "  ·  This picture cannot be shown");
+                final Bitmap bitmap = picture ? decode(entry.file) : null;
+                final String content = picture ? null : readText(entry.file);
+                post(() -> {
+                    if (ticket != generation) {
+                        return;
                     }
-                } else {
-                    text.setText(content);
-                    textScroller.scrollTo(0, 0);
-                }
+                    if (picture) {
+                        image.setImageBitmap(bitmap);
+                        if (bitmap == null) {
+                            caption.setText(entry.name + "  ·  This picture cannot be shown");
+                        }
+                    } else {
+                        text.setText(content);
+                        textScroller.scrollTo(0, 0);
+                    }
+                });
             });
-        }, "files-quicklook").start();
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // Closed while the press was still landing.
+        }
     }
 
     private Bitmap decode(File file) {
+        // A pipe or socket wearing a picture's name would hold the decode open.
+        if (!file.isFile()) {
+            return null;
+        }
         try {
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
@@ -126,6 +148,10 @@ final class QuickLook extends FrameLayout {
     }
 
     private static String readText(File file) {
+        // A pipe or socket wearing a text file's name would hold the read open.
+        if (!file.isFile()) {
+            return "This file cannot be read.";
+        }
         byte[] buffer = new byte[MAX_TEXT];
         int total = 0;
         try (FileInputStream in = new FileInputStream(file)) {
@@ -155,6 +181,7 @@ final class QuickLook extends FrameLayout {
 
     void close() {
         generation++;
+        decoder.shutdownNow();
         image.setImageDrawable(null);
         onClose.run();
     }
@@ -172,14 +199,25 @@ final class QuickLook extends FrameLayout {
             boolean picture = entries.get(index).kind == FileLogic.IMAGE;
             if (picture && code == KeyEvent.KEYCODE_DPAD_LEFT) {
                 step(-1);
-            } else if (picture && code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return true;
+            }
+            if (picture && code == KeyEvent.KEYCODE_DPAD_RIGHT) {
                 step(1);
-            } else if (!picture && code == KeyEvent.KEYCODE_DPAD_UP) {
+                return true;
+            }
+            if (!picture && code == KeyEvent.KEYCODE_DPAD_UP) {
                 textScroller.smoothScrollBy(0, -getHeight() / 2);
-            } else if (!picture && code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                return true;
+            }
+            if (!picture && code == KeyEvent.KEYCODE_DPAD_DOWN) {
                 textScroller.smoothScrollBy(0, getHeight() / 2);
+                return true;
             }
         }
-        return true;
+        // Directions and OK stay here so the focus cannot wander into the window
+        // behind; anything else, volume included, still reaches the system.
+        return code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
+                || code == KeyEvent.KEYCODE_DPAD_CENTER;
     }
 }

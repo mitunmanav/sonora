@@ -64,6 +64,9 @@ public final class AppSwitcherView extends FrameLayout {
             empty.addView(hint);
             addView(empty, new LayoutParams(LayoutParams.WRAP_CONTENT,
                     LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            // With no card to hold the focus, the overlay takes it itself, so
+            // UP or DOWN still lands on the dismiss path in focusSearch.
+            setFocusable(true);
             row = null;
             return;
         }
@@ -73,8 +76,14 @@ public final class AppSwitcherView extends FrameLayout {
         row.setGravity(Gravity.CENTER);
         row.setClipChildren(false);
         row.setClipToPadding(false);
-        for (int i = 0; i < apps.size(); i++) {
-            row.addView(new Card(context, apps.get(i)), cardParams(i));
+        // Only cards that fit on the screen exist. A card fully past the edge
+        // would still take the focus and launch an app the user cannot see.
+        int cardW = dp(CARD_W);
+        int screenW = context.getResources().getDisplayMetrics().widthPixels;
+        int fit = Math.max(1, (screenW - cardW) / (cardW + dp(CARD_GAP)) + 1);
+        List<AppEntry> shown = apps.subList(0, Math.min(apps.size(), fit));
+        for (int i = 0; i < shown.size(); i++) {
+            row.addView(new Card(context, shown.get(i)), cardParams(i));
         }
         addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT, Gravity.CENTER));
@@ -113,6 +122,7 @@ public final class AppSwitcherView extends FrameLayout {
     public void open() {
         Motion.spring(this, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
         if (row == null) {
+            requestFocus();
             return;
         }
         row.setTranslationY(dp(14));
@@ -124,6 +134,9 @@ public final class AppSwitcherView extends FrameLayout {
             card.setScaleX(0.92f);
             card.setScaleY(0.92f);
             card.postDelayed(() -> {
+                if (!card.isAttachedToWindow()) {
+                    return;
+                }
                 Motion.spring(card, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
                         Motion.RESPONSE_FOCUS);
                 Motion.scale(card, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
@@ -181,6 +194,20 @@ public final class AppSwitcherView extends FrameLayout {
         private final AppEntry entry;
         private final TextView label;
         private float focus;
+        /** One property per card, so a focus change allocates nothing. */
+        private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return focus;
+            }
+
+            @Override
+            public void set(float value) {
+                focus = value;
+                material.setFocus(value);
+                label.setTextColor(Ui.mix(Theme.ink(), Ui.INK_ON_LIT, value));
+            }
+        };
 
         Card(Context context, AppEntry app) {
             super(context);
@@ -194,7 +221,13 @@ public final class AppSwitcherView extends FrameLayout {
             setBackground(material);
 
             ImageView icon = new ImageView(context);
-            icon.setImageBitmap(app.icon);
+            if (app.icon != null && !app.icon.isRecycled()) {
+                icon.setImageBitmap(app.icon);
+            } else {
+                // An app that gave no icon still gets a card, in its colour.
+                icon.setImageDrawable(Ui.rounded(Ui.tileColor(app.accent),
+                        Ui.dpf(context, 12f)));
+            }
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             LayoutParams iconParams = new LayoutParams(dp(52), dp(52),
                     Gravity.TOP | Gravity.CENTER_HORIZONTAL);
@@ -217,19 +250,7 @@ public final class AppSwitcherView extends FrameLayout {
                         Motion.RESPONSE_FOCUS);
                 setElevation(Ui.dpf(context, hasFocus ? 14f : 0f));
                 Motion.springCustom(this, 0, hasFocus ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                        Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
-                            @Override
-                            public float get() {
-                                return focus;
-                            }
-
-                            @Override
-                            public void set(float value) {
-                                focus = value;
-                                material.setFocus(value);
-                                label.setTextColor(Ui.mix(Theme.ink(), Ui.INK_ON_LIT, value));
-                            }
-                        });
+                        Motion.RESPONSE_FOCUS, focusValue);
             });
             setOnClickListener(v -> listener.onPick(entry));
             setOnLongClickListener(v -> {

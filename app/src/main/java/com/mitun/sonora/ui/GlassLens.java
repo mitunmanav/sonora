@@ -50,6 +50,7 @@ public final class GlassLens {
         if (wallpaper == null || wallpaper.isRecycled() || region.isEmpty()) {
             return null;
         }
+        scale = Math.max(1, scale);
         int w = Math.max(1, region.width() / scale);
         int h = Math.max(1, region.height() / scale);
         Bitmap flat = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);

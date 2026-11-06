@@ -35,6 +35,7 @@ final class Sheets {
         private final Runnable onCancel;
         private final LinearLayout panel;
         private final FrameLayout host;
+        private TextView messageView;
         private boolean closed;
 
         Sheet(FrameLayout host, FilesTheme theme, int width, Runnable onCancel) {
@@ -61,6 +62,13 @@ final class Sheets {
 
         LinearLayout panel() {
             return panel;
+        }
+
+        /** Replaces the message of an alert still open, for an answer read late. */
+        void message(String text) {
+            if (messageView != null) {
+                messageView.setText(text);
+            }
         }
 
         void close() {
@@ -215,6 +223,7 @@ final class Sheets {
         label.setText(text);
         label.setTextSize(14.5f);
         label.setSingleLine(true);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         int rest = danger ? theme.danger : theme.ink;
         label.setTextColor(rest);
         row.addView(label, new LinearLayout.LayoutParams(0,
@@ -265,8 +274,15 @@ final class Sheets {
 
     /** An alert that asks for a name, using the TV's own keyboard. */
     static Sheet input(FrameLayout host, FilesTheme theme, String title, String initial,
-                       String confirm, Text onText) {
-        Sheet sheet = new Sheet(host, theme, 380, null);
+                       String confirm, Runnable onCancel, Text onText) {
+        // By the time a cancel runs, the sheet — and the field's window token —
+        // is gone, so the keyboard is hidden through the host still attached.
+        Sheet sheet = new Sheet(host, theme, 380, () -> {
+            hideKeyboard(host);
+            if (onCancel != null) {
+                onCancel.run();
+            }
+        });
         Context context = host.getContext();
         addAlertText(sheet, theme, title, null);
         EditText field = new EditText(context);
@@ -387,8 +403,10 @@ final class Sheets {
             paint.setColor(theme.hover);
             canvas.drawRoundRect(0, 0, getWidth(), getHeight(), r, r, paint);
             paint.setColor(theme.accent);
-            canvas.drawRoundRect(0, 0, Math.max(getHeight(), getWidth() * progress), getHeight(), r,
-                    r, paint);
+            if (progress > 0f) {
+                canvas.drawRoundRect(0, 0, Math.max(getHeight(), getWidth() * progress),
+                        getHeight(), r, r, paint);
+            }
         }
     }
 
@@ -402,6 +420,8 @@ final class Sheets {
         heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium",
                 android.graphics.Typeface.NORMAL));
         heading.setGravity(Gravity.CENTER);
+        heading.setSingleLine(true);
+        heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
         heading.setPadding(pad, pad, pad, FilesTheme.dp(context, 6));
         sheet.panel().addView(heading);
         if (message != null) {
@@ -412,6 +432,7 @@ final class Sheets {
             body.setGravity(Gravity.CENTER);
             body.setPadding(pad, 0, pad, pad);
             sheet.panel().addView(body);
+            sheet.messageView = body;
         }
     }
 

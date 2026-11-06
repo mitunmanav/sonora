@@ -56,6 +56,16 @@ public class FileLogicTest {
     }
 
     @Test
+    public void mimeTypesMatchWhatThePlatformCallsThem() {
+        assertEquals("video/3gpp", FileLogic.mimeOf("a.3gp"));
+        assertEquals("video/mpeg", FileLogic.mimeOf("a.mpg"));
+        assertEquals("video/x-ms-wmv", FileLogic.mimeOf("a.wmv"));
+        assertEquals("video/x-flv", FileLogic.mimeOf("a.flv"));
+        assertEquals("audio/x-ms-wma", FileLogic.mimeOf("a.wma"));
+        assertEquals("audio/ogg", FileLogic.mimeOf("a.opus"));
+    }
+
+    @Test
     public void sizesAreWrittenTheAppleWay() {
         assertEquals("0 bytes", FileLogic.formatSize(0));
         assertEquals("1 byte", FileLogic.formatSize(1));
@@ -111,6 +121,24 @@ public class FileLogicTest {
         assertNotNull(FileLogic.nameProblem(".."));
         assertNotNull(FileLogic.nameProblem("a/b"));
         assertNotNull(FileLogic.nameProblem("x".repeat(256)));
+        assertNull(FileLogic.nameProblem("Holiday 2026.mp4"));
+    }
+
+    @Test
+    public void namesWithControlCharactersAreRefused() {
+        assertNotNull(FileLogic.nameProblem("a\nb"));
+        assertNotNull(FileLogic.nameProblem("a\tb"));
+        assertNotNull(FileLogic.nameProblem("a\u007Fb"));
+        assertNull(FileLogic.nameProblem("Holiday 2026.mp4"));
+    }
+
+    @Test
+    public void namesAUsbStickCannotHoldAreRefused() {
+        for (String bad : new String[]{"a?b", "a|b", "a\\b", "a\"b", "a:b", "a*b",
+                "a<b", "a>b", "a.", "a "}) {
+            assertNotNull(FileLogic.nameProblem(bad));
+        }
+        assertNull(FileLogic.nameProblem("a.b c.txt"));
         assertNull(FileLogic.nameProblem("Holiday 2026.mp4"));
     }
 

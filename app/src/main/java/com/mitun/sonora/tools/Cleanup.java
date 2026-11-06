@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 
 import com.mitun.sonora.PackageActions;
+import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +51,9 @@ public final class Cleanup {
             "com.google.android.tvlauncher",
     };
 
+    /** getApplicationEnabledSetting has no "not installed" answer of its own. */
+    private static final int NOT_INSTALLED = -1;
+
     private Cleanup() {
     }
 
@@ -69,7 +73,17 @@ public final class Cleanup {
 
         public String message() {
             if (failed > 0) {
-                return turnedOff + " turned off, " + failed + " could not be changed";
+                // Name them: a bare count leaves the user guessing which
+                // apps the system refused to turn off.
+                StringBuilder names = new StringBuilder();
+                for (String pkg : problems) {
+                    if (names.length() > 0) {
+                        names.append(", ");
+                    }
+                    names.append(pkg);
+                }
+                return turnedOff + " turned off, " + failed + " could not be changed: "
+                        + names;
             }
             if (turnedOff == 0) {
                 return "Nothing to do. Everything was already off";
@@ -90,15 +104,17 @@ public final class Cleanup {
         int alreadyOff = 0;
         int failed = 0;
         List<String> problems = new ArrayList<>();
+        boolean sonoraIsHome = Ui.isDefaultLauncher(context);
         for (String pkg : PACKAGES) {
-            int state = state(pm, pkg);
-            if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                    || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER) {
-                alreadyOff++;
+            if (!sonoraIsHome && "com.google.android.tvlauncher".equals(pkg)) {
+                // Turning off the stock launcher while it still answers HOME
+                // leaves the button with nowhere to go.
                 continue;
             }
-            if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
-                // Not installed on this TV: nothing to do.
+            int state = state(pm, pkg);
+            if (state == NOT_INSTALLED
+                    || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER) {
                 alreadyOff++;
                 continue;
             }
@@ -116,15 +132,24 @@ public final class Cleanup {
     /**
      * How a package is set up right now.
      *
-     * A package the system will not answer for is reported as DEFAULT: it
-     * was not looked at, so it must not be counted as one that was already
-     * off.
+     * DEFAULT is not an answer of its own - it means whatever the manifest
+     * says - so the resolved enabled flag is read instead. A package that is
+     * not installed is NOT_INSTALLED, and one the system cannot answer for is
+     * reported as on: it gets tried, and counted when the try fails.
      */
     private static int state(PackageManager pm, String packageName) {
         try {
-            return pm.getApplicationEnabledSetting(packageName);
+            int setting = pm.getApplicationEnabledSetting(packageName);
+            if (setting != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+                return setting;
+            }
+            return pm.getApplicationInfo(packageName, 0).enabled
+                    ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                    : PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+        } catch (PackageManager.NameNotFoundException | IllegalArgumentException e) {
+            return NOT_INSTALLED;
         } catch (RuntimeException e) {
-            return PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+            return PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
         }
     }
 }
