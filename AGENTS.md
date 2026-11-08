@@ -11,6 +11,8 @@
 - `docs/`: `ARCHITECTURE.md` (what exists + the rules), `research/` (design and performance notes), `plans/` (running log
   and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
 - `reference/`: vendor APKs for study. Git-ignored.
+- `site/`: the GitHub Pages site (`mitunmanav.github.io/sonora`), deployed from `master` by `.github/workflows/pages.yml`.
+- `.github/`: CI (tests, release build, `Sole author` check), Dependabot config, issue templates.
 - `README.md`: the human-facing overview. `GLOSSARY.md`: the domain vocabulary — use its terms.
 
 ## Explore with CodeGraph first
