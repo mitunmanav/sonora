@@ -10,7 +10,7 @@ Written down as asked ("please note all of these requirements").
 | 2 | Search | Done — own one-line keyboard (`SearchKeys`, `SearchKeyboard`), layout matches the UI. Seen on the TV. |
 | 3 | Focus animation | Done — lean, parallax and sheen removed; every card behaves the same. This is also the biggest perf win. |
 | 4 | Dark and light mode | Done — `ui/Theme`, Appearance page with Dark/Light. The rest of the look is unchanged. |
-| 5 | Edge cases | Done — third pass (2026-11-06): two parallel audits plus a `ui/` walk; fixed a broken unhide path, unified the two hidden stores, gated the photo-source setting on real access, monotonic timing, ~20 items total; 118 tests green; details in `.scratch/edge-cases-3/plan.md` and PLAN.md session 26. TV walk still owed. |
+| 5 | Edge cases | Done — seventh pass (2026-11-06): two parallel audits over `HomeActivity`, `ui/` and `tools/`; fixed the dead "On tap" saver clock, ghost tiles after system-side uninstall, a blind unhide, HOME-isn't-interaction, pending-switcher cancel, `suppressIdle` ordering, retail-dead Hide toggle, ~15 items; 156 tests green; PLAN.md session 32. TV walk still owed. |
 | 6 | Performance | Done and measured — `DeviceTier` LOW/MID/HIGH, tier-gated effects, `docs/perf/2026-11-04.md`. No real 1 GB TV has been available; LOW was forced on a 2 GB TV. |
 | 7 | Apple-styled file manager | Done — `files-core`, Finder-style grid/list, sheets, quick look. Rename/New Folder, USB drives and real thumbnails are built but not all seen on the TV. |
 | 8 | Separate app, also bundled | Done — `com.mitun.files` ships standalone and inside Sonora's Tools. |
