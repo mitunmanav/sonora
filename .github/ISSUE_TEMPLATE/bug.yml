@@ -1,0 +1,24 @@
+name: Bug report
+description: Something on the TV does not work as it should.
+body:
+  - type: input
+    id: device
+    attributes:
+      label: TV or box
+      description: Make and model, Android version, RAM.
+      placeholder: Mi TV Stick, Android 11, 2 GB
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What happened
+      description: What you pressed, what you expected, what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: For a crash, the output of `adb logcat -d | grep -A 20 'FATAL EXCEPTION'`.
+      render: text
