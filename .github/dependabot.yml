@@ -1,0 +1,16 @@
+# Dependabot opens pull requests; none is ever merged. A merged bot pull request
+# lists the bot as a contributor, and CI's "Sole author" check fails on it.
+# Copy the update into a commit of your own; Dependabot then closes its pull request.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

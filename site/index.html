@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sonora: a quiet home screen for Android TV</title>
+<meta name="description" content="A tvOS-style home screen for Android TV in plain Java with no libraries. About 37 MB of memory where Google TV's home screen held 180 to 290 MB on the same stick.">
+<meta name="theme-color" content="#08131D">
+<meta property="og:title" content="Sonora: a quiet home screen for Android TV">
+<meta property="og:description" content="Your apps, Control Center and an aerial screensaver. No ads, no accessibility service, no outbound connections.">
+<meta property="og:image" content="https://mitunmanav.github.io/sonora/img/og.jpg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/mark.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/schibsted-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="Sonora home">
+    <img src="img/mark.svg" alt="" width="28" height="28">
+    <span>Sonora</span>
+  </a>
+  <nav aria-label="Sections">
+    <a href="#measured">Measured</a>
+    <a href="#different">Different</a>
+    <a href="#field">The field</a>
+    <a href="#install">Install</a>
+    <a class="gh" href="https://github.com/mitunmanav/sonora">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="hero-copy">
+    <h1>Your apps, on a quiet screen.</h1>
+    <p class="lede">Sonora is a home screen for Android TV built the way tvOS works: a glass dock, Control Center, an app switcher and an aerial screensaver. On a 2&nbsp;GB Mi TV Stick it holds about 37&nbsp;MB of memory. Google TV’s home screen held 180 to 290&nbsp;MB on the same stick, and spent some of it on adverts.</p>
+    <p class="actions">
+      <a class="button" href="#install">Build and install</a>
+      <a class="quiet" href="https://github.com/mitunmanav/sonora">Read the source</a>
+    </p>
+  </div>
+
+  <figure class="tv" aria-label="Sonora on a television">
+    <div class="screen">
+      <img id="tv-image" src="img/control-center.webp" width="1600" height="900" alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
+    </div>
+    <figcaption id="tv-caption">Control Center. Every tile does something this TV can really do.</figcaption>
+  </figure>
+
+  <div class="picker" role="tablist" aria-label="Screens" data-picker>
+    <button role="tab" aria-selected="true" data-src="img/control-center.webp" data-caption="Control Center. Every tile does something this TV can really do." data-alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
+      <img src="img/control-center.webp" alt="" width="480" height="270" loading="lazy"><span>Control Center</span>
+    </button>
+    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/home.webp" data-caption="The home screen in the light appearance. The focused card lifts; nothing else on screen redraws." data-alt="The home screen: an aerial photograph behind a glass dock of app cards, with the focused app's name in the corner and a clock at the top right.">
+      <img src="img/home-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Home</span>
+    </button>
+    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/grid.webp" data-caption="Press down and the dock opens into every app you have, sideloaded ones included." data-alt="The full app grid: three rows of app banners on a dark blurred background.">
+      <img src="img/grid-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>All apps</span>
+    </button>
+    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/settings.webp" data-caption="Settings in the split layout of tvOS. Back is always one step." data-alt="Settings: a large gear on the left and a list on the right with Quick settings, Home Screen, Clock, Screen Saver, Apps, Tools, System and Mode.">
+      <img src="img/settings-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Settings</span>
+    </button>
+    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/files.webp" data-caption="Files, a Finder-style file manager, comes inside Sonora and also ships as its own 48 KB app." data-alt="Files: a sidebar of favourites and locations, and a window showing a Downloads folder.">
+      <img src="img/files-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Files</span>
+    </button>
+    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/dream.webp" data-caption="The screensaver: five aerial photographs that ship inside the app, so it never downloads a thing." data-alt="An aerial photograph of a frosted tree in a field, seen from directly above.">
+      <img src="img/dream-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Screensaver</span>
+    </button>
+  </div>
+  <p class="hint">Real screenshots from the test TV. With a keyboard, the arrow keys move between them the way a remote would.</p>
+</section>
+
+<section id="measured" class="section">
+  <h2>Measured on the same stick</h2>
+  <p class="intro">One Mi TV Stick, Android 11, 2&nbsp;GB of RAM. Same debloated system for every run, cold boot, a minute to settle, then the same twelve-key walk across the home screen. Only the launcher changed. The raw <code>dumpsys</code> output is in the repository.</p>
+
+  <div class="meter" role="img" aria-label="Launcher memory after the key walk: Sonora 36 megabytes, Google TV 275 to 288 megabytes.">
+    <div class="meter-row">
+      <span class="who">Sonora</span>
+      <span class="track"><span class="fill fill-sonora" style="--v: 36"></span></span>
+      <span class="val">36 MB</span>
+    </div>
+    <div class="meter-row">
+      <span class="who">Google TV</span>
+      <span class="track"><span class="fill fill-gtv" style="--v: 288"></span></span>
+      <span class="val">275–288 MB</span>
+    </div>
+    <p class="meter-note">Launcher memory (total PSS) after the key walk.</p>
+  </div>
+
+  <div class="table-wrap">
+  <table class="numbers">
+    <thead>
+      <tr><th scope="col"></th><th scope="col">Sonora</th><th scope="col">Google TV</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">Launcher memory at idle</th><td>37 MB</td><td>181–182 MB</td></tr>
+      <tr><th scope="row">Launcher memory after the walk</th><td>36 MB</td><td>275–288 MB</td></tr>
+      <tr><th scope="row">Frames that missed their deadline</th><td>0.9%</td><td>6.3–7.8%</td></tr>
+      <tr><th scope="row">Slowest 1% of frames</th><td>23 ms</td><td>105–200 ms</td></tr>
+      <tr><th scope="row">Slow UI-thread events</th><td>0</td><td>13</td></tr>
+      <tr><th scope="row">Memory left free for apps, at idle</th><td>about 900 MiB</td><td>about 810 MiB</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="fine">Two Google TV runs agreed within 10%; Sonora figures are from the current build. Google TV’s process also hosts its recommendation rows and channel logos, work Sonora never does. That is the cost of the stock screen, adverts included. The screensaver, measured separately, ran at its designed 30 frames a second with no janky frames. <a href="https://github.com/mitunmanav/sonora/blob/master/docs/perf/2026-11-05.md">Method, caveats and raw dumps</a>.</p>
+</section>
+
+<section id="different" class="section">
+  <h2>What it does that others don’t</h2>
+  <p class="intro">There are a dozen good ad-free launchers now. These are the parts of Sonora you won’t find together anywhere else.</p>
+
+  <dl class="claims">
+    <div>
+      <dt>It is the home app. It doesn’t hijack one.</dt>
+      <dd>Projectivy, AT4K, Dispatch and Vitrine can use an accessibility service to catch the Home button. An accessibility service can read what is on screen, and the developer of Dispatch notes they cost performance too. Sonora declares no accessibility service, no broadcast receiver and no background service apart from the screensaver. You set it as the TV’s home app and that is the whole arrangement.</dd>
+    </div>
+    <div>
+      <dt>No libraries at all, back to Android 6.</dt>
+      <dd>No AndroidX, no Compose, no Flutter, no Kotlin runtime: only the platform. The springs behind every focus move are solved by hand in <code>ui/Spring.java</code>. That is why it runs on Android 6.0 TVs, where Vitrine needs Android 11 and Monet and AT4K need Android 8.</dd>
+    </div>
+    <div>
+      <dt>tvOS behaviour, not just the tvOS look.</dt>
+      <dd>Most Apple-TV-style launchers copy the grid. Sonora copies how it behaves: Control Center from the corner, a double-press of Home for the app switcher, a search with its own one-line keyboard, settings where Back is always one step, and a focus lift that redraws at most the two cards involved.</dd>
+    </div>
+    <div>
+      <dt>Every effect has a 1&nbsp;GB answer.</dt>
+      <dd>Sonora reads the TV’s RAM and picks a tier. On about 1&nbsp;GB the wallpaper is half-size, the glass is frosted rather than bent and cards drop their shadows; from 2&nbsp;GB up the full glass comes back. It looks like itself on the cheapest stick instead of turning into a list.</dd>
+    </div>
+    <div>
+      <dt>A file manager in the box.</dt>
+      <dd>Files is a Finder-style manager with a sidebar, icon and list views, quick look and USB drives. It comes inside Sonora and ships separately as a 48&nbsp;KB app. A Share screen serves files to your phone over the home network and shuts the server down the moment you leave it.</dd>
+    </div>
+    <div>
+      <dt>It never phones home, or anywhere.</dt>
+      <dd>There is no outbound connection anywhere in the code. The one socket is the local Share server. The screensaver photos ship inside the app, so even the screensaver works with the network unplugged. No analytics, no account, no sign-in.</dd>
+    </div>
+    <div>
+      <dt>It says what your TV can’t do.</dt>
+      <dd>If a feature needs a permission your TV won’t give, the screen tells you so instead of showing a switch that does nothing. The voice key only appears when an assistant is actually installed.</dd>
+    </div>
+  </dl>
+</section>
+
+<section id="field" class="section">
+  <h2>The field, November 2026</h2>
+  <p class="intro">From each project’s own page or store listing. “Not stated” means we couldn’t find it, not that it’s missing.</p>
+  <div class="table-wrap">
+  <table class="field">
+    <thead>
+      <tr>
+        <th scope="col">Launcher</th>
+        <th scope="col">Source</th>
+        <th scope="col">Built with</th>
+        <th scope="col">Oldest Android</th>
+        <th scope="col">Catches Home with</th>
+        <th scope="col">File manager</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="us"><th scope="row">Sonora</th><td>Open, GPL-3.0</td><td>Java, no libraries</td><td>6.0</td><td>Nothing; it is the home app</td><td>Built in, and standalone</td></tr>
+      <tr><th scope="row"><a href="https://support.google.com/google-ads/answer/14078207">Google TV</a></th><td>Closed</td><td>Not public</td><td>Ships with the TV</td><td>Stock</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://livenettv.tools/projectivy-launcher-review/">Projectivy</a></th><td>Closed</td><td>Not stated</td><td>6.0</td><td>Accessibility service</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://github.com/avadhesh18/at4k">AT4K</a></th><td>Closed</td><td>Not stated</td><td>8.0</td><td>Optional accessibility service</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://github.com/Klevico/Monet-Launcher">Monet</a></th><td>Closed</td><td>Not stated</td><td>8.0</td><td>Not stated</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://github.com/QBH21/vitrine">Vitrine</a></th><td>Open</td><td>Kotlin, Compose</td><td>11</td><td>Optional accessibility service</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://github.com/conreo/couchy-launcher">Couchy</a></th><td>Open, GPL-3.0</td><td>Kotlin</td><td>5.0</td><td>Not stated</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://gitlab.com/flauncher/flauncher">FLauncher</a></th><td>Open, GPL-3.0</td><td>Flutter</td><td>Not stated</td><td>A button remapper, or adb</td><td>No</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="fine">Some are lighter than Sonora: Vitrine reports about 27&nbsp;MB and just-a-launcher about 35&nbsp;MB, each on its own TV. They get there by showing less. Couchy reaches back to Android 5. Projectivy has Watch Next rows, HDMI inputs and a phone remote, which Sonora does not. Pick the one that fits your TV.</p>
+</section>
+
+<section id="limits" class="section">
+  <h2>What it can’t do yet</h2>
+  <ul class="limits">
+    <li>No Watch Next or channel rows, and no shortcuts to HDMI inputs.</li>
+    <li>No signed download yet. You build it and install it over adb.</li>
+    <li>On Google TV, becoming the home app means turning off the stock launcher over adb, and on the test stick it came back on after a reboot.</li>
+    <li>The 1&nbsp;GB tier was tested by forcing it on a 2&nbsp;GB stick. No real 1&nbsp;GB TV has been through it yet.</li>
+    <li>Hiding or turning off another app needs a permission most retail TVs keep for system apps. Sonora tells you when that is the case.</li>
+    <li>The app switcher needs Usage access, granted once in the TV’s settings.</li>
+    <li>Fire TV sticks on Vega OS can’t install it, or any other Android app from outside Amazon’s store.</li>
+  </ul>
+</section>
+
+<section id="install" class="section">
+  <h2>Build and install</h2>
+  <p class="intro">Linux or WSL with JDK 17 and the Android SDK, and a TV with network debugging turned on (Settings, Device Preferences, About, press Build seven times, then Developer options).</p>
+  <ol class="steps">
+    <li>
+      <p>Build and test.</p>
+<pre><code>git clone https://github.com/mitunmanav/sonora.git
+cd sonora
+./gradlew :app:testDebugUnitTest :files-core:testDebugUnitTest
+./gradlew :app:assemblePerf</code></pre>
+    </li>
+    <li>
+      <p>Install it on the TV.</p>
+<pre><code>adb connect &lt;tv-ip&gt;:5555
+adb install -r app/build/outputs/apk/perf/app-perf.apk</code></pre>
+    </li>
+    <li>
+      <p>Make it the home screen. Press Home and choose Sonora, or:</p>
+<pre><code>adb shell cmd package set-home-activity com.mitun.sonora/.HomeActivity</code></pre>
+      <p class="fine">On Google TV, also turn off the stock launcher: <code>adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx</code>. <code>pm enable</code> brings it back.</p>
+    </li>
+  </ol>
+  <p class="fine">The <code>perf</code> build is the release build signed with your debug key, so it installs without a keystore. The standalone Files app builds with <code>./gradlew :files:assemblePerf</code>.</p>
+</section>
+
+</main>
+
+<footer class="foot">
+  <p>Sonora is written by <a href="https://github.com/mitunmanav">Mitun Manav</a> and licensed under the <a href="https://github.com/mitunmanav/sonora/blob/master/LICENSE">GPL-3.0</a>. It is not affiliated with Apple or Google. Every mark is drawn for the project.</p>
+  <p>Screensaver photographs, CC BY-SA 4.0: Dietmar Rabich (Dülmen), Tasha~visual (Ngorongoro), Syrio (Vigo di Fassa), Medoffer (Zhuravlyne Lake), Bhullargraphic (Punjab). App banners in the screenshots belong to their owners.</p>
+  <p>This page loads nothing from anywhere else: no fonts, no scripts, no cookies.</p>
+</footer>
+
+<script src="picker.js" defer></script>
+</body>
+</html>
