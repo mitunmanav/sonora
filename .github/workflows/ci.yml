@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unit tests and release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest :files-core:testDebugUnitTest
+
+      - name: Release build
+        run: ./gradlew :app:assembleRelease :files:assembleRelease
+
+  sole-author:
+    # Every commit on master is authored by the owner alone: no bots, no
+    # co-author trailers. A merged bot pull request would list the bot as a
+    # contributor, so its update is copied to an owner commit instead.
+    name: Sole author
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check authors and trailers
+        env:
+          OWNER_EMAILS: mitunmanav933@gmail.com 238927830+mitunmanav@users.noreply.github.com
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before && format('{0}..{1}', github.event.before, github.sha)) || 'HEAD' }}
+        run: |
+          bad=$(git log --format='%h %ae %an' "$RANGE" | awk -v ok=" $OWNER_EMAILS " 'index(ok, " " $2 " ") == 0')
+          trailers=$(git log --format='%h %(trailers:key=Co-authored-by,valueonly,separator=%x2C)' "$RANGE" | awk 'NF > 1')
+          if [ -n "$bad$trailers" ]; then
+            [ -n "$bad" ] && echo "::error::Commits not authored by the owner:" && echo "$bad"
+            [ -n "$trailers" ] && echo "::error::Commits with co-author trailers:" && echo "$trailers"
+            echo "Copy the change into a commit of your own and close this one."
+            exit 1
+          fi
