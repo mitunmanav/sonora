@@ -43,7 +43,8 @@ final class QuickLook extends FrameLayout {
         return thread;
     });
     private int index;
-    private int generation;
+    /** Written on the screen's thread, read on the decoder's. */
+    private volatile int generation;
 
     QuickLook(Context context, FilesTheme theme, List<FileLogic.Entry> entries, int start,
               boolean low, Runnable onClose) {

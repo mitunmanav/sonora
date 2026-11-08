@@ -181,6 +181,49 @@ public class FileOpsTest {
     }
 
     @Test
+    public void aMoveLeavesWhatArrivedAfterTheCopy() throws IOException {
+        // renameTo refuses, the way a different drive does, so the move is a
+        // real copy and delete.
+        File folder = new File(from, "album") {
+            @Override
+            public boolean renameTo(File dest) {
+                return false;
+            }
+        };
+        assertTrue(folder.mkdir());
+        write(folder, "a.txt", "x".repeat(300_000));
+        // A file that lands in the source while the copy runs is not the
+        // copy's to take away.
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(folder), to, true,
+                go, (done, total, name) -> {
+                    try {
+                        write(folder, "late.txt", "keep me");
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+        assertEquals("keep me", read(new File(folder, "late.txt")));
+        assertFalse(new File(folder, "a.txt").exists());
+        assertEquals("x".repeat(300_000), read(new File(to, "album/a.txt")));
+        assertEquals(1, result.failed);
+        assertNotNull(result.problem);
+    }
+
+    @Test
+    public void aMoveCannotTakeADanglingLinksName() throws IOException {
+        File a = write(from, "a.txt", "new");
+        java.nio.file.Files.createSymbolicLink(new File(to, "a.txt").toPath(),
+                new File(to, "missing").toPath());
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(a), to, true, go, null);
+        assertEquals(1, result.done);
+        assertEquals(0, result.failed);
+        // The link keeps its name; the moved file lands on the next free one.
+        assertTrue(java.nio.file.Files.isSymbolicLink(new File(to, "a.txt").toPath()));
+        assertEquals("new", read(new File(to, "a copy.txt")));
+        assertFalse(a.exists());
+    }
+
+    @Test
     public void aMissingFileIsReportedAndTheRestStillGo() throws IOException {
         File gone = new File(from, "gone.txt");
         File a = write(from, "a.txt", "x");
@@ -206,7 +249,7 @@ public class FileOpsTest {
         File folder = new File(from, "album");
         assertTrue(folder.mkdir());
         write(folder, "1.jpg", "one");
-        FileOps.Result result = FileOps.delete(Collections.singletonList(folder), go);
+        FileOps.Result result = FileOps.delete(Collections.singletonList(folder), go, null);
         assertEquals(1, result.done);
         assertFalse(folder.exists());
     }
@@ -217,7 +260,7 @@ public class FileOpsTest {
         write(target, "precious.txt", "x");
         File link = new File(from, "link");
         Files.createSymbolicLink(link.toPath(), target.toPath());
-        FileOps.delete(Collections.singletonList(link), go);
+        FileOps.delete(Collections.singletonList(link), go, null);
         assertFalse(link.exists());
         assertTrue(new File(target, "precious.txt").exists());
     }
@@ -228,14 +271,14 @@ public class FileOpsTest {
         assertTrue(folder.mkdir());
         Files.createSymbolicLink(new File(folder, "broken").toPath(),
                 new File(from, "missing").toPath());
-        assertEquals(1, FileOps.delete(Collections.singletonList(folder), go).done);
+        assertEquals(1, FileOps.delete(Collections.singletonList(folder), go, null).done);
         assertFalse(folder.exists());
     }
 
     @Test
     public void somethingAlreadyGoneCountsAsDeleted() {
         FileOps.Result result = FileOps.delete(
-                Collections.singletonList(new File(from, "never-there")), go);
+                Collections.singletonList(new File(from, "never-there")), go, null);
         assertEquals(1, result.done);
         assertEquals(0, result.failed);
     }
@@ -250,11 +293,63 @@ public class FileOpsTest {
     }
 
     @Test
+    public void sameInodeKnowsAFileFromALink() throws IOException {
+        File a = write(from, "a.txt", "x");
+        File b = write(from, "b.txt", "y");
+        File link = new File(from, "alias");
+        Files.createSymbolicLink(link.toPath(), a.toPath());
+        assertTrue(FileOps.sameInode(a, a));
+        assertFalse(FileOps.sameInode(a, b));
+        // A link keeps an inode of its own: it is never "the same file" as what
+        // it points at, so a copy still answers "links are not copied" for it.
+        assertFalse(FileOps.sameInode(link, a));
+    }
+
+    @Test
     public void sizesAddUpAcrossAFolder() throws IOException {
         File folder = new File(from, "album");
         assertTrue(folder.mkdir());
         write(folder, "a", "12345");
         write(from, "b", "123");
         assertEquals(8L, FileOps.sizeOf(Arrays.asList(folder, new File(from, "b")), go));
+    }
+
+    @Test
+    public void aSizeAlreadyStoppedCountsNothing() {
+        assertEquals(0L, FileOps.sizeOf(Collections.singletonList(from),
+                new AtomicBoolean(true)));
+    }
+
+    @Test
+    public void aCopyOntoAFileFailsHonestly() throws IOException {
+        File a = write(from, "a.txt", "hello");
+        File target = write(to, "not-a-folder", "x");
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(a), target,
+                false, go, null);
+        assertEquals(0, result.done);
+        assertEquals(1, result.failed);
+        assertNotNull(result.problem);
+        assertTrue(a.exists());
+    }
+
+    @Test
+    public void aCopyRefusesAFolderItDidNotCreate() throws IOException {
+        File folder = new File(from, "folder");
+        assertTrue(folder.mkdir());
+        write(folder, "a.txt", "hello");
+        // Every name freeName can offer is a real folder already; the last one
+        // holds somebody else's work that a merge must never touch.
+        assertTrue(new File(to, "folder").mkdir());
+        assertTrue(new File(to, "folder copy").mkdir());
+        for (int n = 2; n < 1000; n++) {
+            assertTrue(new File(to, "folder copy " + n).mkdir());
+        }
+        File mine = write(new File(to, "folder copy 999"), "mine.txt", "keep");
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(folder), to,
+                false, go, null);
+        assertEquals(0, result.done);
+        assertEquals(1, result.failed);
+        assertEquals("keep", read(mine));
+        assertEquals("hello", read(new File(folder, "a.txt")));
     }
 }

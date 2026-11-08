@@ -72,11 +72,13 @@ public class FilesActivity extends Activity {
 
     private final ExecutorService lister = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "files-list");
+        thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         return thread;
     });
     private final ExecutorService thumbnailer = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "files-thumbs");
+        thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         return thread;
     });
@@ -118,6 +120,8 @@ public class FilesActivity extends Activity {
     private List<FileLogic.Entry> entries = new ArrayList<>();
     /** The folder a listing was last asked for, so a resume does not list it twice. */
     private File listed;
+    /** The folder a lister pass is still reading; a resume must not queue it again. */
+    private File requested;
     private int generation;
     private boolean gridMode;
     private int sortMode;
@@ -152,7 +156,18 @@ public class FilesActivity extends Activity {
         if (place == null && !places.isEmpty()) {
             open(places.get(0), places.get(0).folder, null);
         }
-        sideRows.get(0).post(() -> focusSidebar());
+        if (!sideRows.isEmpty()) {
+            sideRows.get(0).post(() -> focusSidebar());
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // singleTask: a second launch reaches the one live screen. The share
+        // and own-folder extras are read lazily from the intent, so keeping
+        // the newest one is all that is needed.
+        setIntent(intent);
     }
 
     @Override
@@ -364,7 +379,9 @@ public class FilesActivity extends Activity {
             actionButton.setTextColor(focused ? 0xFF101C26 : 0xFFFFFFFF);
         });
         actionButton.setOnKeyListener((v, code, event) -> {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_LEFT) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN
+                    && code == (rtl() ? KeyEvent.KEYCODE_DPAD_RIGHT
+                            : KeyEvent.KEYCODE_DPAD_LEFT)) {
                 focusSidebar();
                 return true;
             }
@@ -441,7 +458,8 @@ public class FilesActivity extends Activity {
         if (code == KeyEvent.KEYCODE_DPAD_UP) {
             return true;
         }
-        if (code == KeyEvent.KEYCODE_DPAD_LEFT && view == backButton) {
+        if (code == (rtl() ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_LEFT)
+                && view == backButton) {
             focusSidebar();
             return true;
         }
@@ -469,7 +487,12 @@ public class FilesActivity extends Activity {
         view.setClipToPadding(false);
         view.setOnItemClickListener((parent, v, position, id) -> openEntry(position));
         view.setOnItemLongClickListener((parent, v, position, id) -> {
-            showItemMenu(entries.get(position));
+            // Between a list shrinking and the layout that knows it, the press
+            // can land on a row that no longer exists.
+            FileLogic.Entry entry = adapter.getItem(position);
+            if (entry != null) {
+                showItemMenu(entry);
+            }
             return true;
         });
         view.setOnKeyListener(this::onItemsKey);
@@ -493,20 +516,28 @@ public class FilesActivity extends Activity {
             return false;
         }
         int position = itemsView.getSelectedItemPosition();
-        if (position < 0) {
+        // Between a list shrinking and the layout that clamps it, the selected
+        // position can point past the end.
+        if (position < 0 || position >= entries.size()) {
             return false;
         }
         int columns = gridMode ? ((GridView) itemsView).getNumColumns() : 1;
         columns = Math.max(1, columns);
+        // Under RTL the sidebar sits on the right: the edges the two keys guard swap.
+        boolean rtl = rtl();
         switch (code) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (position % columns == 0) {
+                if (!rtl && position % columns == 0) {
                     focusSidebar();
                     return true;
                 }
-                return false;
+                return rtl && ((position + 1) % columns == 0 || position == entries.size() - 1);
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                return (position + 1) % columns == 0 || position == entries.size() - 1;
+                if (rtl && position % columns == 0) {
+                    focusSidebar();
+                    return true;
+                }
+                return !rtl && ((position + 1) % columns == 0 || position == entries.size() - 1);
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (position < columns) {
                     focusToolbar();
@@ -514,8 +545,8 @@ public class FilesActivity extends Activity {
                 }
                 return false;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                return position + columns >= entries.size()
-                        && (position / columns) == ((entries.size() - 1) / columns);
+                // No cell below this one: stay, rather than fall out of the grid.
+                return position + columns >= entries.size();
             case KeyEvent.KEYCODE_MENU:
             case KeyEvent.KEYCODE_INFO:
                 showSelectedMenu();
@@ -550,6 +581,12 @@ public class FilesActivity extends Activity {
         }
     }
 
+    /** Mirrored layouts put the sidebar on the right; key directions follow the pixels. */
+    private boolean rtl() {
+        return getResources().getConfiguration().getLayoutDirection()
+                == View.LAYOUT_DIRECTION_RTL;
+    }
+
     // --- The sidebar --------------------------------------------------------
 
     private void readPlaces() {
@@ -573,6 +610,9 @@ public class FilesActivity extends Activity {
     }
 
     private void addSection(String title, List<Places.Place> section) {
+        if (section.isEmpty()) {
+            return;
+        }
         TextView heading = new TextView(this);
         heading.setText(title);
         heading.setTextColor(theme.inkSecondary);
@@ -630,8 +670,9 @@ public class FilesActivity extends Activity {
                 focusContent();
             });
             setOnKeyListener((v, code, event) -> {
-                if (event.getAction() == KeyEvent.ACTION_DOWN
-                        && code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                int toward = rtl() ? KeyEvent.KEYCODE_DPAD_LEFT : KeyEvent.KEYCODE_DPAD_RIGHT;
+                int away = rtl() ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_LEFT;
+                if (event.getAction() == KeyEvent.ACTION_DOWN && code == toward) {
                     if (!entries.isEmpty() || actionButton.getVisibility() == VISIBLE) {
                         focusContent();
                     } else {
@@ -639,8 +680,7 @@ public class FilesActivity extends Activity {
                     }
                     return true;
                 }
-                return event.getAction() == KeyEvent.ACTION_DOWN
-                        && code == KeyEvent.KEYCODE_DPAD_LEFT;
+                return event.getAction() == KeyEvent.ACTION_DOWN && code == away;
             });
             showState();
         }
@@ -706,8 +746,12 @@ public class FilesActivity extends Activity {
     }
 
     private void load(final String select) {
-        final int ticket = ++generation;
         final File dir = folder;
+        if (dir == null) {
+            return;
+        }
+        final int ticket = ++generation;
+        requested = dir;
         final int mode = sortMode;
         final boolean hidden = showHidden;
         lister.execute(() -> {
@@ -737,6 +781,7 @@ public class FilesActivity extends Activity {
 
     private void show(List<FileLogic.Entry> list, boolean failed, boolean gone, String select) {
         boolean hadFocus = itemsView.hasFocus();
+        requested = null;
         entries = list;
         adapter.notifyDataSetChanged();
         // A listing that failed is asked again on the next resume.
@@ -777,6 +822,8 @@ public class FilesActivity extends Activity {
     /** Says what is missing and offers the one way there is to give it. */
     private void showAccessNeeded() {
         generation++;
+        // The generation bump drops any list still in flight; its marker goes too.
+        requested = null;
         entries = new ArrayList<>();
         adapter.notifyDataSetChanged();
         countView.setText("");
@@ -794,6 +841,12 @@ public class FilesActivity extends Activity {
             message.setText("This TV has no screen for allowing access to all files. "
                     + "From a computer, run:\n\nadb shell appops set " + getPackageName()
                     + " MANAGE_EXTERNAL_STORAGE allow");
+        }
+        // The list is gone, so the one thing left to press gets the focus —
+        // unless a sheet is up: a resume can reach here underneath one, and
+        // keys must stay with what the user can see.
+        if (sheet == null || sheet.closed()) {
+            focusContent();
         }
     }
 
@@ -847,6 +900,8 @@ public class FilesActivity extends Activity {
 
     private void openEntry(int position) {
         if (position < 0 || position >= entries.size()) {
+            // The row this was asked on has been listed away since.
+            toast("That item is no longer there.");
             return;
         }
         FileLogic.Entry entry = entries.get(position);
@@ -861,11 +916,16 @@ public class FilesActivity extends Activity {
     }
 
     private void showQuickLook(int position) {
+        // Only reachable through a race, but only one may live: a second would
+        // bury the first still attached, with its decoder thread.
+        if (quickLook != null) {
+            quickLook.close();
+        }
         rememberSelection();
         quickLook = new QuickLook(this, theme, entries, position, low, () -> {
             root.removeView(quickLook);
             quickLook = null;
-            itemsView.requestFocus();
+            backToItems();
         });
         root.addView(quickLook, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -1003,7 +1063,9 @@ public class FilesActivity extends Activity {
 
     private void showInfo(final FileLogic.Entry entry) {
         final String kind = FileLogic.kindName(entry.kind);
-        final String when = dateFormat.format(new Date(entry.modified));
+        // A file that will not say when it changed gets a dash, not the epoch.
+        final String when = entry.modified <= 0 ? "--"
+                : dateFormat.format(new Date(entry.modified));
         final String where = entry.file.getParent() == null
                 ? entry.file.getPath() : entry.file.getParent();
         final View back = getCurrentFocus();
@@ -1048,7 +1110,10 @@ public class FilesActivity extends Activity {
         lister.execute(() -> {
             final String free = FileLogic.freeName("untitled folder", dir, false);
             runOnUiThread(() -> {
-                if (isDestroyed() || !dir.equals(folder) || quickLook != null) {
+                // A job that started during the wait owns the sheet space now;
+                // cancelling it would stop work the user asked for.
+                if (isDestroyed() || !dir.equals(folder) || quickLook != null
+                        || running != null) {
                     return;
                 }
                 // A sheet that appeared during the wait answers first rather
@@ -1066,7 +1131,7 @@ public class FilesActivity extends Activity {
                     }
                     final File made = new File(dir, name);
                     lister.execute(() -> {
-                        final boolean taken = made.exists();
+                        final boolean taken = FileLogic.taken(made);
                         final boolean created = !taken && made.mkdir();
                         runOnUiThread(() -> {
                             if (isDestroyed()) {
@@ -1105,7 +1170,7 @@ public class FilesActivity extends Activity {
             lister.execute(() -> {
                 // A filesystem that cannot tell letter cases apart reports the very
                 // file being renamed as taken; that rename is allowed.
-                final boolean taken = target.exists() && !sameFile(entry.file, target);
+                final boolean taken = FileLogic.taken(target) && !sameFile(entry.file, target);
                 final boolean renamed = !taken && entry.file.renameTo(target);
                 runOnUiThread(() -> {
                     if (isDestroyed()) {
@@ -1141,6 +1206,13 @@ public class FilesActivity extends Activity {
     }
 
     private void complain(String title, String why) {
+        // A late answer can land over a sheet opened since the question was
+        // asked; one modal at a time. A running job keeps its sheet: stopping
+        // it to show a message would cost the user real work.
+        if (running == null && sheet != null && !sheet.closed()) {
+            sheet.cancel();
+        }
+        // Read after the cancel: the view holding focus may have died with it.
         final View back = getCurrentFocus();
         sheet = Sheets.alert(root, theme, title, why, new String[]{"OK"}, 0, -1,
                 () -> refocus(back), i -> refocus(back));
@@ -1155,7 +1227,8 @@ public class FilesActivity extends Activity {
                         return;
                     }
                     runJob("Deleting", cancel -> {
-                        return FileOps.delete(Collections.singletonList(entry.file), cancel);
+                        return FileOps.delete(Collections.singletonList(entry.file), cancel,
+                                (done, total, name) -> reportProgress(done, total, name));
                     }, after(entry));
                 });
     }
@@ -1205,8 +1278,12 @@ public class FilesActivity extends Activity {
                 -1, () -> refocus(back), index -> {
                     final File source = clipboard;
                     final boolean move = clipboardMove;
-                    clipboard = null;
-                    pasteButton.setVisibility(View.GONE);
+                    // "Forget It" lets go; a job that refuses the paste does
+                    // not — what was held is kept for a second try.
+                    if (index == 0 && running == null || index != 0) {
+                        clipboard = null;
+                        pasteButton.setVisibility(View.GONE);
+                    }
                     backToItems();
                     if (index != 0) {
                         return;
@@ -1232,10 +1309,11 @@ public class FilesActivity extends Activity {
     }
 
     private Sheets.Progress progress;
-    private long lastProgressAt;
+    /** Read on the job's own thread, which changes from job to job. */
+    private volatile long lastProgressAt;
 
     private void reportProgress(final long done, final long total, final String name) {
-        long now = System.currentTimeMillis();
+        long now = android.os.SystemClock.elapsedRealtime();
         // A busy copy reports thousands of times a second; the screen needs a few.
         if (now - lastProgressAt < 100L) {
             return;
@@ -1254,9 +1332,18 @@ public class FilesActivity extends Activity {
 
     /** The select is a box so the job can put in the name it actually used. */
     private void runJob(String title, final Job job, final String[] select) {
+        // One job at a time: a second would take over the progress and running
+        // fields while the first still reports into them.
+        if (running != null) {
+            toast("Another job is still running.");
+            return;
+        }
         final AtomicBoolean cancel = new AtomicBoolean(false);
         running = cancel;
-        progress = new Sheets.Progress(root, theme, title, () -> cancel.set(true));
+        progress = new Sheets.Progress(root, theme, title, () -> {
+            cancel.set(true);
+            backToItems();
+        });
         sheet = progress.sheet;
         Thread worker = new Thread(() -> {
             FileOps.Result computed = null;
@@ -1283,13 +1370,23 @@ public class FilesActivity extends Activity {
                         progress.sheet.close();
                         progress = null;
                     }
-                    backToItems();
                     load(select[0]);
+                    // The refresh always lands; the focus and the sheet only
+                    // move when nothing newer claimed the screen. A job cancelled
+                    // into a Quick Look or a dialog leaves both alone.
+                    boolean free = quickLook == null && (sheet == null || sheet.closed());
+                    if (free) {
+                        backToItems();
+                    }
                     if (result.failed > 0) {
-                        complain(result.done > 0 ? "Some Items Were Not Finished"
-                                        : "That Did Not Work",
-                                result.problem == null ? "This location does not allow it."
-                                        : result.problem);
+                        String why = result.problem == null
+                                ? "This location does not allow it." : result.problem;
+                        if (free) {
+                            complain(result.done > 0 ? "Some Items Were Not Finished"
+                                    : "That Did Not Work", why);
+                        } else {
+                            toast(why);
+                        }
                     } else if (result.cancelled) {
                         toast("Stopped. Anything not finished was left out.");
                     }
@@ -1325,18 +1422,20 @@ public class FilesActivity extends Activity {
         super.onResume();
         immersive();
         // Permission may have been given, and a drive plugged in or pulled out.
+        // An open sheet answers for itself, but it is no reason to skip the
+        // refresh: a drive change during a dialog is exactly the case.
         View focused = getCurrentFocus();
-        if (sheet == null || sheet.closed()) {
-            readPlaces();
-            // A resume over the folder already shown lists nothing again; a place
-            // that dropped out of the sidebar, or a folder never listed, does.
-            if (quickLook == null && place != null && folder != null
-                    && (!folder.equals(listed) || !places.contains(place))) {
-                open(place, folder, null);
-            }
-            if (focused == null || !focused.isAttachedToWindow()) {
-                focusSidebar();
-            }
+        readPlaces();
+        // A resume over the folder already shown lists nothing again; a place
+        // that dropped out of the sidebar, or a folder never listed, does.
+        if (quickLook == null && place != null && folder != null
+                && !folder.equals(requested)
+                && (!folder.equals(listed) || !places.contains(place))) {
+            open(place, folder, null);
+        }
+        if ((sheet == null || sheet.closed())
+                && (focused == null || !focused.isAttachedToWindow())) {
+            focusSidebar();
         }
     }
 
@@ -1351,12 +1450,20 @@ public class FilesActivity extends Activity {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        thumbs.evictAll();
+        // Hidden means released; while the grid still shows, the cache is why
+        // it can scroll at all.
+        if (level >= TRIM_MEMORY_UI_HIDDEN) {
+            thumbs.evictAll();
+        }
     }
 
     @Override
     protected void onDestroy() {
         generation++;
+        // A Quick Look open at recreate would leak its decoder thread.
+        if (quickLook != null) {
+            quickLook.close();
+        }
         if (running != null) {
             running.set(true);
         }
@@ -1391,7 +1498,11 @@ public class FilesActivity extends Activity {
         public View getView(int position, View convert, ViewGroup parent) {
             ItemCell cell = convert instanceof ItemCell ? (ItemCell) convert
                     : new ItemCell(FilesActivity.this, theme, gridMode, dateFormat);
-            FileLogic.Entry entry = entries.get(position);
+            FileLogic.Entry entry = getItem(position);
+            if (entry == null) {
+                cell.bind(null, false);
+                return cell;
+            }
             cell.bind(entry, position % 2 == 0);
             if (gridMode && !low && entry.kind == FileLogic.IMAGE) {
                 loadThumb(cell, entry);

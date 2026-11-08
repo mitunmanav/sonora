@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Shader;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
 import android.widget.FrameLayout;
 
@@ -288,6 +289,11 @@ public final class ScreensaverView extends FrameLayout {
         }
     }
 
+    /** True while the clock and the place name are on screen. */
+    public boolean infoOverlayShown() {
+        return showOverlay;
+    }
+
     public void start() {
         running = true;
         if (current == null || current.getSceneBitmap() == null) {
@@ -359,7 +365,7 @@ public final class ScreensaverView extends FrameLayout {
                     // every frame: wait for the next turn instead, and count
                     // it as current so the turn moves past it. The retry is a
                     // beat away, not a whole scene of black away.
-                    sceneStartedAt = System.currentTimeMillis();
+                    sceneStartedAt = SystemClock.elapsedRealtime();
                     retryAt = sceneStartedAt + 2500;
                     currentIndex = targetIndex;
                     return;
@@ -373,7 +379,7 @@ public final class ScreensaverView extends FrameLayout {
                     current.resetDrift();
                     incoming.resetDrift();
                     currentIndex = targetIndex;
-                    sceneStartedAt = System.currentTimeMillis();
+                    sceneStartedAt = SystemClock.elapsedRealtime();
                     fadeStart = 0;
                     overlay.setInfo(currentIndex, showOverlay);
                 } else {
@@ -381,7 +387,7 @@ public final class ScreensaverView extends FrameLayout {
                     incoming.resetDrift();
                     incomingIndex = targetIndex;
                     incoming.setAlpha(0f);
-                    fadeStart = System.currentTimeMillis();
+                    fadeStart = SystemClock.elapsedRealtime();
                     // The incoming scene has to draw above the outgoing one,
                     // but under the overlay.
                     incoming.bringToFront();
@@ -433,15 +439,18 @@ public final class ScreensaverView extends FrameLayout {
                 tickerPosted = false;
                 return;
             }
-            step(System.currentTimeMillis());
+            // The monotonic clock: an NTP jump while the saver runs must not
+            // fast-forward through the scenes.
+            step(SystemClock.elapsedRealtime());
             handler.postDelayed(this, tier == DeviceTier.LOW ? FRAME_MS_LOW : FRAME_MS);
         }
     };
 
     private void step(long now) {
         // The overlay clock only moves once a minute; one invalidate a minute
-        // is the whole cost of keeping it honest.
-        int minute = (int) (now / 60000L);
+        // is the whole cost of keeping it honest. What it shows is the wall
+        // clock, so the wall clock is also what the minute comes from.
+        int minute = (int) (System.currentTimeMillis() / 60000L);
         if (minute != lastMinute) {
             lastMinute = minute;
             if (showOverlay) {

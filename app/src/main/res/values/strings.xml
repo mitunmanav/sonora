@@ -3,5 +3,5 @@
     <string name="app_name">Sonora</string>
     <string name="dream_name">Sonora</string>
 
-    <string name="about_text">A quiet, fast, tvOS-inspired home for Android TV, plus the tools a TV actually needs: an app manager, a file manager, a debug guide and a browser with an ad blocker. Not affiliated with Apple.\n\nImagery (CC BY-SA 4.0, Wikimedia Commons):\n• Ngorongoro, Tanzania - Tasha~visual\n• Vigo di Fassa, Italy - Syrio\n• Zhuravlyne Lake, Ukraine - Medoffer\n• Punjab, India - Bhullargraphic\n• Dülmen, Germany - Dietmar Rabich\n\nNo analytics, no ads, no background services.</string>
+    <string name="about_text">A quiet, fast, tvOS-inspired home for Android TV, plus the tools a TV actually needs: an app manager, a file manager, a debug guide. Not affiliated with Apple.\n\nImagery (CC BY-SA 4.0, Wikimedia Commons):\n• Ngorongoro, Tanzania - Tasha~visual\n• Vigo di Fassa, Italy - Syrio\n• Zhuravlyne Lake, Ukraine - Medoffer\n• Punjab, India - Bhullargraphic\n• Dülmen, Germany - Dietmar Rabich\n\nNo analytics, no ads, no background services.</string>
 </resources>

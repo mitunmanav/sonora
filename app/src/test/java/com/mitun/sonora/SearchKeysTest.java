@@ -82,4 +82,11 @@ public class SearchKeysTest {
         assertEquals(4, SearchKeys.move(4, 1, 5));
         assertEquals(3, SearchKeys.move(2, 1, 5));
     }
+
+    @Test
+    public void movingHasNowhereToGoOnAnEmptyKeyboard() {
+        // 0 would be a valid-looking index into an empty array.
+        assertEquals(-1, SearchKeys.move(0, 1, 0));
+        assertEquals(-1, SearchKeys.move(3, -1, 0));
+    }
 }
