@@ -51,7 +51,11 @@ hardware has been through it yet.
 
 Honest limits: no Watch Next or HDMI-input rows, no signed release yet
 (build and install over adb), and on Google TV the stock launcher may
-re-enable itself after a reboot.
+re-enable itself after a reboot. CleanYourTV is the other heavyweight in
+the field: its centre of gravity is per-brand debloat scripts plus a
+deliberately minimal 572 KB launcher with 31 languages and themes.
+Sonora is the launcher product itself — Control Center, switcher,
+search, settings, screensaver and Files — with a lighter debloat screen.
 
 ## Modules
 
