@@ -1482,3 +1482,37 @@ Verified: `:app:testDebugUnitTest` and `:app:assemblePerf` green;
 Files on the MiTV (192.168.68.107) and left it on the home screen.
 Not verified on the TV: the Tools screen and the Settings index want
 eyes — the Browser row should simply be absent.
+## 35. Session: the repo goes public — README, license, site, GitHub
+
+The project is published at `github.com/mitunmanav/sonora` (public, GPL-3.0)
+with a GitHub Pages site at `mitunmanav.github.io/sonora` (`site/`).
+
+- History rewritten before the first push: all 61 old commits re-authored
+  to Mitun Manav G Y and every `Co-Authored-By` / "Generated with" trailer
+  stripped, so no agent appears as a contributor. The old history is kept
+  locally on `backup/pre-publish`; it is not pushed.
+- WIP committed first: the browser removal plus edge-case passes 4–6,
+  which had been sitting uncommitted since the last session.
+- New repo files: `LICENSE` (GPL-3.0), `SECURITY.md`, `CONTRIBUTING.md`
+  (issues welcome, PRs not merged — a change arrives as the maintainer's
+  own commit), issue templates, `.github/dependabot.yml`, and CI with two
+  jobs. `Sole author` fails any commit on master not authored by the
+  owner or carrying a co-author trailer; Dependabot PRs therefore can
+  never be merged — copy the bump into your own commit. Dependabot
+  alerts + automated security fixes + version updates are all on; its PRs
+  stay open, unmerged.
+- Repo settings: squash-only merges, delete-branch-on-merge, no wiki /
+  projects / discussions, topics set, branch protection on `master`
+  requires both CI checks (admin exempt). Pages deploys `site/` from
+  `master` via Actions.
+- `site/`: hand-built single page — Schibsted Grotesk self-hosted, real
+  TV screenshots captured over adb (home, grid, Control Center, settings,
+  files, screensaver), the same-stick benchmark table, a launcher
+  comparison, honest limits and adb install steps. Zero third-party
+  requests; the picker reproduces the TV's focus behaviour.
+- `README.md` rewritten as the repo front door with the measured numbers.
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
+(149 tests) and both release builds green locally; CI green on the push;
+Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
+the site on a real TV browser, and Dependabot's weekly cadence.
