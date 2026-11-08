@@ -33,7 +33,8 @@ final class ItemCell extends View {
     private final float pad;
     private final DateFormat dates;
 
-    private FileLogic.Entry entry;
+    /** Bound on the screen's thread, read on the thumbnailer's. */
+    private volatile FileLogic.Entry entry;
     private boolean striped;
     private Bitmap thumb;
     private CharSequence shownName = "";
@@ -64,6 +65,14 @@ final class ItemCell extends View {
         this.striped = striped;
         thumb = null;
         thumbPaint.setShader(null);
+        if (entry == null) {
+            // A recycled cell for a row that is gone draws nothing, rather than
+            // the file it showed last.
+            shownName = "";
+            setContentDescription(null);
+            invalidate();
+            return;
+        }
         // A file that will not say when it changed gets a dash, not the epoch.
         shownDate = entry.modified <= 0 ? "--" : dates.format(new Date(entry.modified));
         shownSize = entry.folder ? "--" : FileLogic.formatSize(entry.size);

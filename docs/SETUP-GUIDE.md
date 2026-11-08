@@ -48,7 +48,6 @@ Sonora is a lightweight Android TV launcher designed as a clean, fast counterpar
 Sonora asks for minimal permissions:
 
 - **Storage**: For file manager and photo screensaver
-- **Network**: For browser (optional)
 - **Usage Access**: For app switcher (optional, shows more recent apps)
 
 To grant usage access:
@@ -81,7 +80,6 @@ To grant usage access:
 3. Choose photo sources:
    - Device storage
    - Custom folder
-   - Network location (via browser)
 
 4. Adjust timing:
    - When to start (5-60 minutes)
@@ -121,11 +119,6 @@ The app switcher opens when you double-press the HOME button.
 - Press the search button on your remote
 - Search installed apps
 - No network queries (local only)
-
-### Browser
-- Built-in web browser with ad blocking
-- Access via Control Center or Settings
-- Light weight, no tracking
 
 ### File Manager
 - Access device storage

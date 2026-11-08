@@ -51,7 +51,16 @@ public class SceneChoiceTest {
     @Test
     public void noScenesMeansNothingToShow() {
         assertEquals(-1, SceneChoice.next(-1, 1, new boolean[0]));
+        assertEquals(-1, SceneChoice.next(0, 1, null));
         assertFalse(SceneChoice.allHidden(new boolean[0]));
+    }
+
+    @Test
+    public void anOutOfRangeCurrentStillFindsAScene() {
+        // A stale index deeper than -1 must not turn into a negative slot.
+        assertEquals(0, SceneChoice.next(-10, 1, NONE));
+        assertEquals(0, SceneChoice.next(10, 1, NONE));
+        assertEquals(2, SceneChoice.next(-10, -1, NONE));
     }
 
     @Test

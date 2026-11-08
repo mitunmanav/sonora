@@ -8,7 +8,7 @@ background services, no analytics.
 
 | Path | What it is |
 |---|---|
-| `app/` | The launcher (`com.mitun.sonora`): home grid, dock, search, settings, screensaver, optional browser, app manager, file server. |
+| `app/` | The launcher (`com.mitun.sonora`): home grid, dock, search, settings, screensaver, app manager, file server. |
 | `files-core/` | Android library: the whole Files file manager, shared by both apps. |
 | `files/` | Standalone Files app (`com.mitun.files`) — a thin shell around `files-core`. |
 

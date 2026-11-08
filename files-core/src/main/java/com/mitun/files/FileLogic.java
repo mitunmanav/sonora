@@ -1,6 +1,7 @@
 package com.mitun.files;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -265,7 +266,7 @@ public final class FileLogic {
         if (name.equals(".") || name.equals("..")) {
             return "That name is reserved by the system.";
         }
-        if (name.contains("/") || name.indexOf('\0') >= 0) {
+        if (name.contains("/")) {
             return "A name cannot contain a slash.";
         }
         for (int i = 0; i < name.length(); i++) {
@@ -285,6 +286,23 @@ public final class FileLogic {
         if (name.endsWith(".") || name.endsWith(" ")) {
             return "A name cannot end with a dot or a space.";
         }
+        // On FAT these belong to old devices, whatever the extension is. DOS
+        // drops the stem's trailing dots and spaces before checking, so
+        // "con .txt" names the device just the same as "con.txt" does.
+        int dot = name.indexOf('.');
+        String stem = (dot < 0 ? name : name.substring(0, dot)).toUpperCase(Locale.ROOT);
+        int end = stem.length();
+        while (end > 0 && (stem.charAt(end - 1) == ' ' || stem.charAt(end - 1) == '.')) {
+            end--;
+        }
+        stem = stem.substring(0, end);
+        if (stem.equals("CON") || stem.equals("PRN") || stem.equals("AUX")
+                || stem.equals("NUL") || stem.equals("CONIN$") || stem.equals("CONOUT$")
+                || (stem.length() == 4
+                && (stem.startsWith("COM") || stem.startsWith("LPT"))
+                && stem.charAt(3) > '0' && stem.charAt(3) <= '9')) {
+            return "That name is reserved by the system.";
+        }
         return null;
     }
 
@@ -295,12 +313,51 @@ public final class FileLogic {
     }
 
     /**
+     * Whether this path is a link to somewhere else. lstat is asked first: a
+     * canonical path cannot see a link whose target has died. Where nothing
+     * can answer, it errs on "link" — no caller's safe move is to walk
+     * through it.
+     */
+    public static boolean isLink(File file) {
+        try {
+            android.system.StructStat stat =
+                    android.system.Os.lstat(file.getAbsolutePath());
+            if (stat != null) {
+                return android.system.OsConstants.S_ISLNK(stat.st_mode);
+            }
+        } catch (Exception | LinkageError e) {
+            // Fall through to the other ways of asking.
+        }
+        try {
+            // isSymbolicLink swallows errors as "no", which would say a file it
+            // could not inspect is safe to walk; readAttributes throws instead.
+            return java.nio.file.Files.readAttributes(file.toPath(),
+                    java.nio.file.attribute.BasicFileAttributes.class,
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS).isSymbolicLink();
+        } catch (Exception | LinkageError e) {
+            try {
+                File parent = file.getParentFile();
+                File resolved = parent == null ? file
+                        : new File(parent.getCanonicalFile(), file.getName());
+                return !resolved.getCanonicalFile().equals(resolved.getAbsoluteFile());
+            } catch (IOException ex) {
+                return true;
+            }
+        }
+    }
+
+    /** Whether the name is held: something is there, or a dangling link is. */
+    static boolean taken(File file) {
+        return file.exists() || isLink(file);
+    }
+
+    /**
      * A name free in this folder, in Finder's form: "a copy.txt", then "a copy 2.txt".
      *
      * @param copy false to keep the name itself when it is free, as a move does
      */
     public static String freeName(String name, File folder, boolean copy) {
-        if (!copy && !new File(folder, name).exists()) {
+        if (!copy && !taken(new File(folder, name))) {
             return name;
         }
         int dot = name.lastIndexOf('.');
@@ -308,7 +365,10 @@ public final class FileLogic {
         String stem = hasExtension ? name.substring(0, dot) : name;
         String extension = hasExtension ? name.substring(dot) : "";
         String candidate = stem + " copy" + extension;
-        for (int n = 2; new File(folder, candidate).exists(); n++) {
+        // A drive that cannot answer "is the name taken" says taken to every
+        // try, so the asking stops somewhere: whoever creates re-checks the
+        // name for real, and a taken answer fails honestly there instead.
+        for (int n = 2; n < 1000 && taken(new File(folder, candidate)); n++) {
             candidate = stem + " copy " + n + extension;
         }
         return candidate;

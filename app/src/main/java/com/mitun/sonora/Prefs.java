@@ -125,15 +125,6 @@ public final class Prefs {
         sp.edit().putBoolean("search_key", value).apply();
     }
 
-    /** The browser is bundled but off until the user asks for it. */
-    public boolean browserEnabled() {
-        return getBoolean("browser", false);
-    }
-
-    public void setBrowserEnabled(boolean value) {
-        sp.edit().putBoolean("browser", value).apply();
-    }
-
     /** The file manager and the LAN share are bundled but off by default. */
     public boolean filesEnabled() {
         return getBoolean("files", false);
@@ -141,44 +132,6 @@ public final class Prefs {
 
     public void setFilesEnabled(boolean value) {
         sp.edit().putBoolean("files", value).apply();
-    }
-
-    public boolean browserAdBlock() {
-        return getBoolean("browser_adblock", true);
-    }
-
-    public void setBrowserAdBlock(boolean value) {
-        sp.edit().putBoolean("browser_adblock", value).apply();
-    }
-
-    /** The bookmarked addresses, one per line. */
-    public List<String> browserBookmarks() {
-        String raw = getString("browser_bookmarks", "");
-        List<String> out = new ArrayList<>();
-        if (raw != null) {
-            for (String line : raw.split("\\n")) {
-                String trimmed = line.trim();
-                if (trimmed.length() > 0) {
-                    out.add(trimmed);
-                }
-            }
-        }
-        return out;
-    }
-
-    public void addBrowserBookmark(String url) {
-        List<String> bookmarks = browserBookmarks();
-        if (!bookmarks.contains(url)) {
-            bookmarks.add(0, url);
-        }
-        StringBuilder sb = new StringBuilder();
-        for (String bookmark : bookmarks) {
-            if (sb.length() > 0) {
-                sb.append('\n');
-            }
-            sb.append(bookmark);
-        }
-        sp.edit().putString("browser_bookmarks", sb.toString()).apply();
     }
 
     public int screensaverDelaySec() {

@@ -23,13 +23,16 @@ public final class SceneChoice {
      * @return the index to show, or -1 when there are no scenes at all
      */
     public static int next(int current, int step, boolean[] hidden) {
-        int count = hidden.length;
+        int count = hidden == null ? 0 : hidden.length;
         if (count == 0) {
             return -1;
         }
         int direction = step < 0 ? -1 : 1;
         // With nothing on screen yet, going backwards lands on the last scene.
-        int index = current < 0 && direction < 0 ? 0 : current;
+        // A caller holding an out-of-range index still gets a valid next one:
+        // the modulo below would carry a too-far index into a negative slot.
+        int index = current < 0 && direction < 0 ? 0
+                : Math.max(-1, Math.min(count - 1, current));
         boolean ignoreHidden = allHidden(hidden);
         for (int i = 0; i < count; i++) {
             index = (index + direction + count) % count;

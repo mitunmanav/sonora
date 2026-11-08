@@ -4,13 +4,11 @@ import android.content.Intent;
 
 import com.mitun.files.FilesActivity;
 
-import com.mitun.sonora.browser.BrowserActivity;
 import com.mitun.sonora.ui.Ui;
 
 /**
- * The tools menu. The browser and the file manager are bundled but off until
- * the user turns them on, so nothing reaches the network and nothing listens
- * on a socket unless it has been asked for.
+ * The tools menu. The file manager is bundled but off until the user turns
+ * it on, so nothing listens on a socket unless it has been asked for.
  */
 public final class ToolsPanel {
     private ToolsPanel() {
@@ -40,27 +38,5 @@ public final class ToolsPanel {
                 .putExtra(FilesActivity.EXTRA_SHARE_LABEL, "Share over the Network")
                 .putExtra(FilesActivity.EXTRA_SHARE_PATH, ShareActivity.EXTRA_PATH)
                 .putExtra(FilesActivity.EXTRA_SHARE_NAME, ShareActivity.EXTRA_NAME));
-    }
-
-    public static void openBrowser(ToolActivity host) {
-        if (!host.prefs().browserEnabled()) {
-            host.choose("The browser is off",
-                    new String[]{"Turn it on", "Not now"}, 0, index -> {
-                        if (index == 0) {
-                            host.prefs().setBrowserEnabled(true);
-                            BrowserActivity.start(host);
-                        }
-                    });
-            return;
-        }
-        // A browser that can only be turned on is not honest about being on.
-        host.choose("Browser", new String[]{"Open", "Turn off"}, 0, index -> {
-            if (index == 0) {
-                BrowserActivity.start(host);
-            } else {
-                host.prefs().setBrowserEnabled(false);
-                SettingsPanel.refresh(host);
-            }
-        });
     }
 }

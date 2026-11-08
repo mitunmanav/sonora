@@ -65,7 +65,8 @@ public final class SearchKeys {
 
     /** The key one step along. It stops at both ends, as the tvOS keyboard does. */
     public static int move(int index, int step, int count) {
-        return Math.max(0, Math.min(count - 1, index + step));
+        // No keys means no landing spot: -1, not a fake index into nothing.
+        return count < 1 ? -1 : Math.max(0, Math.min(count - 1, index + step));
     }
 
     /** The key the focus lands on after the page changed, which is the page key. */

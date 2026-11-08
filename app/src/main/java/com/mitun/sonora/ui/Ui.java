@@ -212,6 +212,10 @@ public final class Ui {
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
         BitmapFactory.decodeResource(resources, resId, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            // Bounds failed: decoding at full size is the worst case.
+            return null;
+        }
         int sample = 1;
         int reqW = Math.max(1, reqWidth);
         int reqH = Math.max(1, reqHeight);

@@ -83,19 +83,16 @@ public final class PackageActions {
                 return new Result(true, "Hidden from the home screen");
             }
             // Restoring has to find the disabled components itself: the
-            // launch-intent queries cannot see them, so a package info read
-            // is what hands their names back.
-            android.content.pm.PackageInfo info =
-                    pm.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES);
-            if (info.activities != null) {
-                for (android.content.pm.ActivityInfo activity : info.activities) {
-                    ComponentName component = new ComponentName(packageName, activity.name);
-                    if (pm.getComponentEnabledSetting(component)
-                            == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                        pm.setComponentEnabledSetting(component,
-                                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                                PackageManager.DONT_KILL_APP);
-                    }
+            // launch-intent queries cannot see them, so the query asks for
+            // them by name - and only for the ones that launch, never for the
+            // whole package. Every DISABLED activity restored blindly would
+            // also turn on entry points the app ships turned off.
+            for (ComponentName component : launcherComponents(pm, packageName, true)) {
+                if (pm.getComponentEnabledSetting(component)
+                        == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                    pm.setComponentEnabledSetting(component,
+                            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                            PackageManager.DONT_KILL_APP);
                 }
             }
             if (pm.getApplicationEnabledSetting(packageName)
@@ -115,8 +112,6 @@ public final class PackageActions {
             return new Result(false, "This device did not restore the app");
         } catch (SecurityException e) {
             return new Result(false, "Not allowed by this device");
-        } catch (PackageManager.NameNotFoundException e) {
-            return new Result(false, "This app is not installed");
         } catch (RuntimeException e) {
             return new Result(false, hidden ? "Could not hide this app"
                     : "Could not restore this app");
@@ -126,17 +121,29 @@ public final class PackageActions {
     /** The components that make a package launchable, TV entries first. */
     private static java.util.List<ComponentName> launcherComponents(
             PackageManager pm, String packageName) {
+        return launcherComponents(pm, packageName, false);
+    }
+
+    /**
+     * As above.
+     *
+     * @param includeDisabled asks for the ones a hide turned off too, which a
+     *                        plain query cannot see.
+     */
+    private static java.util.List<ComponentName> launcherComponents(
+            PackageManager pm, String packageName, boolean includeDisabled) {
+        int flags = includeDisabled ? PackageManager.MATCH_DISABLED_COMPONENTS : 0;
         java.util.List<ComponentName> out = new java.util.ArrayList<>();
         Intent leanback = new Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER).setPackage(packageName);
         Intent regular = new Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName);
         for (android.content.pm.ResolveInfo info
-                : pm.queryIntentActivities(leanback, 0)) {
+                : pm.queryIntentActivities(leanback, flags)) {
             out.add(new ComponentName(packageName, info.activityInfo.name));
         }
         for (android.content.pm.ResolveInfo info
-                : pm.queryIntentActivities(regular, 0)) {
+                : pm.queryIntentActivities(regular, flags)) {
             out.add(new ComponentName(packageName, info.activityInfo.name));
         }
         return out;

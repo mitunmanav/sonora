@@ -301,6 +301,11 @@ final class Sheets {
         sheet.panel().addView(field, fieldParams);
 
         Runnable finish = () -> {
+            // An editor action queued before a Cancel can land after it; a
+            // closed sheet answers for nothing.
+            if (sheet.closed()) {
+                return;
+            }
             hideKeyboard(field);
             String text = field.getText().toString().trim();
             sheet.close();

@@ -212,10 +212,9 @@ public final class SettingsPanel {
                 detail("Hidden apps", Pickers.hiddenName(host)),
                 () -> open(host, APPS)));
         categories.add(new SettingsHomeView.Category(TOOLS.title,
-                "Files, a browser and info about this TV.",
+                "Files and info about this TV.",
                 detail("Device", "Info and checks"),
                 detail("Files", "Browse and share"),
-                detail("Browser", "Optional; stays off until opened"),
                 () -> open(host, TOOLS)));
         categories.add(new SettingsHomeView.Category(SYSTEM.title,
                 "Set Sonora as home, open TV updates or reset its settings.",
@@ -518,8 +517,6 @@ public final class SettingsPanel {
         rows.add(SettingRow.push("Device", "", () -> DebugPanel.show(host)));
         rows.add(SettingRow.push("Setup guide", "", () -> SetupGuide.show(host)));
         rows.add(SettingRow.push("Files", "", () -> ToolsPanel.openFiles(host)));
-        rows.add(SettingRow.push("Browser", host.prefs().browserEnabled() ? "On" : "Off",
-                () -> ToolsPanel.openBrowser(host)));
         return rows;
     }
 

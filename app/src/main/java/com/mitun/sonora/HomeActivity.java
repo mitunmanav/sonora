@@ -461,11 +461,17 @@ public class HomeActivity extends Activity {
 
     /** Puts the apps back in order after the user changed the order or a pin. */
     private void applyOrder() {
-        favourites.clear();
-        favourites.addAll(prefs.favourites());
-        appEntries = AppOrdering.order(Arrays.asList(appEntries), prefs.order(),
-                prefs.hidden(), favourites).toArray(new AppEntry[0]);
-        buildGrid();
+        try {
+            favourites.clear();
+            favourites.addAll(prefs.favourites());
+            appEntries = AppOrdering.order(Arrays.asList(appEntries), prefs.order(),
+                    prefs.hidden(), favourites).toArray(new AppEntry[0]);
+            buildGrid();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A pin is a nicety: on a full heap the grid keeps what it had
+            // rather than the whole launcher dying for it. The stored
+            // favourite is still written, so the next load honours it.
+        }
     }
 
     private void buildGrid() {
@@ -519,6 +525,9 @@ public class HomeActivity extends Activity {
      * the bottom of the screen, the way tvOS shows it.
      */
     private void layoutRows() {
+        // Reparenting clears the focus, so it is read first: asking for the
+        // row afterwards always says "none" and snaps the open grid shut.
+        int keepRow = focusedRow();
         // removeAllViews drops the rows but a tile stays parented to its old
         // row, so each one has to leave it before the new rows can adopt it.
         for (AppTileView tile : tiles) {
@@ -565,7 +574,7 @@ public class HomeActivity extends Activity {
         // Room for the wider gaps of the open grid: the list is clipped to it.
         gridParams.height = barPadPx + rows * (rowHeightPx + rowGapPx + openExtraPx);
         grid.setLayoutParams(gridParams);
-        scrollToRow(focusedRow(), false);
+        scrollToRow(keepRow, false);
         placeFocusGlass(false);
     }
 
@@ -869,7 +878,6 @@ public class HomeActivity extends Activity {
             return;
         }
         dismissOverlays();
-        suppressIdle = true;
         showChevron(false);
         clockPill.refresh();
         controlCenter = new ControlCenter(this, clockPill.clockText(), QuickPanel.wifiName(this),
@@ -886,6 +894,9 @@ public class HomeActivity extends Activity {
                 });
         overlayHost.addView(controlCenter, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Set after the panel exists: dismissOverlays recomputes this flag,
+        // and a panel that never got built must not leave it set.
+        suppressIdle = true;
         // Control Center repeats the clock in its own top row.
         Motion.spring(clockPill, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
                 Motion.RESPONSE_FOCUS);
@@ -973,6 +984,9 @@ public class HomeActivity extends Activity {
             return;
         }
         lastHomeSignalAt = now;
+        // A HOME press is still a press: it defers the screen saver like any
+        // other key does.
+        lastInteraction = now;
         if (screensaver != null) {
             hideScreensaver();
             return;
@@ -1215,7 +1229,6 @@ public class HomeActivity extends Activity {
         if (entry == null || entry.settings) {
             return;
         }
-        suppressIdle = true;
         boolean favourite = isFavourite(entry);
         // Deleting a preinstalled app only hides it for this user, which a
         // launcher cannot promise, so hiding is what it gets offered instead.
@@ -1232,9 +1245,15 @@ public class HomeActivity extends Activity {
         ChoiceOverlay overlay = new ChoiceOverlay(this, entry.label, options, -1, index -> {
             if (index == 1) {
                 // Arrange mode waits until the picker is gone: during its fade
-                // the arrows would move a tile the user cannot see.
+                // the arrows would move a tile the user cannot see. Something
+                // can still open over the grid in that gap, and arranging
+                // under it would be invisible too.
                 focusedPackage = entry.packageName;
-                dismissChoice(this::startEditing);
+                dismissChoice(() -> {
+                    if (!overlayOpen() && screensaver == null) {
+                        startEditing();
+                    }
+                });
                 updateSuppressIdle();
                 return;
             }
@@ -1254,6 +1273,10 @@ public class HomeActivity extends Activity {
                                 Uri.parse("package:" + entry.packageName));
                         info.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(info);
+                        // The user can uninstall or disable the app on that
+                        // screen; the tile may be a ghost when we come back.
+                        AppRepository.invalidate();
+                        prefs.bumpAppsEpoch();
                     } catch (ActivityNotFoundException e) {
                         Ui.toast(this, "No app info screen");
                     }
@@ -1271,6 +1294,9 @@ public class HomeActivity extends Activity {
             updateSuppressIdle();
         });
         showOverlay(overlay);
+        // Set after the picker exists: showOverlay's own dismisses recompute
+        // this flag, so setting it earlier loses the race against them.
+        suppressIdle = true;
         overlay.focusSelected();
     }
 
@@ -1412,7 +1438,6 @@ public class HomeActivity extends Activity {
             return;
         }
         dismissOverlays();
-        suppressIdle = true;
         Grid.Metrics metrics = gridMetrics();
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
         searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
@@ -1437,6 +1462,9 @@ public class HomeActivity extends Activity {
         });
         overlayHost.addView(searchOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Set after the overlay exists: a constructor that throws must not
+        // leave the idle watch armed off.
+        suppressIdle = true;
         searchOverlay.start();
     }
 
@@ -1694,8 +1722,17 @@ public class HomeActivity extends Activity {
                 screensaver.nextScene();
                 return true;
             }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER
-                    || keyCode == KeyEvent.KEYCODE_BACK) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                // "On tap" mode shows its clock the first time OK lands, the
+                // way the dream does; a second OK wakes the TV.
+                if (prefs.screensaverClock() == 0 && !screensaver.infoOverlayShown()) {
+                    screensaver.showInfoOverlay();
+                } else {
+                    hideScreensaver();
+                }
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
                 hideScreensaver();
                 return true;
             }
@@ -1834,6 +1871,11 @@ public class HomeActivity extends Activity {
      *         has the focus and the key belongs to it.
      */
     private boolean moveFocus(int key) {
+        // The grid belongs to whatever covers it: while an overlay or the
+        // saver holds the screen (even mid-fade), the arrows are theirs.
+        if (overlayOpen() || screensaver != null) {
+            return false;
+        }
         View focused = getCurrentFocus();
         if (focused == searchPill) {
             // The search pill is the one stop on the shelf: DOWN goes back to
@@ -1893,6 +1935,10 @@ public class HomeActivity extends Activity {
             endEditing();
             return true;
         }
+        // A double-HOME may still be loading its recents. BACK here means the
+        // switcher was asked for and then thought better of, so the answer
+        // that is still on its way gets dropped.
+        switcherGeneration++;
         int focusedIndex = -1;
         View focused = getCurrentFocus();
         if (focused instanceof AppTileView) {

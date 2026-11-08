@@ -455,6 +455,15 @@ public final class ToolActivity extends Activity {
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // The manifest says this activity takes configuration changes itself,
+        // and the screens bake screen metrics in when they are built, so a
+        // resize or a density change starts the screen over.
+        recreate();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         Ui.immersive(this);

@@ -8,7 +8,7 @@ what was done session by session.
 
 | Path | What it is |
 |---|---|
-| `app/` | The launcher (`com.mitun.sonora`). Pure logic at the package root, views in `ui/`, screens in `tools/`, browser in `browser/`, screensaver in `dream/`. |
+| `app/` | The launcher (`com.mitun.sonora`). Pure logic at the package root, views in `ui/`, screens in `tools/`, screensaver in `dream/`. |
 | `files-core/` | Android library: the whole Files file manager, shared by both apps. |
 | `files/` | Standalone Files app (`com.mitun.files`) — a thin shell around `files-core`. |
 | `scripts/` | `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only. |
@@ -35,7 +35,7 @@ what was done session by session.
   title, list on the right, per-page glyph on the left. Pages: Quick
   settings, Home Screen, Clock, Screen Saver, Apps, Tools, System, Mode.
 - **Tools** (`tools/`): Device info (`DebugPanel`), Setup guide, Files,
-  Browser, Debloat, Setup wizard (first run), App manager (`AppPanel`).
+  Debloat, Setup wizard (first run), App manager (`AppPanel`).
   All navigate through one `ScreenStack`; BACK is always one step.
 - **Choice picker** (`ui/ChoiceOverlay`): the one picker for every
   either/or value; restores focus to the row that opened it.
@@ -50,7 +50,7 @@ what was done session by session.
 - **No background work.** No Service except the DreamService, no receivers,
   no alarms. Timers stop when the window is hidden; the LAN server dies
   with its screen.
-- **No network** unless the browser or the transfer client is switched on.
+- **No network** unless the transfer client is switched on.
   No analytics, ever.
 - **`minSdk 23`.** Check the API level of anything new.
 - **Pure logic lives outside the Activity** and is unit-tested

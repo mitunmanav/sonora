@@ -87,9 +87,22 @@ public final class FilesProvider extends ContentProvider {
         if (!file.isFile()) {
             return null;
         }
-        String[] columns = {OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE};
+        String[] columns = projection != null ? projection
+                : new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE};
         MatrixCursor cursor = new MatrixCursor(columns, 1);
-        cursor.addRow(new Object[]{file.getName(), file.length()});
+        Object[] row = new Object[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            if (OpenableColumns.DISPLAY_NAME.equals(columns[i])) {
+                row[i] = file.getName();
+            } else if (OpenableColumns.SIZE.equals(columns[i])) {
+                row[i] = file.length();
+            }
+        }
+        // A caller that asks for no columns gets no row either; a row with
+        // zero columns is a legal but strange answer.
+        if (columns.length > 0) {
+            cursor.addRow(row);
+        }
         return cursor;
     }
 
