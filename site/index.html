@@ -11,6 +11,7 @@
 <meta property="og:image" content="https://mitunmanav.github.io/sonora/img/og.jpg">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://mitunmanav.github.io/sonora/">
 <link rel="icon" href="img/mark.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/schibsted-grotesk.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
@@ -44,30 +45,30 @@
     </p>
   </div>
 
-  <figure class="tv" aria-label="Sonora on a television">
+  <figure class="tv" id="tv" role="tabpanel" aria-label="Sonora on a television">
     <div class="screen">
-      <img id="tv-image" src="img/control-center.webp" width="1600" height="900" alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
+      <img id="tv-image" src="img/control-center.webp" width="1600" height="900" fetchpriority="high" alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
     </div>
-    <figcaption id="tv-caption">Control Center. Every tile does something this TV can really do.</figcaption>
+    <figcaption id="tv-caption" aria-live="polite">Control Center. Every tile does something this TV can really do.</figcaption>
   </figure>
 
   <div class="picker" role="tablist" aria-label="Screens" data-picker>
-    <button role="tab" aria-selected="true" data-src="img/control-center.webp" data-caption="Control Center. Every tile does something this TV can really do." data-alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
-      <img src="img/control-center.webp" alt="" width="480" height="270" loading="lazy"><span>Control Center</span>
+    <button role="tab" aria-controls="tv" aria-selected="true" data-src="img/control-center.webp" data-caption="Control Center. Every tile does something this TV can really do." data-alt="Control Center open over the home screen: a Screen Saver tile, Wi-Fi, Bluetooth, Sound and Display pills, and round buttons for search, apps, quick settings and settings.">
+      <img src="img/control-center-thumb.webp" alt="" width="480" height="270"><span>Control Center</span>
     </button>
-    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/home.webp" data-caption="The home screen in the light appearance. The focused card lifts; nothing else on screen redraws." data-alt="The home screen: an aerial photograph behind a glass dock of app cards, with the focused app's name in the corner and a clock at the top right.">
+    <button role="tab" aria-controls="tv" aria-selected="false" tabindex="-1" data-src="img/home.webp" data-caption="The home screen in the light appearance. The focused card lifts; nothing else on screen redraws." data-alt="The home screen: an aerial photograph behind a glass dock of app cards, with the focused app's name in the corner and a clock at the top right.">
       <img src="img/home-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Home</span>
     </button>
-    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/grid.webp" data-caption="Press down and the dock opens into every app you have, sideloaded ones included." data-alt="The full app grid: three rows of app banners on a dark blurred background.">
+    <button role="tab" aria-controls="tv" aria-selected="false" tabindex="-1" data-src="img/grid.webp" data-caption="Press down and the dock opens into every app you have, sideloaded ones included." data-alt="The full app grid: three rows of app banners on a dark blurred background.">
       <img src="img/grid-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>All apps</span>
     </button>
-    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/settings.webp" data-caption="Settings in the split layout of tvOS. Back is always one step." data-alt="Settings: a large gear on the left and a list on the right with Quick settings, Home Screen, Clock, Screen Saver, Apps, Tools, System and Mode.">
+    <button role="tab" aria-controls="tv" aria-selected="false" tabindex="-1" data-src="img/settings.webp" data-caption="Settings in the split layout of tvOS. Back is always one step." data-alt="Settings: a large gear on the left and a list on the right with Quick settings, Home Screen, Clock, Screen Saver, Apps, Tools, System and Mode.">
       <img src="img/settings-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Settings</span>
     </button>
-    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/files.webp" data-caption="Files, a Finder-style file manager, comes inside Sonora and also ships as its own 48 KB app." data-alt="Files: a sidebar of favourites and locations, and a window showing a Downloads folder.">
+    <button role="tab" aria-controls="tv" aria-selected="false" tabindex="-1" data-src="img/files.webp" data-caption="Files, a Finder-style file manager, comes inside Sonora and also ships as its own 48 KB app." data-alt="Files: a sidebar of favourites and locations, and a window showing a Downloads folder.">
       <img src="img/files-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Files</span>
     </button>
-    <button role="tab" aria-selected="false" tabindex="-1" data-src="img/dream.webp" data-caption="The screensaver: five aerial photographs that ship inside the app, so it never downloads a thing." data-alt="An aerial photograph of a frosted tree in a field, seen from directly above.">
+    <button role="tab" aria-controls="tv" aria-selected="false" tabindex="-1" data-src="img/dream.webp" data-caption="The screensaver: five aerial photographs that ship inside the app, so it never downloads a thing." data-alt="An aerial photograph of a frosted tree in a field, seen from directly above.">
       <img src="img/dream-thumb.webp" alt="" width="480" height="270" loading="lazy"><span>Screensaver</span>
     </button>
   </div>

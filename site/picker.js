@@ -16,6 +16,8 @@
     const next = new Image();
     next.src = tab.dataset.src;
     next.decode().catch(() => {}).then(() => {
+      // A later pick may have finished decoding first; the last pick wins.
+      if (tab.getAttribute('aria-selected') !== 'true') return;
       image.src = next.src;
       image.alt = tab.dataset.alt;
       caption.textContent = tab.dataset.caption;
