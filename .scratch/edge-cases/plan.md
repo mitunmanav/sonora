@@ -1,6 +1,6 @@
 # Edge-case pass — exhaustive plan
 
-Status: in-progress
+Status: done — fixes landed (PLAN session 25); the "noted, not fixed" items stay as the record. TV walk still owed.
 
 Five-area audit of the whole codebase against the standing rules (zero deps,
 minSdk 23, 1 GB target, D-pad, honest UI, no background work). Findings below

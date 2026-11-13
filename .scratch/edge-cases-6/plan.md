@@ -1,5 +1,7 @@
 # Edge cases — pass 6, the file manager
 
+Status: done — fixes landed (PLAN session 29); the "noted, not fixed" items stay as the record. TV walk still owed.
+
 Two-agent sweep over `files-core/` (core agent + UI agent + independent
 parent walk), with the pass-5 fixes as the prime suspects. Prior pass
 reports in `.scratch/edge-cases-4/plan.md` and `.scratch/edge-cases-5/plan.md`

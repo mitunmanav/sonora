@@ -5,9 +5,12 @@ Control Center, an app switcher and an aerial screensaver — in plain Java
 with **zero third-party dependencies**. No ads, no analytics, no outbound
 connections. GPL-3.0.
 
-![Sonora on the test TV](site/img/control-center.webp)
+**[Project page](https://mitunmanav.github.io/sonora)** ·
+[Build and install](#build-and-test) ·
+[Architecture](docs/ARCHITECTURE.md) ·
+[Measurements](docs/perf/2026-11-05.md)
 
-The project page is at <https://mitunmanav.github.io/sonora>.
+![Control Center open over the Sonora home screen on the test TV](site/img/control-center.webp)
 
 ## Measured on the same TV
 
@@ -17,18 +20,18 @@ One Mi TV Stick, Android 11, 2 GB RAM, same debloated system, same
 
 | | Sonora | Google TV |
 |---|---|---|
-| Launcher memory at idle | ~41 MB | ~181 MB |
-| Launcher memory after the walk | ~37 MB | ~275–288 MB |
+| Launcher memory at idle | ~37 MB | ~181 MB |
+| Launcher memory after the walk | ~36 MB | ~275–288 MB |
 | Frames missing their deadline | ~0.9% | ~6–8% |
 | Slowest 1% of frames | ~23 ms | ~105–200 ms |
+| Slow UI-thread events | 0 | 13 |
 | Memory left free for apps | ~900 MiB | ~810 MiB |
 
 Google TV's process also hosts its recommendation rows and channel
-logos; Sonora does none of that work. Numbers are from
-[`docs/perf/2026-11-05.md`](docs/perf/2026-11-05.md), which records the
-method, the caveats and the raw `dumpsys` output. One honest note: the
-1 GB tier is tuned and forced-LOW tested on a 2 GB TV; no real 1 GB
-hardware has been through it yet.
+logos; Sonora does none of that work. Sonora's figures are the
+current build (the `phase1b` run); Google TV's are two runs that agreed
+within 10%. [`docs/perf/2026-11-05.md`](docs/perf/2026-11-05.md) records
+the method, the caveats and the raw `dumpsys` output.
 
 ## Why it is different
 
@@ -49,13 +52,23 @@ hardware has been through it yet.
 - **It says what a device cannot do.** Permission-denied features are
   stated in the UI; nothing is faked.
 
-Honest limits: no Watch Next or HDMI-input rows, no signed release yet
-(build and install over adb), and on Google TV the stock launcher may
-re-enable itself after a reboot. CleanYourTV is the other heavyweight in
-the field: its centre of gravity is per-brand debloat scripts plus a
-deliberately minimal 572 KB launcher with 31 languages and themes.
-Sonora is the launcher product itself — Control Center, switcher,
-search, settings, screensaver and Files — with a lighter debloat screen.
+## What it cannot do yet
+
+- No Watch Next or channel rows, and no shortcuts to HDMI inputs.
+- No signed release yet: build it and install it over adb.
+- On Google TV the stock launcher has to be turned off over adb, and on
+  the test stick it came back on after a reboot.
+- The 1 GB tier was tested by forcing LOW on a 2 GB TV; no real 1 GB
+  hardware has been through it yet.
+- Hiding or turning off another app needs a permission most retail TVs
+  keep for system apps. The app switcher needs Usage access, granted once.
+
+The [field comparison](https://mitunmanav.github.io/sonora/#field) on the
+project page sets Sonora beside Projectivy, AT4K, Vitrine, CleanYourTV and
+others. CleanYourTV is the closest in spirit: per-brand debloat tooling plus a
+deliberately minimal 572 KB launcher. Sonora is the launcher product itself —
+Control Center, switcher, search, settings, screensaver and Files — with a
+lighter debloat screen.
 
 ## Modules
 
@@ -74,6 +87,7 @@ Linux/WSL only. Gradle 8.13 via the wrapper; no third-party dependencies
 ```bash
 ./gradlew :app:testDebugUnitTest :files-core:testDebugUnitTest
 ./gradlew :app:assembleRelease :files:assembleRelease
+./gradlew :app:assemblePerf :files:assemblePerf   # installable without a keystore
 ```
 
 The `perf` build type is the release build signed with the debug key, so

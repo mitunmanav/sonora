@@ -1,6 +1,6 @@
 # Files app pass
 
-Status: needs-triage
+Status: ready-for-agent — code side only; the on-device check needs the TV and a USB stick.
 
 A dedicated pass over `files/` + `files-core/` — the standalone Files app and
 the copy bundled inside Sonora's Tools — for tvOS-26 look, edge cases and
@@ -23,6 +23,10 @@ D-pad behaviour. Separate from the launcher work in PLAN sessions 20–21.
 
 - New file-manager features. This is a polish/edge-case pass only.
 
-## Open questions
+## Answered
 
-- Does files-core share `ui/` widgets or duplicate them?
+- Does files-core share `ui/` widgets or duplicate them? Duplicates them:
+  `files-core` imports nothing from `com.mitun.sonora`, so the standalone
+  app builds alone. Its colours are `FilesTheme`, not `ui/Theme`.
+- Edge-case passes 4–6 already walked `files-core` for logic and focus
+  races; this pass is the look and D-pad path, not another logic audit.

@@ -1,5 +1,7 @@
 # Edge cases — fourth pass (2026-11-06)
 
+Status: done — fixes landed (PLAN session 27); the "noted, not fixed" items stay as the record. TV walk still owed.
+
 Two parallel audits focused on the file manager: one over `files-core` core
 logic (`FileOps`, `FileLogic`, `Marks`, `Places`, `FilesProvider` + tests), one
 over the UI (`FilesActivity`, `Sheets`, `QuickLook`, `ItemCell`, `FileIcon`,

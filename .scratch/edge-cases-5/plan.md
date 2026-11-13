@@ -1,5 +1,7 @@
 # Edge cases — fifth pass (2026-11-06)
 
+Status: done — fixes landed (PLAN session 28); the "noted, not fixed" items stay as the record. TV walk still owed.
+
 Two parallel audits over `files-core/` — one on copy/move/delete/name logic,
 one on the Activity/sheets/cells — with the same code walked by hand. The
 prime suspects this time were the fixes landed in pass 4 itself, which had

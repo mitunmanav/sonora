@@ -1516,3 +1516,44 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: tidy-up — plans closed, edge-case leftovers, README and site polish
+
+- `.scratch/`: all six edge-case plans now carry `Status: done` (their fixes
+  landed in sessions 25–29; the "noted, not fixed" lists stay as the record).
+  `files-pass` triaged to `ready-for-agent` with its open question answered:
+  `files-core` duplicates its widgets and colours (`FilesTheme`) rather than
+  importing `ui/`, so the standalone app builds alone.
+- Edge cases from the "noted" lists:
+  - `FileLogic.freeName` gained an `isFolder` overload. A folder keeps its whole
+    name as Finder does, so `photos.zip` → `photos.zip copy`, not
+    `photos copy.zip`. `FileOps.transfer`/`copyTo` and
+    `FilesActivity.pastedName` pass it, so the paste selection still predicts
+    the landed name. New test `aFolderKeepsItsWholeNameTheWayFinderKeepsIt`.
+  - Dead code removed: `FilesTheme.inkTertiary`/`separator` (pass 5),
+    `SearchOverlay.Listener.onClosed` + its `HomeActivity` override (never
+    invoked), and `Prefs.screensaverPhotoFolder` accessors (`ss_photo_folder`,
+    no caller). A stored `ss_photo_folder` value is ignored, not migrated.
+  - Kept: `Spring.jumpTo`, which is still unused but is tested and documented.
+- README: links row up top, the memory table matched to the site and to the
+  current build (`phase1b`: 37 MB idle / 36 MB after the walk; the old ~41/~37
+  was the pre-rewrite run), slow-UI-thread row added, limits as a list, the
+  field comparison points to the site, and the `perf` build commands are listed.
+- Site (`site/`), reviewed against the emil-design-eng checklist:
+  - Hover styles are gated behind `(hover: hover) and (pointer: fine)` so a
+    tap cannot leave them stuck on.
+  - Reduced motion now removes only movement; colour and shadow still ease.
+  - The picker: the last pick wins if decodes finish out of order (rapid arrow
+    presses could leave the wrong screenshot), the tabs get `aria-controls`
+    and a `tabpanel`, and the caption is `aria-live`.
+  - The Control Center thumbnail now uses its thumb file, the label no longer
+    wraps into a two-line pill on phones, and tap highlight is off.
+  - The field table's launcher column is sticky while it scrolls sideways,
+    the numbers use tabular figures, the hero image has `fetchpriority`, and
+    there is a canonical link.
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`, 150
+tests, 0 failures. `:app:assemblePerf` + `:files:assemblePerf` green.
+The site was checked in headless Chrome at 1440 px and 390 px. Not verified:
+anything on the TV (no device reachable from this session), `codegraph
+sync` (not installed here), and the sticky column in Safari.

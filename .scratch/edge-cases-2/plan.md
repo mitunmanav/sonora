@@ -1,6 +1,6 @@
 # Edge-case pass 2 — exhaustive plan
 
-Status: findings complete, fixes in-progress
+Status: done — fixes landed (PLAN session 25); the "noted, not fixed" items stay as the record. TV walk still owed.
 
 Second-pass audit. Ten read-only agents, disjoint scopes, each told to skip
 everything the first pass (`.scratch/edge-cases/plan.md`) already fixed or

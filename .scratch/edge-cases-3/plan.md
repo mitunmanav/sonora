@@ -1,5 +1,7 @@
 # Edge cases — third pass (2026-11-06)
 
+Status: done — fixes landed (PLAN session 26); the "noted, not fixed" items stay as the record. TV walk still owed.
+
 Two parallel audits (launcher core + manifest; tools/browser/dream) plus a
 hand walk of `ui/`, deduplicated against `.scratch/edge-cases/` and
 `.scratch/edge-cases-2/`. Every pass-2 fix was verified in place; the one
