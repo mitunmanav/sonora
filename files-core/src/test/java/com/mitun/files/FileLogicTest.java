@@ -183,6 +183,15 @@ public class FileLogicTest {
     }
 
     @Test
+    public void aFolderKeepsItsWholeNameTheWayFinderKeepsIt() throws IOException {
+        File dir = temp.newFolder();
+        assertTrue(new File(dir, "photos.zip").mkdir());
+        assertEquals("photos.zip copy", FileLogic.freeName("photos.zip", dir, true, true));
+        assertTrue(new File(dir, "photos.zip copy").mkdir());
+        assertEquals("photos.zip copy 2", FileLogic.freeName("photos.zip", dir, true, true));
+    }
+
+    @Test
     public void aMoveKeepsItsNameWhenItIsFree() throws IOException {
         File dir = temp.newFolder();
         assertEquals("a.txt", FileLogic.freeName("a.txt", dir, false));

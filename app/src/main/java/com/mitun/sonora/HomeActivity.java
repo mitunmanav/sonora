@@ -1454,11 +1454,6 @@ public class HomeActivity extends Activity {
                     }
                 });
             }
-
-            @Override
-            public void onClosed() {
-                closeSearch();
-            }
         });
         overlayHost.addView(searchOverlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));

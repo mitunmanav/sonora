@@ -220,15 +220,6 @@ public final class Prefs {
         sp.edit().putInt("ss_photo_source", Math.max(0, Math.min(2, value))).apply();
     }
 
-    /** Custom photo folder path for device storage photos. */
-    public String screensaverPhotoFolder() {
-        return getString("ss_photo_folder", null);
-    }
-
-    public void setScreensaverPhotoFolder(String path) {
-        sp.edit().putString("ss_photo_folder", path).apply();
-    }
-
     /** True when the technical settings should be shown. */
     public boolean technical() {
         return mode() == MODE_TECHNICAL;

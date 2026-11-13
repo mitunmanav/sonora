@@ -102,7 +102,8 @@ public final class FileOps {
                 continue;
             }
             File destination = new File(target,
-                    FileLogic.freeName(source.getName(), target, sameFolder));
+                    FileLogic.freeName(source.getName(), target, sameFolder,
+                            source.isDirectory()));
             boolean ok = move ? moveTo(source, destination, cancel, done, total, progress, result)
                     : copyTo(source, destination, null, cancel, done, total, progress, result)
                             != null;
@@ -193,7 +194,7 @@ public final class FileOps {
                 made = into.mkdirs();
                 for (int tries = 0; tries < 4 && !made && FileLogic.taken(into); tries++) {
                     into = new File(into.getParentFile(),
-                            FileLogic.freeName(source.getName(), into.getParentFile(), true));
+                            FileLogic.freeName(source.getName(), into.getParentFile(), true, true));
                     made = into.mkdirs();
                 }
             } catch (SecurityException e) {
@@ -260,7 +261,7 @@ public final class FileOps {
             }
             if (!ours) {
                 into = new File(into.getParentFile(),
-                        FileLogic.freeName(source.getName(), into.getParentFile(), true));
+                        FileLogic.freeName(source.getName(), into.getParentFile(), true, true));
                 continue;
             }
             boolean finished = false;

@@ -1202,7 +1202,8 @@ public class FilesActivity extends Activity {
     private static String pastedName(File source, File into, boolean move) {
         File parent = source.getParentFile();
         boolean same = parent != null && sameFile(parent, into);
-        return move && same ? source.getName() : FileLogic.freeName(source.getName(), into, same);
+        return move && same ? source.getName() : FileLogic.freeName(source.getName(), into, same,
+                source.isDirectory());
     }
 
     private void complain(String title, String why) {

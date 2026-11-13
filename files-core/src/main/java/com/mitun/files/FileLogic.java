@@ -357,11 +357,19 @@ public final class FileLogic {
      * @param copy false to keep the name itself when it is free, as a move does
      */
     public static String freeName(String name, File folder, boolean copy) {
+        return freeName(name, folder, copy, false);
+    }
+
+    /**
+     * As above; for a folder the whole name is the stem, as Finder has it:
+     * "photos.zip copy", not "photos copy.zip".
+     */
+    public static String freeName(String name, File folder, boolean copy, boolean isFolder) {
         if (!copy && !taken(new File(folder, name))) {
             return name;
         }
         int dot = name.lastIndexOf('.');
-        boolean hasExtension = dot > 0 && dot < name.length() - 1;
+        boolean hasExtension = !isFolder && dot > 0 && dot < name.length() - 1;
         String stem = hasExtension ? name.substring(0, dot) : name;
         String extension = hasExtension ? name.substring(dot) : "";
         String candidate = stem + " copy" + extension;

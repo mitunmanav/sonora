@@ -33,9 +33,6 @@ public final class SearchOverlay extends FrameLayout {
     public interface Listener {
         /** The user picked an app. */
         void onPicked(AppEntry entry);
-
-        /** The search is over. */
-        void onClosed();
     }
 
     /** Two screens of cards at most; the note says when more matched. */

@@ -10,10 +10,8 @@ final class FilesTheme {
     final int sidebar;
     final int ink;
     final int inkSecondary;
-    final int inkTertiary;
     final int accent;
     final int stripe;
-    final int separator;
     final int hover;
     final int sheet;
     final int danger;
@@ -25,10 +23,8 @@ final class FilesTheme {
         sidebar = light ? 0xFFE9E9EE : 0xFF2C2C2E;
         ink = light ? 0xFF1D1D1F : 0xFFF5F5F7;
         inkSecondary = light ? 0xFF6E6E73 : 0xFF98989D;
-        inkTertiary = light ? 0xFF8E8E93 : 0xFF6E6E73;
         accent = light ? 0xFF007AFF : 0xFF0A84FF;
         stripe = light ? 0x08000000 : 0x0AFFFFFF;
-        separator = light ? 0x1F000000 : 0x24FFFFFF;
         hover = light ? 0x1A000000 : 0x24FFFFFF;
         sheet = light ? 0xFFF5F5F7 : 0xFF323234;
         danger = light ? 0xFFD70015 : 0xFFFF453A;
