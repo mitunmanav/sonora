@@ -9,8 +9,11 @@ import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
 
+import android.content.Context;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Serves local files to other apps as content URIs.
@@ -18,7 +21,7 @@ import java.io.FileNotFoundException;
  * A file:// URI is not allowed to leave the app on modern Android, so sharing
  * a file means handing out a content URI instead. This is the smallest thing
  * that does that: it never grants anything unless the app asks for it, and it
- * is not exported.
+ * is not exported. Only read access within approved roots is permitted.
  */
 public final class SonoraProvider extends ContentProvider {
     private static final String AUTHORITY = "com.mitun.sonora.files";
@@ -66,14 +69,14 @@ public final class SonoraProvider extends ContentProvider {
 
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
+        if (mode != null && mode.contains("w")) {
+            throw new SecurityException("SonoraProvider is read-only");
+        }
         File file = fileOf(uri);
         if (file == null || !file.exists()) {
-            throw new FileNotFoundException(uri.toString());
+            throw new FileNotFoundException(uri != null ? uri.toString() : "null");
         }
-        int flags = mode.contains("w")
-                ? ParcelFileDescriptor.MODE_READ_WRITE | ParcelFileDescriptor.MODE_CREATE
-                : ParcelFileDescriptor.MODE_READ_ONLY;
-        return ParcelFileDescriptor.open(file, flags);
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
     @Override
@@ -91,15 +94,72 @@ public final class SonoraProvider extends ContentProvider {
         throw new UnsupportedOperationException();
     }
 
-    private static File fileOf(Uri uri) {
+    private File fileOf(Uri uri) {
+        return fileOf(getContext(), uri);
+    }
+
+    public static File fileOf(Context context, Uri uri) {
+        if (context == null || uri == null) {
+            return null;
+        }
         String path = uri.getQueryParameter("path");
         if (path == null || path.length() == 0) {
             return null;
         }
         try {
-            return new File(path);
-        } catch (RuntimeException e) {
+            File candidate = new File(path).getCanonicalFile();
+            if (!isAllowed(context, candidate)) {
+                return null;
+            }
+            return candidate;
+        } catch (Exception e) {
             return null;
         }
+    }
+
+    public static boolean isAllowed(Context context, File file) {
+        if (context == null || file == null) {
+            return false;
+        }
+        try {
+            String target = file.getCanonicalPath();
+            List<File> roots = new ArrayList<>();
+            File appFolder = com.mitun.sonora.tools.FileServer.appFolder(context);
+            if (appFolder != null) roots.add(appFolder);
+
+            File filesDir = context.getFilesDir();
+            if (filesDir != null) roots.add(new File(filesDir, "sonora"));
+
+            File extDir = android.os.Environment.getExternalStorageDirectory();
+            if (extDir != null) roots.add(extDir);
+
+            File[] extFilesDirs = context.getExternalFilesDirs(null);
+            if (extFilesDirs != null) {
+                for (File d : extFilesDirs) {
+                    if (d != null) roots.add(d);
+                }
+            }
+
+            File cacheDir = context.getCacheDir();
+            if (cacheDir != null) roots.add(cacheDir);
+
+            File[] extCacheDirs = context.getExternalCacheDirs();
+            if (extCacheDirs != null) {
+                for (File d : extCacheDirs) {
+                    if (d != null) roots.add(d);
+                }
+            }
+
+            for (File root : roots) {
+                if (root == null) continue;
+                String rootPath = root.getCanonicalPath();
+                if (target.equals(rootPath) || target.startsWith(rootPath + File.separator)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return false;
     }
 }

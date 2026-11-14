@@ -89,12 +89,16 @@ public final class AppPanel {
                 }
             }));
         }
-        rows.add(SettingRow.action("App info", () -> {
-            PackageActions.Result result = PackageActions.openAppInfo(host, item.packageName);
-            if (!result.ok) {
-                Ui.toast(host, result.message);
-            }
-        }));
+        boolean androidControlsStop = android.os.Build.VERSION.SDK_INT
+                >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+        rows.add(SettingRow.action(
+                androidControlsStop ? "Stop in Android app settings" : "App info", () -> {
+                    PackageActions.Result result =
+                            PackageActions.openAppInfo(host, item.packageName);
+                    if (!result.ok) {
+                        Ui.toast(host, result.message);
+                    }
+                }));
         if (item.hasLauncherEntry) {
             rows.add(SettingRow.toggle("Hidden from home screen", item.hidden, () -> {
                 PackageActions.Result result =
@@ -115,10 +119,15 @@ public final class AppPanel {
         } else {
             rows.add(SettingRow.value("Home screen", "No launcher entry, so nothing to hide"));
         }
-        rows.add(SettingRow.action("Force stop", () -> {
-            PackageActions.Result result = PackageActions.forceStop(host, item.packageName);
-            Ui.toast(host, result.message);
-        }));
+        if (androidControlsStop) {
+            rows.add(SettingRow.note("Android does not let Sonora stop other apps directly on "
+                    + "this version. Use Force stop on the app settings screen."));
+        } else {
+            rows.add(SettingRow.action("Force stop", () -> {
+                PackageActions.Result result = PackageActions.forceStop(host, item.packageName);
+                Ui.toast(host, result.message);
+            }));
+        }
         rows.add(SettingRow.action("Clear storage", () -> {
             PackageActions.Result result = PackageActions.clearData(host, item.packageName);
             Ui.toast(host, result.message);

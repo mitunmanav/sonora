@@ -6,15 +6,14 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 
 /**
- * A cheap Liquid Glass imitation: a translucent slab with a light top edge, a
- * soft specular pool and a shadowed underside. It uses a handful of canvas
- * draws, no blur, no bitmap sampling.
+ * A cheap Liquid Glass imitation: a translucent slab with a light top edge, an
+ * even top sheen and a shadowed underside. It uses a handful of canvas draws,
+ * no blur, no bitmap sampling.
  *
  * The material has two states, and the difference between them is the point.
  *
@@ -104,26 +103,28 @@ public final class GlassDrawable extends Drawable {
         // The lens at rest: darker than what is behind it, so a mark on it
         // has a smooth ground to stand on.
         fillPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.BLACK, 0.46f * tint), adjust(Color.BLACK, 0.30f * tint),
-                        adjust(Color.BLACK, 0.40f * tint)},
+                new int[]{adjust(Color.BLACK, 0.56f * tint), adjust(Color.BLACK, 0.44f * tint),
+                        adjust(Color.BLACK, 0.54f * tint)},
                 new float[]{0f, 0.52f, 1f}, Shader.TileMode.CLAMP));
-        // The specular pool: where the sky would be reflected.
-        highlightPaint.setShader(new RadialGradient(bounds.width() * 0.28f, bounds.height() * 0.02f,
-                bounds.width() * 0.85f, new int[]{adjust(Color.WHITE, 0.16f * tint),
-                        adjust(Color.WHITE, 0.03f * tint), Color.TRANSPARENT},
-                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+        // The light that catches the top of the material. It runs the whole
+        // width: one even wash, not a spotlight, so the dock reads as a slab
+        // of glass rather than a lit patch.
+        highlightPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
+                new int[]{adjust(Color.WHITE, 0.13f * tint), adjust(Color.WHITE, 0.035f * tint),
+                        Color.TRANSPARENT},
+                new float[]{0f, 0.16f, 0.62f}, Shader.TileMode.CLAMP));
         // The light catches the top edge, so that is where the rim is
         // brightest. It fades out towards the bottom of the material.
         edgePaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.WHITE, 0.90f * tint), adjust(Color.WHITE, 0.30f * tint),
-                        adjust(Color.WHITE, 0.10f * tint)},
+                new int[]{adjust(Color.WHITE, 0.82f * tint), adjust(Color.WHITE, 0.24f * tint),
+                        adjust(Color.WHITE, 0.08f * tint)},
                 new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
         // The underside catches no light at all, which is what gives the
         // material its edge.
         under.set(bounds.left, bounds.bottom - Math.max(2f, stroke * 3f),
                 bounds.right, bounds.bottom);
         underPaint.setShader(new LinearGradient(0, under.top, 0, under.bottom,
-                new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.34f * tint)},
+                new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.40f * tint)},
                 new float[]{0f, 1f}, Shader.TileMode.CLAMP));
         // The same lens with the light on it.
         litPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
@@ -138,8 +139,9 @@ public final class GlassDrawable extends Drawable {
         // The rim of a lit lens is no longer a bright edge: the lens itself is
         // the bright thing now.
         edgePaint.setAlpha(Math.round(alpha * (1f - 0.78f * focus)));
-        // The specular pool belongs to the resting lens.
-        highlightPaint.setAlpha(Math.round(alpha * (1f - focus)));
+        // The top sheen stays on a lit lens too: it is what keeps the surface
+        // reading as glass once it has turned white.
+        highlightPaint.setAlpha(Math.round(alpha * (1f - 0.30f * focus)));
         underPaint.setAlpha(alpha);
         // The lit layer fades in over the dark one.
         litPaint.setAlpha(Math.round(alpha * 0.96f * focus));

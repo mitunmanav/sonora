@@ -37,6 +37,8 @@ public final class AppRepository {
     private AppRepository() {
     }
 
+    private static final Object LOAD_LOCK = new Object();
+
     /**
      * The cached list, loading it on a background thread if it is missing.
      *
@@ -59,23 +61,26 @@ public final class AppRepository {
 
     /** Rebuilds the list and the artwork. Call off the main thread. */
     public static List<AppEntry> load(Context context, int tileWidthPx) {
-        // The old artwork is let go before the new one is made: two sets of
-        // pictures alive at once is what a low-memory TV cannot afford.
-        cached = null;
-        cachedWidth = -1;
-        PackageManager pm = context.getPackageManager();
-        Map<String, AppEntry> byPackage = new LinkedHashMap<>();
-        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), byPackage, tileWidthPx);
-        collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), byPackage, tileWidthPx);
-        List<AppEntry> out = new ArrayList<>(byPackage.values());
-        cached = out;
-        cachedWidth = tileWidthPx;
-        return out;
+        synchronized (LOAD_LOCK) {
+            if (cached != null && (tileWidthPx <= 0 || cachedWidth == tileWidthPx)) {
+                return cached;
+            }
+            PackageManager pm = context.getPackageManager();
+            Map<String, AppEntry> byPackage = new LinkedHashMap<>();
+            collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), byPackage, tileWidthPx);
+            collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), byPackage, tileWidthPx);
+            List<AppEntry> out = new ArrayList<>(byPackage.values());
+            cached = out;
+            cachedWidth = tileWidthPx;
+            return out;
+        }
     }
 
     public static void invalidate() {
-        cached = null;
-        cachedWidth = -1;
+        synchronized (LOAD_LOCK) {
+            cached = null;
+            cachedWidth = -1;
+        }
     }
 
     private static void collect(Context context, PackageManager pm, Intent intent,
@@ -117,58 +122,64 @@ public final class AppRepository {
                 loadedLabel = pkg;
             }
 
-            Drawable iconDrawable = null;
-            Drawable bannerDrawable = null;
-            try {
-                iconDrawable = ai.loadIcon(pm);
-                if (iconDrawable == null) {
-                    iconDrawable = app.loadIcon(pm);
-                }
-            } catch (RuntimeException ignored) {
-            }
-            try {
-                bannerDrawable = ai.loadBanner(pm);
-                if (bannerDrawable == null) {
-                    bannerDrawable = app.loadBanner(pm);
-                }
-            } catch (RuntimeException ignored) {
-            }
-
-            // Artwork is stored at the size the tile actually draws at, so a
-            // 1080p stick does not carry 4K pictures around in memory.
-            boolean lowRam = SystemInfo.get(context).lowRam;
-            int bannerW = Math.max(160, Math.min(BANNER_MAX_W, tileWidthPx));
-            if (lowRam) {
-                bannerW = Math.max(120, bannerW / 2);
-            }
-            int bannerH = Math.max(1, Math.round(bannerW * 0.6f));
-            int iconMax = lowRam ? ICON_MAX / 2 : ICON_MAX;
-
-            Bitmap icon = Ui.drawableToBitmap(iconDrawable, iconMax, iconMax, true);
-            int iconW = iconDrawable == null ? 0 : iconDrawable.getIntrinsicWidth();
-            int iconH = iconDrawable == null ? 0 : iconDrawable.getIntrinsicHeight();
-            float iconRatio = iconH > 0 ? iconW / (float) iconH : 1f;
-
+            // Callers that only want names (the settings lists) ask with a
+            // zero tile width. Decoding artwork for them would be pure waste.
+            boolean wantArtwork = tileWidthPx > 0;
+            Bitmap icon = null;
             Bitmap banner = null;
-            if (validBannerRatio(bannerDrawable)) {
-                banner = drawWide(bannerDrawable, bannerW, bannerH);
-            } else if (icon != null && iconRatio > 1.25f && iconRatio < 2.4f) {
-                banner = Ui.drawableToBitmap(iconDrawable, bannerW, bannerH, true);
+            if (wantArtwork) {
+                Drawable bannerDrawable = null;
+                try {
+                    bannerDrawable = ai.loadBanner(pm);
+                    if (bannerDrawable == null) {
+                        bannerDrawable = app.loadBanner(pm);
+                    }
+                } catch (RuntimeException ignored) {
+                }
+
+                // Artwork is stored at the size the tile actually draws at, so
+                // a 1080p stick does not carry 4K pictures around in memory.
+                boolean lowRam = SystemInfo.get(context).lowRam;
+                int bannerW = Math.max(160, Math.min(BANNER_MAX_W, tileWidthPx));
+                if (lowRam) {
+                    bannerW = Math.max(120, bannerW / 2);
+                }
+                int bannerH = Math.max(1, Math.round(bannerW * 0.6f));
+                int iconMax = lowRam ? ICON_MAX / 2 : ICON_MAX;
+
+                if (validBannerRatio(bannerDrawable)) {
+                    banner = drawWide(bannerDrawable, bannerW, bannerH);
+                }
+                if (banner == null) {
+                    Drawable iconDrawable = null;
+                    try {
+                        iconDrawable = ai.loadIcon(pm);
+                        if (iconDrawable == null) {
+                            iconDrawable = app.loadIcon(pm);
+                        }
+                    } catch (RuntimeException ignored) {
+                    }
+                    icon = Ui.drawableToBitmap(iconDrawable, iconMax, iconMax, true);
+                    int iconW = iconDrawable == null ? 0 : iconDrawable.getIntrinsicWidth();
+                    int iconH = iconDrawable == null ? 0 : iconDrawable.getIntrinsicHeight();
+                    float iconRatio = iconH > 0 ? iconW / (float) iconH : 1f;
+                    if (icon != null && iconRatio > 1.25f && iconRatio < 2.4f) {
+                        // A wide icon is the tile's artwork; keeping the square
+                        // copy as well would double the memory for nothing.
+                        banner = Ui.drawableToBitmap(iconDrawable, bannerW, bannerH, true);
+                        icon = null;
+                    }
+                }
             }
 
-            int accent = icon != null ? Ui.averageColor(icon) : 0;
-            if (accent == 0 && banner != null) {
-                accent = Ui.averageColor(banner);
-            }
+            int accent = banner != null ? Ui.averageColor(banner)
+                    : icon != null ? Ui.averageColor(icon) : 0;
             if (accent == 0) {
                 accent = 0xFF3A3F4A;
             }
-            // A card draws its banner when there is one and the icon only
-            // otherwise, so keeping both doubles the memory for nothing.
-            Bitmap keepIcon = banner == null ? icon : null;
             out.put(pkg, new AppEntry(loadedLabel.toString(), pkg,
                     new ComponentName(ai.packageName, ai.name),
-                    keepIcon, banner, accent, false));
+                    icon, banner, accent, false));
         }
     }
 
@@ -195,7 +206,12 @@ public final class AppRepository {
         int tw = Math.max(1, Math.round(w * scale));
         int th = Math.max(1, Math.round(h * scale));
         try {
-            Bitmap bitmap = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+            // TV banners are opaque photographs, so 16 bits a pixel is enough
+            // and halves the biggest cache in the app. A banner with real
+            // transparency keeps its alpha.
+            Bitmap.Config config = drawable.getOpacity() == android.graphics.PixelFormat.OPAQUE
+                    ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
+            Bitmap bitmap = Bitmap.createBitmap(tw, th, config);
             Canvas canvas = new Canvas(bitmap);
             drawable.setBounds(0, 0, tw, th);
             drawable.draw(canvas);

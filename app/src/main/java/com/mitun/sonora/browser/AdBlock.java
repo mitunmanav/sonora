@@ -69,26 +69,25 @@ public final class AdBlock {
             return false;
         }
         String lower = url.toLowerCase(Locale.US);
+        String host = hostOf(lower);
+        if (host.length() > 0) {
+            // A blocked host blocks its subdomains too, the way a hosts file does.
+            String domain = host;
+            while (domain.length() > 0) {
+                if (hosts.contains(domain)) {
+                    return true;
+                }
+                int dot = domain.indexOf('.');
+                if (dot < 0) {
+                    break;
+                }
+                domain = domain.substring(dot + 1);
+            }
+        }
         for (String fragment : fragments) {
             if (lower.contains(fragment)) {
                 return true;
             }
-        }
-        String host = hostOf(lower);
-        if (host.length() == 0) {
-            return false;
-        }
-        // A blocked host blocks its subdomains too, the way a hosts file does.
-        String domain = host;
-        while (domain.length() > 0) {
-            if (hosts.contains(domain)) {
-                return true;
-            }
-            int dot = domain.indexOf('.');
-            if (dot < 0) {
-                break;
-            }
-            domain = domain.substring(dot + 1);
         }
         return false;
     }

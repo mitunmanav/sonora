@@ -19,8 +19,8 @@ public final class AppTileView extends LinearLayout {
     }
 
     /** How far the card leans, in degrees, per step of travel. */
-    private static final float LEAN_X = 2.8f;
-    private static final float LEAN_Y = 2.4f;
+    private static final float LEAN_X = 2.2f;
+    private static final float LEAN_Y = 1.8f;
 
     private final AppIconView icon;
     private final TextView label;
@@ -56,8 +56,9 @@ public final class AppTileView extends LinearLayout {
         label.setSingleLine(true);
         label.setEllipsize(TextUtils.TruncateAt.END);
         label.setAlpha(0.82f);
+        label.setMinHeight(labelSpace);
         LayoutParams labelParams = new LayoutParams(LayoutParams.MATCH_PARENT,
-                labelSpace > 0 ? labelSpace : 0);
+                labelSpace > 0 ? LayoutParams.WRAP_CONTENT : 0);
         labelParams.topMargin = Ui.dp(context, 5);
         addView(label, labelParams);
         // A label only shows for the focused tile in that mode, so the ones

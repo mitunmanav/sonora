@@ -137,7 +137,15 @@ public final class SettingRow {
         line.setBackground(material);
         line.setFocusable(true);
         line.setFocusableInTouchMode(false);
-        line.setContentDescription(title);
+        String spoken = title;
+        if (type == TOGGLE) {
+            spoken += ", " + value;
+        } else if (type == CHECK) {
+            spoken += value.length() == 0 ? ", not selected" : ", selected";
+        } else if ((type == VALUE || type == CHOICE || type == PUSH) && value.length() > 0) {
+            spoken += ", " + value;
+        }
+        line.setContentDescription(spoken);
 
         TextView label = new TextView(context);
         label.setText(title);
@@ -159,8 +167,9 @@ public final class SettingRow {
         line.addView(valueView, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
 
+        TextView chevron = null;
         if (type == PUSH) {
-            TextView chevron = new TextView(context);
+            chevron = new TextView(context);
             // The arrow points the way the row opens, which is the other way
             // round in a right-to-left language.
             boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
@@ -179,13 +188,40 @@ public final class SettingRow {
 
         final TextView valueText = valueView;
         final TextView labelText = label;
-        line.setOnFocusChangeListener((v, focused) -> {
-            GlassDrawable bg = (GlassDrawable) v.getBackground();
-            bg.setAlpha(focused ? 255 : 0);
-            if (type != DANGER) {
-                labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
-            }
-            valueText.setTextColor(focused ? 0xE6FFFFFF : 0xB3FFFFFF);
+        final TextView chevronText = chevron;
+        final int labelOff = type == DANGER ? 0xFFFF6B6B : 0xE6FFFFFF;
+        final int labelOn = type == DANGER ? 0xFF8C1D18 : 0xFF101C26;
+        final int valueOff = 0xB3FFFFFF;
+        final int valueOn = 0xCC101C26;
+        final int chevronOff = 0x80FFFFFF;
+        final int chevronOn = 0x99101C26;
+        final float[] focus = {0f};
+        line.setOnFocusChangeListener((view, focused) -> {
+            final GlassDrawable bg = (GlassDrawable) view.getBackground();
+            Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
+                        @Override
+                        public float get() {
+                            return focus[0];
+                        }
+
+                        @Override
+                        public void set(float value) {
+                            focus[0] = value;
+                            bg.setAlpha(Math.round(255f * value));
+                            bg.setFocus(value);
+                            labelText.setTextColor(Ui.lerpColor(labelOff, labelOn, value));
+                            valueText.setTextColor(Ui.lerpColor(valueOff, valueOn, value));
+                            if (chevronText != null) {
+                                chevronText.setTextColor(Ui.lerpColor(chevronOff, chevronOn, value));
+                            }
+                        }
+                    });
+            // Lift the row, so its small focus scale is not covered by the
+            // row below it.
+            view.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+            Motion.scale(view, focused ? 1.02f : 1f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS);
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());

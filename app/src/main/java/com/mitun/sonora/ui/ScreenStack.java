@@ -2,6 +2,7 @@ package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -42,6 +43,8 @@ public final class ScreenStack extends FrameLayout {
         View view;
         LinearLayout list;
         ScrollView scroller;
+        /** The row that opened the screen above this one, so BACK returns to it. */
+        View returnFocus;
 
         Screen(String title, String subtitle) {
             this.title = title;
@@ -71,6 +74,15 @@ public final class ScreenStack extends FrameLayout {
         stack.clear();
         removeAllViews();
         push(title, subtitle, rows);
+    }
+
+    /** Replaces the stack with a screen whose content has its own layout. */
+    public void showContent(String title, String subtitle, View content) {
+        stack.clear();
+        removeAllViews();
+        Screen screen = new Screen(title, subtitle);
+        screen.custom = content;
+        add(screen);
     }
 
     /**
@@ -144,12 +156,64 @@ public final class ScreenStack extends FrameLayout {
         }
     }
 
+    /** Rebuilds the top custom screen while leaving the screens beneath it intact. */
+    public void refreshContent(String title, String subtitle, View content) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        int index = stack.size() - 1;
+        Screen old = stack.remove(index);
+        removeView(old.view);
+        Screen screen = new Screen(title, subtitle);
+        screen.custom = content;
+        screen.view = buildScreen(screen);
+        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        stack.add(index, screen);
+        focusTop();
+    }
+
+    /**
+     * Rebuilds the custom screen under the top one, leaving the top screen and
+     * its focus alone. Used to keep the settings index current while a page
+     * opened from it changes the values it shows.
+     */
+    public boolean refreshContentBelow(String title, String subtitle, View content) {
+        if (stack.size() < 2) {
+            return false;
+        }
+        int index = stack.size() - 2;
+        Screen old = stack.get(index);
+        removeView(old.view);
+        Screen screen = new Screen(title, subtitle);
+        screen.custom = content;
+        screen.view = buildScreen(screen);
+        // The screen it replaces had stepped back for the page above it.
+        screen.view.setTranslationX(-getWidth() * 0.22f);
+        addView(screen.view, index, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        stack.set(index, screen);
+        return true;
+    }
+
     /** The title of the screen on top, or an empty string when there is none. */
     public String topTitle() {
         if (stack.isEmpty()) {
             return "";
         }
         return stack.get(stack.size() - 1).title;
+    }
+
+    /** The custom content of the screen on top, or null when it is a list. */
+    public View topContent() {
+        if (stack.isEmpty()) {
+            return null;
+        }
+        return stack.get(stack.size() - 1).custom;
+    }
+
+    /** The custom content of the screen just below the top one, or null. */
+    public View topContentBelow() {
+        return stack.size() < 2 ? null : stack.get(stack.size() - 2).custom;
     }
 
     /** Pops the top screen. Returns false when the stack was already empty. */
@@ -174,7 +238,7 @@ public final class ScreenStack extends FrameLayout {
             // nowhere. It gets the focus back as it comes in.
             slideOut(screen, width, () -> {
                 removeView(screen.view);
-                focusTop();
+                restoreFocus(under);
             });
         }
         return true;
@@ -185,6 +249,12 @@ public final class ScreenStack extends FrameLayout {
             return;
         }
         Screen screen = stack.get(stack.size() - 1);
+        // Coming back from another app or a system settings screen must not
+        // move the focus: the screen already knows where the user was.
+        View already = screen.view == null ? null : screen.view.findFocus();
+        if (already != null && already.isFocusable()) {
+            return;
+        }
         if (screen.list != null) {
             // The first child is usually a heading, which cannot take focus.
             View target = firstFocusable(screen.list);
@@ -248,8 +318,13 @@ public final class ScreenStack extends FrameLayout {
 
     private void add(Screen screen) {
         screen.view = buildScreen(screen);
-        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         Screen previous = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+        if (previous != null) {
+            // Remember the row that opened this screen while it still has the
+            // focus; by the time BACK runs, the focus has moved to the child.
+            previous.returnFocus = previous.view == null ? null : previous.view.findFocus();
+        }
+        addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         stack.add(screen);
         slideIn(screen, previous);
         focusTop();
@@ -260,6 +335,17 @@ public final class ScreenStack extends FrameLayout {
         }
         if (listener != null) {
             listener.onPushed();
+        }
+    }
+
+    /** Gives the focus back to the row that opened the screen just popped. */
+    private void restoreFocus(Screen screen) {
+        View target = screen.returnFocus;
+        screen.returnFocus = null;
+        if (target != null && target.isFocusable() && target.isAttachedToWindow()) {
+            requestFocus(target);
+        } else {
+            focusTop();
         }
     }
 
@@ -290,31 +376,41 @@ public final class ScreenStack extends FrameLayout {
 
     private View buildScreen(Screen screen) {
         Context context = getContext();
+        boolean settingsIndex = "Settings".equals(screen.title) && screen.custom != null;
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(Ui.dp(context, 70), Ui.dp(context, 40),
-                Ui.dp(context, 70), Ui.dp(context, 40));
+        column.setPadding(Ui.dp(context, settingsIndex ? 80 : 64),
+                Ui.dp(context, settingsIndex ? 56 : 36),
+                Ui.dp(context, settingsIndex ? 80 : 64), Ui.dp(context, 36));
         // Each screen covers the one below it, so a screen sliding in does
         // not show the screen it is replacing through it.
-        column.setBackgroundColor(0xFF000000);
+        column.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF08131D, 0xFF050A10}));
 
-        TextView title = new TextView(context);
-        title.setText(screen.title);
-        title.setTextColor(Color.WHITE);
-        Type.apply(title, Type.DISPLAY);
-        column.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        if (screen.subtitle != null && screen.subtitle.length() > 0) {
-            TextView subtitle = new TextView(context);
-            subtitle.setText(screen.subtitle);
-            subtitle.setTextColor(0xB3FFFFFF);
-            Type.apply(subtitle, Type.CAPTION);
-            subtitle.setPadding(0, Ui.dp(context, 4), 0, Ui.dp(context, 22));
-            column.addView(subtitle, new LinearLayout.LayoutParams(
+        if (!settingsIndex) {
+            LinearLayout heading = new LinearLayout(context);
+            heading.setOrientation(LinearLayout.HORIZONTAL);
+            heading.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            TextView title = new TextView(context);
+            title.setText(screen.title);
+            title.setTextColor(Color.WHITE);
+            Type.apply(title, Type.DISPLAY);
+            heading.addView(title, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            column.addView(heading, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        } else {
-            title.setPadding(0, 0, 0, Ui.dp(context, 22));
+
+            if (screen.subtitle != null && screen.subtitle.length() > 0) {
+                TextView subtitle = new TextView(context);
+                subtitle.setText(screen.subtitle);
+                subtitle.setTextColor(0xB3FFFFFF);
+                Type.apply(subtitle, Type.CAPTION);
+                subtitle.setPadding(0, Ui.dp(context, 4), 0, Ui.dp(context, 22));
+                column.addView(subtitle, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            } else {
+                title.setPadding(0, 0, 0, Ui.dp(context, 22));
+            }
         }
 
         if (screen.custom != null) {
@@ -334,7 +430,9 @@ public final class ScreenStack extends FrameLayout {
         }
 
         TextView hint = new TextView(context);
-        hint.setText("OK to select · BACK to go back");
+        hint.setText(settingsIndex
+                ? "OK to open · ↑/↓ to browse · BACK to go back"
+                : "OK to select · BACK to go back");
         hint.setTextColor(0x80FFFFFF);
         Type.apply(hint, Type.CAPTION);
         hint.setPadding(0, Ui.dp(context, 16), 0, 0);

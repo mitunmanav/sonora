@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
+import com.mitun.sonora.AppManager;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.ui.ChoiceOverlay;
@@ -33,6 +34,8 @@ public final class ToolActivity extends Activity {
     private ScreenStack stack;
     private Prefs prefs;
     private View choiceOverlay;
+    /** The row that had the focus before a picker took it. */
+    private View stackFocus;
     /** Set while the first-run setup is on screen. */
     private SetupWizard wizard;
     /** The package an uninstall was asked for, so the result can be reported. */
@@ -90,6 +93,10 @@ public final class ToolActivity extends Activity {
     /** Opens a tvOS-style picker over the current screen. */
     public void choose(String title, String[] options, int selected, ChoiceOverlay.Callback callback) {
         dismissChoice();
+        // The picker takes the focus, so the row it came from has to be
+        // remembered: cancelling must not leave the remote with nothing to
+        // move to.
+        stackFocus = stack.findFocus();
         ChoiceOverlay overlay = new ChoiceOverlay(this, title, options, selected, index -> {
             dismissChoice();
             if (callback != null) {
@@ -109,9 +116,34 @@ public final class ToolActivity extends Activity {
         final View overlay = choiceOverlay;
         choiceOverlay = null;
         if (overlay instanceof ChoiceOverlay) {
-            ((ChoiceOverlay) overlay).dismiss(() -> root.removeView(overlay));
+            ((ChoiceOverlay) overlay).dismiss(() -> {
+                root.removeView(overlay);
+                if (choiceOverlay == null) {
+                    // A newer picker already owns the focus if there is one.
+                    restoreStackFocus();
+                }
+            });
         } else {
             root.removeView(overlay);
+            restoreStackFocus();
+        }
+    }
+
+    /** Gives the list back the focus the picker took from it. */
+    private void restoreStackFocus() {
+        View target = stackFocus;
+        stackFocus = null;
+        View already = stack.findFocus();
+        if (already != null && already != target) {
+            // A choice that opens or rebuilds a screen has already put the
+            // focus where it belongs.
+            return;
+        }
+        if (target != null && target.isFocusable() && target.isAttachedToWindow()) {
+            target.requestFocus();
+        } else {
+            // The screen was rebuilt while the picker was open.
+            stack.focusTop();
         }
     }
 
@@ -215,14 +247,25 @@ public final class ToolActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        // The app manager's icons are the biggest thing this activity leaves
+        // behind; the package list itself stays cached for its 30 seconds.
+        AppManager.trimIcons();
+        super.onDestroy();
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             Ui.immersive(this);
             // A screen that was built while the activity was starting could not
             // take the focus, so the window getting it is the moment to ask
-            // again. Without this the D-pad has nowhere to go.
-            stack.focusTop();
+            // again. Without this the D-pad has nowhere to go. A picker keeps
+            // its own focus, never the list behind it.
+            if (choiceOverlay == null) {
+                stack.focusTop();
+            }
         }
     }
 }

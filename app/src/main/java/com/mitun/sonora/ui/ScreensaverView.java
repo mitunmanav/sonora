@@ -13,6 +13,9 @@ import android.view.View;
 
 import com.mitun.sonora.Scenes;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 /**
  * The screen saver: full-bleed aerial stills with a very slow drift, crossfaded
  * into each other. Two bitmaps are alive at a time, so the memory cost stays
@@ -33,6 +36,13 @@ public final class ScreensaverView extends View {
     private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix matrix = new Matrix();
     private final RectF dest = new RectF();
+
+    private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "sonora-screensaver-decode");
+        t.setDaemon(true);
+        return t;
+    });
+    private volatile boolean loadingNext;
 
     private Bitmap current;
     private Bitmap next;
@@ -63,8 +73,12 @@ public final class ScreensaverView extends View {
         this.listener = listener;
     }
 
-    public void setSceneDurationMs(int seconds) {
+    public void setSceneDurationSec(int seconds) {
         sceneDurationMs = Math.max(10, seconds) * 1000;
+    }
+
+    public void setSceneDurationMs(int ms) {
+        sceneDurationMs = Math.max(10000, ms);
     }
 
     public void setShowOverlay(boolean show) {
@@ -83,6 +97,8 @@ public final class ScreensaverView extends View {
 
     public void stop() {
         running = false;
+        current = null;
+        next = null;
     }
 
     /** Called when the user asks for a different location. */
@@ -96,53 +112,53 @@ public final class ScreensaverView extends View {
 
     /**
      * Moves to the next scene, forwards or backwards.
+     * Decodes the scene on a background thread so frame rate is never stalled.
      *
      * @param step 1 for the next scene, -1 for the one before this one.
      */
     private void showNextScene(int step) {
         int count = Scenes.ALL.size();
-        if (count == 0) {
+        if (count == 0 || loadingNext) {
             return;
         }
-        // The pan follows the way the user went: a scene that arrives going
-        // back drifts back the way it came.
-        panDirection = step < 0 ? -1f : 1f;
-        if (current == null) {
-            int index = wrap(currentIndex + step, count);
-            Bitmap bitmap = load(index);
-            if (bitmap == null) {
-                // A scene that will not decode must not be tried again on
-                // every frame: that would decode a full-screen picture 30
-                // times a second, forever. Wait for the next turn instead.
-                sceneStartedAt = System.currentTimeMillis();
-                return;
-            }
-            current = bitmap;
-            currentIndex = index;
-            sceneStartedAt = System.currentTimeMillis();
-            progress = 0f;
-            fadeStart = 0;
-            if (listener != null) {
-                listener.onSceneChanged(index);
-            }
-        } else {
-            int index = wrap(currentIndex + step, count);
-            Bitmap bitmap = load(index);
-            if (bitmap == null) {
-                // The same rule as above: the clock restarts, so the failed
-                // decode is retried once per scene, not once per frame.
-                sceneStartedAt = System.currentTimeMillis();
-                return;
-            }
-            nextIndex = index;
-            next = bitmap;
-            fadeStart = System.currentTimeMillis();
-        }
-        invalidate();
+        final int targetIndex = wrap(currentIndex + step, count);
+        final float direction = step < 0 ? -1f : 1f;
+        loadingNext = true;
+        decodeExecutor.execute(() -> {
+            final Bitmap bitmap = load(targetIndex);
+            post(() -> {
+                loadingNext = false;
+                if (!running) {
+                    return;
+                }
+                panDirection = direction;
+                if (bitmap == null) {
+                    // A scene that will not decode must not be tried again on
+                    // every frame: wait for the next turn instead.
+                    sceneStartedAt = System.currentTimeMillis();
+                    return;
+                }
+                if (current == null) {
+                    current = bitmap;
+                    currentIndex = targetIndex;
+                    sceneStartedAt = System.currentTimeMillis();
+                    progress = 0f;
+                    fadeStart = 0;
+                    if (listener != null) {
+                        listener.onSceneChanged(targetIndex);
+                    }
+                } else {
+                    nextIndex = targetIndex;
+                    next = bitmap;
+                    fadeStart = System.currentTimeMillis();
+                }
+                invalidate();
+            });
+        });
     }
 
     /** The index after the current one, wrapping round at both ends. */
-    private static int wrap(int index, int count) {
+    public static int wrap(int index, int count) {
         return ((index % count) + count) % count;
     }
 
@@ -193,7 +209,7 @@ public final class ScreensaverView extends View {
         if (running) {
             long elapsed = System.currentTimeMillis() - sceneStartedAt;
             progress = Math.min(1f, elapsed / (float) sceneDurationMs);
-            if (elapsed > sceneDurationMs && next == null) {
+            if (elapsed > sceneDurationMs && next == null && !loadingNext) {
                 showNextScene(1);
             }
             postInvalidateDelayed(FRAME_MS);
@@ -236,6 +252,9 @@ public final class ScreensaverView extends View {
     @Override
     protected void onDetachedFromWindow() {
         running = false;
+        current = null;
+        next = null;
+        decodeExecutor.shutdownNow();
         super.onDetachedFromWindow();
     }
 }

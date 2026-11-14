@@ -226,7 +226,7 @@ public final class DebugPanel {
     private static String wifiName(Context context) {
         try {
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager)
-                    context.getSystemService(Context.WIFI_SERVICE);
+                    context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifi == null || !wifi.isWifiEnabled()) {
                 return "Off";
             }
