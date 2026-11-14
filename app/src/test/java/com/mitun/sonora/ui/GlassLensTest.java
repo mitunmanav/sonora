@@ -18,12 +18,13 @@ public class GlassLensTest {
         // A point further from the rim must stay further from the rim after
         // the push, or the picture would show through inside out.
         float band = 40f;
-        float push = band * 0.42f;
-        float previous = Float.NEGATIVE_INFINITY;
-        for (float d = 0f; d <= band; d += 0.5f) {
-            float placed = d - GlassLens.rimOffset(d, band, push);
-            assertTrue("folded at " + d, placed > previous);
-            previous = placed;
+        for (float push = 1f; push <= band / 2f; push += 1f) {
+            float previous = Float.NEGATIVE_INFINITY;
+            for (float d = 0f; d <= band; d += 0.5f) {
+                float placed = d - GlassLens.rimOffset(d, band, push);
+                assertTrue("folded at d=" + d + " push=" + push, placed > previous);
+                previous = placed;
+            }
         }
     }
 

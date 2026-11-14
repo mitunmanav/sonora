@@ -102,13 +102,6 @@ public final class FileServer {
         return running;
     }
 
-    public int port() {
-        return port;
-    }
-
-    public File root() {
-        return root;
-    }
 
     /** The address the other device types in. */
     public String address() {

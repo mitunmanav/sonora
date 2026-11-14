@@ -17,6 +17,7 @@ public final class Theme {
     public static final int DANGER_ON_FOCUS = 0xFF8C1D18;
 
     private static boolean light;
+    private static volatile Context app;
 
     private Theme() {
     }
@@ -28,10 +29,23 @@ public final class Theme {
      *         already built knows it has to be built again
      */
     public static boolean load(Context context) {
+        watch(context);
         boolean wanted = new Prefs(context).lightAppearance();
         boolean changed = wanted != light;
         light = wanted;
         return changed;
+    }
+
+    /** Keeps the cached choice right when the pref is rewritten from anywhere. */
+    private static void watch(Context context) {
+        if (app == null) {
+            synchronized (Theme.class) {
+                if (app == null) {
+                    app = context.getApplicationContext();
+                    Prefs.listen(app, (prefs, key) -> light = new Prefs(app).lightAppearance());
+                }
+            }
+        }
     }
 
     public static boolean isLight() {

@@ -43,7 +43,6 @@ public final class Type {
     private Type() {
     }
 
-    /** Applies a style to a text view. */
     public static void apply(TextView view, int style) {
         if (style < 0 || style >= SIZES.length) {
             style = BODY;

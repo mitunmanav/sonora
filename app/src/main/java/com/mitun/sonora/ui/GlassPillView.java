@@ -10,11 +10,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.mitun.sonora.Clock;
 import com.mitun.sonora.Prefs;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 /** The tvOS-style top-right time / profile pill. Here the profile opens Settings. */
 public final class GlassPillView extends FrameLayout {
@@ -28,31 +26,20 @@ public final class GlassPillView extends FrameLayout {
     private final GlassDrawable material;
     private final Prefs prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private float focus;
-    private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-        @Override
-        public float get() {
-            return focus;
-        }
-
-        @Override
-        public void set(float value) {
-            focus = value;
-            material.setFocus(value);
-            // The clock turns dark as the glass lights up: white on a lit
-            // lens would be white on white.
-            time.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
-            date.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
-        }
-    };
+    private final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+        GlassPillView.this.material.setFocus(value);
+        // The clock turns dark as the glass lights up: white on a lit
+        // lens would be white on white.
+        GlassPillView.this.time.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
+        GlassPillView.this.date.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
+    });
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             refresh();
             long now = System.currentTimeMillis();
             // On the next change of the display, not on a poll.
-            handler.postDelayed(this, prefs.showSeconds()
-                    ? 1000 - now % 1000 : 60000 - now % 60000);
+            handler.postDelayed(this, Clock.tickDelay(prefs.showSeconds(), now));
         }
     };
 
@@ -137,15 +124,7 @@ public final class GlassPillView extends FrameLayout {
     @Override
     public void setPressed(boolean pressed) {
         super.setPressed(pressed);
-        float base = isFocused() ? FOCUS_SCALE : 1f;
-        Motion.scale(this, pressed ? base * PRESS_SCALE : base,
-                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
-    }
-
-    /** What the pill says, for Control Center to repeat while it covers the pill. */
-    public String clockText() {
-        return prefs.showDate() ? date.getText() + "  " + time.getText()
-                : time.getText().toString();
+        Motion.press(this, pressed, isFocused() ? FOCUS_SCALE : 1f, PRESS_SCALE);
     }
 
     public void updateDateVisibility() {
@@ -153,13 +132,8 @@ public final class GlassPillView extends FrameLayout {
     }
 
     public void refresh() {
-        boolean h24 = prefs.clock24();
-        boolean seconds = prefs.showSeconds();
-        String pattern = h24
-                ? (seconds ? "HH:mm:ss" : "HH:mm")
-                : (seconds ? "h:mm:ss a" : "h:mm a");
-        time.setText(new SimpleDateFormat(pattern, Locale.getDefault()).format(new Date()));
-        date.setText(new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(new Date()));
+        time.setText(Clock.time(prefs));
+        date.setText(Clock.date());
         updateDateVisibility();
         // Screen readers should hear the clock and what opening it does, not
         // just the word "Settings".

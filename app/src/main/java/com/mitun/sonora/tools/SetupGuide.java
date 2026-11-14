@@ -25,13 +25,16 @@ import java.util.List;
  * needs, and the adb commands can be copied straight to the clipboard.
  */
 public final class SetupGuide {
+    /** The tag the guide carries on the stack. */
+    static final Object TAG = new Object();
+
     private SetupGuide() {
     }
 
     public static void show(ToolActivity host) {
         // It is pushed, not shown: the screen the user came from stays behind
         // it, so BACK goes back there instead of out of the activity.
-        host.stack().pushSettings("Setup guide", rows(host));
+        host.stack().pushSettings(TAG, "Setup guide", rows(host));
     }
 
     /**
@@ -39,8 +42,8 @@ public final class SetupGuide {
      * turned on or off while the guide sits under a system screen.
      */
     static void resumed(ToolActivity host) {
-        if ("Setup guide".equals(host.stack().topTitle())) {
-            host.stack().refreshSettings("Setup guide", rows(host));
+        if (host.stack().topTag() == TAG) {
+            host.stack().refreshSettings(TAG, "Setup guide", rows(host));
         }
     }
 

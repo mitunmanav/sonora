@@ -65,7 +65,6 @@ public final class Grid {
         int content = Math.max(1, widthDp - margin * 2);
         int preferred = Math.max(1, Math.round(widthDp * ICON_WIDTH_RATIO));
 
-        // columns = (content + gap) / (icon + gap)
         int columns = Math.round((content + gap) / (float) (preferred + gap));
         columns = Math.max(minColumns, Math.min(maxColumns, columns));
 

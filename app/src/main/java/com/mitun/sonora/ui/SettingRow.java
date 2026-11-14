@@ -83,7 +83,6 @@ public final class SettingRow {
         return row;
     }
 
-    /** A row with a tick in it. */
     public static SettingRow check(String title, boolean checked, Runnable action) {
         SettingRow row = new SettingRow(title, CHECK, action);
         row.value = checked ? "✓" : "";
@@ -201,25 +200,15 @@ public final class SettingRow {
         final int valueOn = Theme.INK_ON_FOCUS_SOFT;
         final int chevronOff = Theme.inkTertiary();
         final int chevronOn = 0x99101C26;
-        final float[] focus = {0f};
         // One property per row, so a focus change allocates nothing.
-        final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return focus[0];
+        final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+            material.setFocus(value);
+            labelText.setTextColor(Bitmaps.lerpColor(labelOff, labelOn, value));
+            valueText.setTextColor(Bitmaps.lerpColor(valueOff, valueOn, value));
+            if (chevronText != null) {
+                chevronText.setTextColor(Bitmaps.lerpColor(chevronOff, chevronOn, value));
             }
-
-            @Override
-            public void set(float value) {
-                focus[0] = value;
-                material.setFocus(value);
-                labelText.setTextColor(Ui.lerpColor(labelOff, labelOn, value));
-                valueText.setTextColor(Ui.lerpColor(valueOff, valueOn, value));
-                if (chevronText != null) {
-                    chevronText.setTextColor(Ui.lerpColor(chevronOff, chevronOn, value));
-                }
-            }
-        };
+        });
         line.setOnFocusChangeListener((view, focused) -> {
             Motion.springCustom(view, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
                     Motion.RESPONSE_FOCUS, focusValue);

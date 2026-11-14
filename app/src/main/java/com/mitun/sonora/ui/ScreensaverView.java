@@ -13,14 +13,15 @@ import android.os.SystemClock;
 import android.view.View;
 import android.widget.FrameLayout;
 
+import com.mitun.sonora.Clock;
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.PhotoLoader;
+import com.mitun.sonora.Workers;
 import com.mitun.sonora.SceneChoice;
 import com.mitun.sonora.Scenes;
 
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * The screen saver: full-bleed aerial stills with a very slow drift, crossfaded
@@ -185,9 +186,7 @@ public final class ScreensaverView extends FrameLayout {
             Scenes.Scene scene = all.get(Math.max(0, Math.min(all.size() - 1, sceneIndex)));
             float density = getResources().getDisplayMetrics().density;
             // The clock sits above the place, as it does over Apple's aerials.
-            String pattern = prefs.clock24() ? "HH:mm" : "h:mm a";
-            canvas.drawText(new java.text.SimpleDateFormat(pattern,
-                    java.util.Locale.getDefault()).format(new java.util.Date()),
+            canvas.drawText(Clock.time(prefs.clock24(), false),
                     48 * density, h - 102 * density, clockPaint);
             canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
             if (scene.credit != null) {
@@ -197,11 +196,7 @@ public final class ScreensaverView extends FrameLayout {
     }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "sonora-screensaver-decode");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ExecutorService decodeExecutor = Workers.single("sonora-screensaver-decode");
     private final SceneView sceneA;
     private final SceneView sceneB;
     private final OverlayView overlay;
@@ -250,6 +245,10 @@ public final class ScreensaverView extends FrameLayout {
         addView(overlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         setFocusable(true);
         setFocusableInTouchMode(true);
+        setSceneDurationSec(prefs.screensaverSceneSec());
+        // "Always" shows the place from the first frame. "On input" waits for
+        // the user to press OK, and "never" never shows it.
+        setShowOverlay(prefs.screensaverClock() == 1);
         // The full scene list scans storage, which does not belong on the
         // thread that starts the dream — and must not queue ahead of the
         // first scene decode, or the panel stays black while it walks.
@@ -272,9 +271,6 @@ public final class ScreensaverView extends FrameLayout {
         sceneDurationMs = Math.max(10, Math.min(600, seconds)) * 1000;
     }
 
-    public void setSceneDurationMs(int ms) {
-        sceneDurationMs = Math.max(10000, Math.min(600000, ms));
-    }
 
     public void setShowOverlay(boolean show) {
         showOverlay = show;
@@ -418,7 +414,7 @@ public final class ScreensaverView extends FrameLayout {
         int height = getResources().getDisplayMetrics().heightPixels / divisor;
         try {
             if (scene.res != null) {
-                return Ui.decodeScene(getResources(), scene.res, width, height,
+                return Bitmaps.decodeScene(getResources(), scene.res, width, height,
                         tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
             } else if (scene.path != null) {
                 return PhotoLoader.decode(scene.path, width, height,

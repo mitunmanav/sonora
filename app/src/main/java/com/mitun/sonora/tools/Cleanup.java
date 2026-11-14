@@ -4,10 +4,10 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 
 import com.mitun.sonora.PackageActions;
-import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.mitun.sonora.Platform;
 
 /**
  * Puts the TV back the way it was after a system update.
@@ -104,7 +104,7 @@ public final class Cleanup {
         int alreadyOff = 0;
         int failed = 0;
         List<String> problems = new ArrayList<>();
-        boolean sonoraIsHome = Ui.isDefaultLauncher(context);
+        boolean sonoraIsHome = Platform.isDefaultLauncher(context);
         for (String pkg : PACKAGES) {
             if (!sonoraIsHome && "com.google.android.tvlauncher".equals(pkg)) {
                 // Turning off the stock launcher while it still answers HOME

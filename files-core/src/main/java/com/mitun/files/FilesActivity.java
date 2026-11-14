@@ -44,7 +44,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -70,18 +69,8 @@ public class FilesActivity extends Activity {
     private static final int REQUEST_STORAGE = 11;
     private static final int THUMB_CACHE_BYTES = 6 * 1024 * 1024;
 
-    private final ExecutorService lister = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "files-list");
-        thread.setDaemon(true);
-        thread.setPriority(Thread.MIN_PRIORITY);
-        return thread;
-    });
-    private final ExecutorService thumbnailer = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "files-thumbs");
-        thread.setDaemon(true);
-        thread.setPriority(Thread.MIN_PRIORITY);
-        return thread;
-    });
+    private final ExecutorService lister = Workers.background("files-list");
+    private final ExecutorService thumbnailer = Workers.background("files-thumbs");
     private final LruCache<String, Bitmap> thumbs = new LruCache<String, Bitmap>(THUMB_CACHE_BYTES) {
         @Override
         protected int sizeOf(String key, Bitmap value) {

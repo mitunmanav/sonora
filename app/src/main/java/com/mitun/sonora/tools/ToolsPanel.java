@@ -4,7 +4,6 @@ import android.content.Intent;
 
 import com.mitun.files.FilesActivity;
 
-import com.mitun.sonora.ui.Ui;
 
 /**
  * The tools menu. The file manager is bundled but off until the user turns

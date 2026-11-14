@@ -30,7 +30,6 @@ final class Sheets {
         void onText(String text);
     }
 
-    /** One open sheet. */
     static final class Sheet extends FrameLayout {
         private final Runnable onCancel;
         private final LinearLayout panel;

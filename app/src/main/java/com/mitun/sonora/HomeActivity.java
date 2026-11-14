@@ -1,6 +1,5 @@
 package com.mitun.sonora;
 
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -10,7 +9,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -35,7 +33,6 @@ import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.FocusGlassView;
 import com.mitun.sonora.ui.ControlCenter;
 import com.mitun.sonora.ui.GlassDrawable;
-import com.mitun.sonora.ui.GlassLens;
 import com.mitun.sonora.ui.GlassPillView;
 import com.mitun.sonora.ui.Glyph;
 import com.mitun.sonora.ui.GlyphPillView;
@@ -46,11 +43,13 @@ import com.mitun.sonora.ui.SearchOverlay;
 import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Type;
 import com.mitun.sonora.ui.Ui;
+import com.mitun.sonora.ui.WallpaperGlass;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import com.mitun.sonora.Platform;
 
 /**
  * Sonora: a tvOS-style home screen for Android TV.
@@ -58,7 +57,7 @@ import java.util.Set;
  * The whole thing is plain platform views on purpose - no AndroidX, no Compose,
  * no networking - so it stays a few hundred KB and draws with the GPU only.
  */
-public class HomeActivity extends Activity {
+public class HomeActivity extends ImmersiveActivity {
     /** Padding inside the glass dock, around the row of icons. */
     private static final int BAR_PAD_DP = 20;
     /** The gap between two rows of icons. */
@@ -71,8 +70,6 @@ public class HomeActivity extends Activity {
     private static final float OPEN_DOCK_TOP = 0.056f;
     /** The corner of the glass dock. */
     private static final float DOCK_RADIUS_DP = 29f;
-    /** The dock is baked at half size: the bend hides it, and it costs a quarter. */
-    private static final int DOCK_LENS_SCALE = 2;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -123,8 +120,6 @@ public class HomeActivity extends Activity {
     private GlassDrawable dockMaterial;
     private View chevron;
     private FrameLayout.LayoutParams chevronParams;
-    /** What the glass was last baked from, so a resume does not bake it again. */
-    private String glassKey = "";
     private FrameLayout.LayoutParams dockBarParams;
     private int marginPx;
     private int barPadPx;
@@ -132,7 +127,7 @@ public class HomeActivity extends Activity {
     private int peekPx;
     private int rowHeightPx;
     private FrameLayout overlayHost;
-    private View choiceOverlay;
+    private ChoiceOverlay choiceOverlay;
     private SearchOverlay searchOverlay;
     private ScreensaverView screensaver;
 
@@ -143,24 +138,8 @@ public class HomeActivity extends Activity {
     private boolean suppressIdle;
     private boolean initialFocusDone;
 
-    /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
-    private Bitmap wallpaperBitmap;
-    /**
-     * A half-size copy the glass is bent from. The wallpaper itself lives on the
-     * GPU where the platform allows it, and cannot be read back.
-     */
-    private Bitmap lensSource;
-    /** The small blurred wallpaper: the open grid, frosted glass, the first frame. */
-    private Bitmap softened;
-    /** Bumped for each bake, so a slow one that was overtaken is dropped. */
-    private int glassGeneration;
-    /** One thread for the bakes, so rapid layout churn cannot flood the CPU. */
-    private final java.util.concurrent.ExecutorService glassBaker =
-            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-                Thread thread = new Thread(r, "sonora-glass");
-                thread.setDaemon(true);
-                return thread;
-            });
+    /** The wallpaper pipeline: hero picture, grid blur, bent-glass panes. */
+    private WallpaperGlass wallpaperGlass;
     /** The instance on screen. HOME and a launcher tile each make one, in their own task. */
     private static java.lang.ref.WeakReference<HomeActivity> latest;
     private boolean resumed;
@@ -220,7 +199,6 @@ public class HomeActivity extends Activity {
         latest = new java.lang.ref.WeakReference<>(this);
         builtLight = Theme.isLight();
         builtTier = DeviceTier.get(this);
-        Ui.immersive(this);
         buildLayout();
         // The hero below paints every pixel, so the window has no need to first.
         getWindow().setBackgroundDrawable(null);
@@ -241,7 +219,7 @@ public class HomeActivity extends Activity {
     private void openSetup() {
         try {
             startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
-                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "wizard"));
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, com.mitun.sonora.tools.ToolActivity.SCREEN_WIZARD));
         } catch (RuntimeException e) {
             Ui.toast(this, "Could not open the setup");
         }
@@ -325,7 +303,7 @@ public class HomeActivity extends Activity {
         peekPx = Ui.dp(this, PEEK_DP);
 
         gridBackdrop = new BackdropView(this);
-        gridBackdrop.setSoftened(softened);
+        gridBackdrop.setSoftened(null);
         gridBackdrop.setVisibility(View.GONE);
         root.addView(gridBackdrop, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -396,9 +374,27 @@ public class HomeActivity extends Activity {
         openExtraPx = Ui.dp(this, OPEN_ROW_GAP_DP - ROW_GAP_DP);
         applyDockMetrics(labelSpacePx(), tileHeightPx());
 
+        wallpaperGlass = new WallpaperGlass(root, dockBar, dockMaterial, clockPill, searchPill,
+                Ui.dpf(this, DOCK_RADIUS_DP), new WallpaperGlass.Listener() {
+                    @Override
+                    public void onWallpaper(Bitmap picture) {
+                        hero.setWallpaper(picture);
+                    }
+
+                    @Override
+                    public void onSoftened(Bitmap blur) {
+                        hero.setPlaceholder(blur);
+                        gridBackdrop.setSoftened(blur);
+                    }
+
+                    @Override
+                    public void onReleased() {
+                        hero.release();
+                    }
+                });
         View.OnLayoutChangeListener rebake = (v, l, t, r, b, ol, ot, orr, ob) -> {
             if (l != ol || t != ot || r != orr || b != ob) {
-                bakeGlass();
+                wallpaperGlass.bake();
             }
         };
         dockBar.addOnLayoutChangeListener(rebake);
@@ -798,7 +794,6 @@ public class HomeActivity extends Activity {
                 Motion.RESPONSE_FOCUS);
     }
 
-    /** The row of icons the focus is in. */
     private int focusedRow() {
         View focused = getCurrentFocus();
         int index = focused instanceof AppTileView ? tiles.indexOf(focused) : -1;
@@ -880,7 +875,7 @@ public class HomeActivity extends Activity {
         dismissOverlays();
         showChevron(false);
         clockPill.refresh();
-        controlCenter = new ControlCenter(this, clockPill.clockText(), QuickPanel.wifiName(this),
+        controlCenter = new ControlCenter(this, QuickPanel.wifiName(this),
                 gridBackdrop.softened(), new ControlCenter.Listener() {
                     @Override
                     public void onPick(int action) {
@@ -943,7 +938,7 @@ public class HomeActivity extends Activity {
                 openSearch();
                 break;
             case ControlCenter.APPS:
-                openTool("apps");
+                openTool(com.mitun.sonora.tools.ToolActivity.SCREEN_APPS);
                 break;
             case ControlCenter.QUICK:
                 openQuickSettings();
@@ -1131,85 +1126,6 @@ public class HomeActivity extends Activity {
         }
     }
 
-    /**
-     * Gives every pane of glass on the home screen its share of the wallpaper. It
-     * runs only when the wallpaper or the layout changes; after that each pane is
-     * one textured quad. Bending takes a mesh per pane, so it runs off the main
-     * thread. The lightest tier frosts from the blur instead, which makes no bitmap.
-     */
-    private void bakeGlass() {
-        final int width = root.getWidth();
-        final int height = root.getHeight();
-        if (width == 0 || height == 0) {
-            return;
-        }
-        final Rect dock = screenRect(dockBar);
-        final Rect clock = screenRect(clockPill);
-        final Rect search = screenRect(searchPill);
-        final Bitmap source = lensSource;
-        boolean bend = source != null && !source.isRecycled()
-                && DeviceTier.bentGlass(DeviceTier.get(this));
-        Bitmap frost = softened;
-        String key = (bend ? System.identityHashCode(source) : frost == null ? 0
-                : System.identityHashCode(frost)) + "@" + width + "x" + height + dock + clock
-                + search;
-        if (key.equals(glassKey)) {
-            return;
-        }
-        glassKey = key;
-        final int generation = ++glassGeneration;
-        if (!bend) {
-            dockMaterial.setFrost(frost, width, height, HeroBackgroundView.ZOOM, dock, 0x1F000000);
-            clockPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, clock);
-            searchPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, search);
-            return;
-        }
-        if (isDestroyed()) {
-            // The executor is down with the activity.
-            return;
-        }
-        final float dockRadius = Ui.dpf(this, DOCK_RADIUS_DP);
-        glassBaker.execute(() -> {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-            Bitmap dockLens = null;
-            Bitmap clockLens = null;
-            Bitmap searchLens = null;
-            try {
-                dockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, dock,
-                        dockRadius, DOCK_LENS_SCALE);
-                clockLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, clock,
-                        clock.height() / 2f, 1);
-                searchLens = GlassLens.bake(source, width, height, HeroBackgroundView.ZOOM, search,
-                        search.height() / 2f, 1);
-            } catch (RuntimeException | OutOfMemoryError ignored) {
-                // The glass stays dark, which still reads as glass.
-            }
-            final Bitmap bakedDock = dockLens;
-            final Bitmap bakedClock = clockLens;
-            final Bitmap bakedSearch = searchLens;
-            runOnUiThread(() -> {
-                if (generation == glassGeneration && !isDestroyed()) {
-                    dockMaterial.setBackdrop(bakedDock, 0x1F000000);
-                    clockPill.setBackdrop(bakedClock);
-                    searchPill.setBackdrop(bakedSearch);
-                }
-            });
-        });
-    }
-
-    /** Where a view is laid out on the screen, ignoring its focus scale. */
-    private Rect screenRect(View view) {
-        int left = 0;
-        int top = 0;
-        View walk = view;
-        while (walk != null && walk != root) {
-            left += walk.getLeft();
-            top += walk.getTop();
-            walk = walk.getParent() instanceof View ? (View) walk.getParent() : null;
-        }
-        return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
-    }
-
     private void launch(AppTileView tile) {
         AppEntry entry = tile.entry();
         if (entry == null) {
@@ -1275,7 +1191,6 @@ public class HomeActivity extends Activity {
                         startActivity(info);
                         // The user can uninstall or disable the app on that
                         // screen; the tile may be a ghost when we come back.
-                        AppRepository.invalidate();
                         prefs.bumpAppsEpoch();
                     } catch (ActivityNotFoundException e) {
                         Ui.toast(this, "No app info screen");
@@ -1308,7 +1223,6 @@ public class HomeActivity extends Activity {
         if (result.ok) {
             // The app may be gone when we come back; drop the cache so the
             // grid is rebuilt from the real list.
-            AppRepository.invalidate();
             prefs.bumpAppsEpoch();
         }
     }
@@ -1442,7 +1356,7 @@ public class HomeActivity extends Activity {
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
         searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
                 Ui.dp(this, metrics.tileHeightDp), Ui.dp(this, metrics.gapDp), metrics.columns,
-                Ui.dp(this, metrics.marginDp), softened,
+                Ui.dp(this, metrics.marginDp), wallpaperGlass.softened(),
                 new SearchOverlay.Listener() {
             @Override
             public void onPicked(AppEntry entry) {
@@ -1494,7 +1408,7 @@ public class HomeActivity extends Activity {
         // navigate the same way as everything else.
         try {
             startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
-                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "settings"));
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, com.mitun.sonora.tools.ToolActivity.SCREEN_SETTINGS));
         } catch (RuntimeException e) {
             Ui.toast(this, "Could not open the settings");
         }
@@ -1504,13 +1418,13 @@ public class HomeActivity extends Activity {
     private void openQuickSettings() {
         try {
             startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
-                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "quick"));
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, com.mitun.sonora.tools.ToolActivity.SCREEN_QUICK));
         } catch (RuntimeException e) {
             Ui.toast(this, "Could not open the quick settings");
         }
     }
 
-    private void showOverlay(View overlay) {
+    private void showOverlay(ChoiceOverlay overlay) {
         dismissOverlays();
         choiceOverlay = overlay;
         overlayHost.addView(overlay, new FrameLayout.LayoutParams(
@@ -1523,7 +1437,7 @@ public class HomeActivity extends Activity {
 
     /** Removes the picker; {@code after} runs once the fade has finished. */
     private void dismissChoice(final Runnable after) {
-        final View overlay = choiceOverlay;
+        final ChoiceOverlay overlay = choiceOverlay;
         choiceOverlay = null;
         updateSuppressIdle();
         if (overlay == null) {
@@ -1532,154 +1446,15 @@ public class HomeActivity extends Activity {
             }
             return;
         }
-        if (overlay instanceof ChoiceOverlay) {
-            // The picker leaves the way it came, and the tile the user came
-            // from gets the focus back when it is gone.
-            ((ChoiceOverlay) overlay).dismiss(() -> {
-                overlayHost.removeView(overlay);
-                restoreFocus();
-                if (after != null) {
-                    after.run();
-                }
-            });
-        } else {
+        // The picker leaves the way it came, and the tile the user came
+        // from gets the focus back when it is gone.
+        overlay.dismiss(() -> {
             overlayHost.removeView(overlay);
             restoreFocus();
             if (after != null) {
                 after.run();
             }
-        }
-    }
-
-    private void applyWallpaper() {
-        final int index = prefs.wallpaper();
-        final String uri = prefs.wallpaperUri();
-        final int tier = DeviceTier.get(this);
-        final int divisor = DeviceTier.wallpaperDivisor(tier);
-        final int width = getResources().getDisplayMetrics().widthPixels;
-        final int height = getResources().getDisplayMetrics().heightPixels;
-        final String blurKey = BackdropView.key(index, uri);
-        String key = blurKey + "@" + width + "x" + height + "/" + tier;
-        if (key.equals(wallpaperKey) && wallpaperBitmap != null && !wallpaperBitmap.isRecycled()) {
-            hero.setWallpaper(wallpaperBitmap);
-            bakeGlass();
-            return;
-        }
-        if (key.equals(wallpaperRequest)) {
-            // A decode for this wallpaper is already in flight; a second thread
-            // would read the same full-size image twice under memory pressure.
-            return;
-        }
-        // The blur from the last decode covers the screen until this one lands, so
-        // a return to the launcher never shows an empty frame.
-        Bitmap blur = BackdropView.remembered(blurKey);
-        if (blur != null) {
-            useSoftened(blur);
-        }
-        final String wanted = key;
-        wallpaperRequest = wanted;
-        Thread decoder = new Thread(() -> {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
-            Bitmap picture = null;
-            Bitmap thumbnail = BackdropView.remembered(blurKey);
-            Bitmap half = null;
-            try {
-                if (index < 0 && uri != null) {
-                    // A photo the user picked; fall back to a bundled scene if
-                    // the permission was refused or the file has gone.
-                    picture = Ui.decodeUri(getResources(), getContentResolver(),
-                            Uri.parse(uri), width / divisor);
-                }
-                if (picture == null) {
-                    picture = Ui.decodeScene(getResources(), Scenes.ALL.get(
-                            Scenes.safeIndex(index)).res, width / divisor, height / divisor,
-                            tier == DeviceTier.LOW ? Bitmap.Config.RGB_565
-                                    : Bitmap.Config.ARGB_8888);
-                }
-                if (picture != null && thumbnail == null) {
-                    thumbnail = BackdropView.soften(picture);
-                    BackdropView.remember(blurKey, thumbnail);
-                }
-                if (picture != null && DeviceTier.bentGlass(tier)) {
-                    half = halfSize(picture);
-                    picture = moveToGpu(picture);
-                }
-            } catch (RuntimeException | OutOfMemoryError ignored) {
-                // The blur or the plain gradient stays up, which beats a crash.
-            }
-            final Bitmap decoded = picture;
-            final Bitmap source = half;
-            final Bitmap blurred = thumbnail;
-            runOnUiThread(() -> {
-                // A newer wallpaper was asked for while this one was decoding, or
-                // the screen is gone: this one's memory is better given back.
-                if (!wanted.equals(wallpaperRequest) || isFinishing() || isDestroyed()) {
-                    return;
-                }
-                wallpaperBitmap = decoded;
-                wallpaperKey = wanted;
-                // The request has landed, so it is no longer in flight. A decode
-                // that came back empty may be asked for again on the next resume.
-                wallpaperRequest = "";
-                lensSource = source;
-                useSoftened(blurred);
-                hero.setWallpaper(decoded);
-                bakeGlass();
-            });
-        }, "sonora-wallpaper");
-        try {
-            decoder.start();
-        } catch (RuntimeException | OutOfMemoryError e) {
-            // The request must not stay marked in flight, or nothing retries it.
-            wallpaperRequest = "";
-        }
-    }
-
-    private void useSoftened(Bitmap blur) {
-        softened = blur;
-        hero.setPlaceholder(blur);
-        gridBackdrop.setSoftened(blur);
-    }
-
-    private static Bitmap halfSize(Bitmap picture) {
-        Bitmap half = Bitmap.createBitmap(Math.max(1, picture.getWidth() / 2),
-                Math.max(1, picture.getHeight() / 2), Bitmap.Config.RGB_565);
-        new Canvas(half).drawBitmap(picture, null,
-                new Rect(0, 0, half.getWidth(), half.getHeight()),
-                new Paint(Paint.FILTER_BITMAP_FLAG));
-        return half;
-    }
-
-    /**
-     * Keeps the wallpaper in one place. An ordinary bitmap is held twice, once in
-     * memory and once as the texture made from it.
-     */
-    private static Bitmap moveToGpu(Bitmap picture) {
-        if (android.os.Build.VERSION.SDK_INT < 26) {
-            return picture;
-        }
-        Bitmap onGpu = picture.copy(Bitmap.Config.HARDWARE, false);
-        if (onGpu == null) {
-            return picture;
-        }
-        picture.recycle();
-        return onGpu;
-    }
-
-    /** Lets the screen-sized pictures go. The blur stays: it is a few kilobytes. */
-    private void releaseWallpaper() {
-        wallpaperRequest = "";
-        wallpaperBitmap = null;
-        wallpaperKey = null;
-        lensSource = null;
-        glassKey = "";
-        glassGeneration++;
-        hero.release();
-        if (dockMaterial != null) {
-            dockMaterial.setBackdrop(null, 0x1F000000);
-            clockPill.setBackdrop(null);
-            searchPill.setBackdrop(null);
-        }
+        });
     }
 
     private void showScreensaver() {
@@ -1692,7 +1467,7 @@ public class HomeActivity extends Activity {
         // The wallpaper is invisible under the screen saver, which holds two
         // screen-sized scenes of its own. Letting it go keeps the peak at two
         // full-screen bitmaps instead of three.
-        releaseWallpaper();
+        wallpaperGlass.release();
         // Everything under the saver is fully covered, so it stops drawing:
         // hero, shelf, dock, rows and the glass all go GONE until it returns.
         hero.setVisibility(View.GONE);
@@ -1703,8 +1478,6 @@ public class HomeActivity extends Activity {
         gridBackdrop.setVisibility(View.GONE);
         focusGlass.setVisibility(View.GONE);
         screensaver = new ScreensaverView(this);
-        screensaver.setSceneDurationSec(prefs.screensaverSceneSec());
-        screensaver.setShowOverlay(prefs.screensaverClock() == 1);
         root.addView(screensaver, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         screensaver.setFocusable(true);
@@ -1767,7 +1540,7 @@ public class HomeActivity extends Activity {
             return;
         }
         // It was released when the screen saver came up.
-        applyWallpaper();
+        wallpaperGlass.apply(prefs);
         restoreFocus();
         // The watcher stops when the screen saver comes up, so it has to
         // start again now that it is gone.
@@ -1909,7 +1682,6 @@ public class HomeActivity extends Activity {
         return false;
     }
 
-    /** Handles BACK. Returns true when something consumed it. */
     private boolean handleBack() {
         if (screensaver != null) {
             hideScreensaver();
@@ -1948,7 +1720,7 @@ public class HomeActivity extends Activity {
         // for the scroll position the grid used to keep.
         int slid = grid == null ? 0 : Math.abs((int) grid.getTranslationY());
         if (BackPolicy.atTopLevel(slid, focusedIndex,
-                Ui.isDefaultLauncher(this)) == BackPolicy.SCROLL_TO_TOP) {
+                Platform.isDefaultLauncher(this)) == BackPolicy.SCROLL_TO_TOP) {
             scrollGridToTop();
             return true;
         }
@@ -1998,7 +1770,6 @@ public class HomeActivity extends Activity {
             recreate();
             return;
         }
-        Ui.immersive(this);
         lastInteraction = SystemClock.elapsedRealtime();
         // The settings live in another activity, so a change made there is
         // only seen when the launcher comes back. The grid is rebuilt when
@@ -2010,7 +1781,7 @@ public class HomeActivity extends Activity {
             artworkDropped = false;
             loadApps();
         }
-        applyWallpaper();
+        wallpaperGlass.apply(prefs);
         clockPill.refresh();
         SystemInfo.invalidate();
         Motion.refresh(this);
@@ -2057,7 +1828,7 @@ public class HomeActivity extends Activity {
             if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
                     && DeviceTier.get(this) != DeviceTier.LOW) {
                 DeviceTier.degrade();
-                applyWallpaper();
+                wallpaperGlass.apply(prefs);
             }
             return;
         }
@@ -2065,7 +1836,7 @@ public class HomeActivity extends Activity {
         boolean low = DeviceTier.get(this) == DeviceTier.LOW;
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
                 || low && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            releaseWallpaper();
+            wallpaperGlass.release();
         }
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
             // The tiles and the entries hold the artwork too, so they go with
@@ -2084,7 +1855,7 @@ public class HomeActivity extends Activity {
         super.onStop();
         // Settings opens over this screen on a TV that has nothing to spare.
         if (DeviceTier.get(this) == DeviceTier.LOW) {
-            releaseWallpaper();
+            wallpaperGlass.release();
         }
     }
 
@@ -2102,14 +1873,13 @@ public class HomeActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        glassBaker.shutdownNow();
+        wallpaperGlass.shutdown();
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            Ui.immersive(this);
             focusFirstTile();
         }
     }

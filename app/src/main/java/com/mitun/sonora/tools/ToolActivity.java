@@ -1,9 +1,8 @@
 package com.mitun.sonora.tools;
 
-import android.app.Activity;
+import com.mitun.sonora.ImmersiveActivity;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -17,7 +16,6 @@ import android.widget.ImageView;
 import com.mitun.sonora.AppManager;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
-import com.mitun.sonora.Scenes;
 import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.Glyph;
@@ -25,6 +23,7 @@ import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.ScreenStack;
 import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Ui;
+import com.mitun.sonora.Platform;
 
 /**
  * The host for every panel: settings, the app manager, the debug panel, the
@@ -34,9 +33,14 @@ import com.mitun.sonora.ui.Ui;
  * and BACK always means one step back. Nothing here runs in the background:
  * the activity and its views are the whole footprint.
  */
-public final class ToolActivity extends Activity {
+public final class ToolActivity extends ImmersiveActivity {
     /** "settings" (the default), "tools", "quick", "apps" or "wizard". */
     public static final String EXTRA_SCREEN = "screen";
+    public static final String SCREEN_SETTINGS = "settings";
+    public static final String SCREEN_TOOLS = "tools";
+    public static final String SCREEN_QUICK = "quick";
+    public static final String SCREEN_APPS = "apps";
+    public static final String SCREEN_WIZARD = "wizard";
     private static final int REQUEST_PICK_WALLPAPER = 41;
 
     private static final String EXTRA_PAGE = "page";
@@ -47,7 +51,7 @@ public final class ToolActivity extends Activity {
     private int markKind;
     private ScreenStack stack;
     private Prefs prefs;
-    private View choiceOverlay;
+    private ChoiceOverlay choiceOverlay;
     /** The row that had the focus before a picker took it. */
     private View stackFocus;
     /** The stack depth at that moment, so a pushed screen keeps its focus. */
@@ -71,13 +75,12 @@ public final class ToolActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
         Theme.load(this);
-        Ui.immersive(this);
 
         root = new FrameLayout(this);
         BackdropView backdrop = new BackdropView(this);
         root.addView(backdrop, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        loadBackdrop(backdrop);
+        backdrop.setWallpaper(this, prefs);
 
         // The settings pages are transparent on the left, so the mark stays
         // still while their lists slide over it, and changes with the page.
@@ -108,12 +111,8 @@ public final class ToolActivity extends Activity {
             }
 
             @Override
-            public void onPushed() {
-            }
-
-            @Override
-            public void onTopChanged(String title) {
-                showMark(markFor(title));
+            public void onTopChanged(Object tag) {
+                showMark(markFor(tag));
             }
         });
         root.addView(stack, new FrameLayout.LayoutParams(
@@ -123,12 +122,12 @@ public final class ToolActivity extends Activity {
         getWindow().setBackgroundDrawable(null);
 
         String screen = getIntent().getStringExtra(EXTRA_SCREEN);
-        if ("wizard".equals(screen)) {
+        if (SCREEN_WIZARD.equals(screen)) {
             wizard = new SetupWizard(this);
             wizard.start();
-        } else if ("quick".equals(screen)) {
+        } else if (SCREEN_QUICK.equals(screen)) {
             QuickPanel.show(this);
-        } else if ("apps".equals(screen)) {
+        } else if (SCREEN_APPS.equals(screen)) {
             AppPanel.show(this);
         } else {
             SettingsPanel.show(this);
@@ -143,60 +142,15 @@ public final class ToolActivity extends Activity {
      * Builds this screen again on one page of the settings, after a choice that
      * changes how everything in it is drawn.
      */
-    void reopenAt(String page) {
+    void reopenAt(SettingsPanel.Page page) {
         // After the picker has let go of the focus and its callback has returned.
         root.post(() -> {
             if (isFinishing() || isDestroyed()) {
                 return;
             }
-            setIntent(getIntent().putExtra(EXTRA_PAGE, page));
+            setIntent(getIntent().putExtra(EXTRA_PAGE, page.title));
             recreate();
         });
-    }
-
-    /**
-     * Hands the backdrop its blur when the launcher has not made one already.
-     * The view only checks the shared blur itself, so a miss is decoded here,
-     * off the main thread, and handed over when it lands.
-     */
-    private void loadBackdrop(final BackdropView backdrop) {
-        final int index = prefs.wallpaper();
-        final String uri = prefs.wallpaperUri();
-        final String key = BackdropView.key(index, uri);
-        Bitmap ready = BackdropView.remembered(key);
-        if (ready != null) {
-            backdrop.setSoftened(ready);
-            return;
-        }
-        new Thread(() -> {
-            Bitmap soft = null;
-            try {
-                Bitmap decoded = null;
-                if (index < 0 && uri != null) {
-                    decoded = Ui.decodeUri(getResources(), getContentResolver(),
-                            Uri.parse(uri), 96);
-                }
-                if (decoded == null) {
-                    decoded = Ui.decodeScene(getResources(),
-                            Scenes.ALL.get(Scenes.safeIndex(index)).res, 96, 54);
-                }
-                soft = BackdropView.soften(decoded);
-                if (decoded != null) {
-                    decoded.recycle();
-                }
-            } catch (RuntimeException | OutOfMemoryError ignored) {
-            }
-            if (soft == null) {
-                return;
-            }
-            BackdropView.remember(key, soft);
-            final Bitmap blur = soft;
-            runOnUiThread(() -> {
-                if (!isFinishing() && !isDestroyed()) {
-                    backdrop.setSoftened(blur);
-                }
-            });
-        }, "sonora-backdrop").start();
     }
 
     private static int markInk() {
@@ -204,27 +158,20 @@ public final class ToolActivity extends Activity {
     }
 
     /** The mark beside a page, as tvOS gives each settings page its own picture. */
-    private static int markFor(String title) {
-        switch (title == null ? "" : title) {
-            case "Quick settings":
-                return Glyph.SLIDERS;
-            case "Home Screen":
-                return Glyph.HOME;
-            case "Clock":
-                return Glyph.CLOCK;
-            case "Screen Saver":
-                return Glyph.SAVER;
-            case "Apps":
-                return Glyph.APPS;
-            case "Tools":
-                return Glyph.TOOLS;
-            case "System":
-                return Glyph.INFO;
-            case "Favourites":
-                return Glyph.STAR;
-            default:
-                return Glyph.GEAR;
+    private static int markFor(Object tag) {
+        if (tag instanceof SettingsPanel.Page) {
+            return ((SettingsPanel.Page) tag).mark;
         }
+        if (tag == SettingsPanel.FAVOURITES) {
+            return Glyph.STAR;
+        }
+        if (tag == QuickPanel.TAG) {
+            return Glyph.SLIDERS;
+        }
+        if (tag == AppPanel.TAG) {
+            return Glyph.APPS;
+        }
+        return Glyph.GEAR;
     }
 
     private void showMark(int kind) {
@@ -282,20 +229,15 @@ public final class ToolActivity extends Activity {
         if (choiceOverlay == null) {
             return;
         }
-        final View overlay = choiceOverlay;
+        final ChoiceOverlay overlay = choiceOverlay;
         choiceOverlay = null;
-        if (overlay instanceof ChoiceOverlay) {
-            ((ChoiceOverlay) overlay).dismiss(() -> {
-                root.removeView(overlay);
-                if (choiceOverlay == null) {
-                    // A newer picker already owns the focus if there is one.
-                    restoreStackFocus();
-                }
-            });
-        } else {
+        overlay.dismiss(() -> {
             root.removeView(overlay);
-            restoreStackFocus();
-        }
+            if (choiceOverlay == null) {
+                // A newer picker already owns the focus if there is one.
+                restoreStackFocus();
+            }
+        });
     }
 
     /**
@@ -333,7 +275,6 @@ public final class ToolActivity extends Activity {
         return stack.getChildAt(depth - 1);
     }
 
-    /** True when the view sits inside the screen's view tree. */
     private static boolean inside(View view, View screen) {
         for (android.view.ViewParent parent = view.getParent(); parent != null;
              parent = parent.getParent()) {
@@ -466,7 +407,6 @@ public final class ToolActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        Ui.immersive(this);
         reportUninstall();
         Motion.refresh(this);
         // A system screen can change what a row says - the network, the
@@ -506,7 +446,6 @@ public final class ToolActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            Ui.immersive(this);
             // A screen that was built while the activity was starting could not
             // take the focus, so the window getting it is the moment to ask
             // again. Without this the D-pad has nowhere to go. A picker keeps

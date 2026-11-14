@@ -16,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.mitun.sonora.ui.Ui;
+import com.mitun.sonora.ui.Bitmaps;
 
 /**
  * Loads launchable apps and small, pre-scaled artwork off the main thread.
@@ -47,6 +47,7 @@ public final class AppRepository {
      *                    what size the artwork is
      */
     public static List<AppEntry> get(Context context, int tileWidthPx) {
+        watch(context);
         List<AppEntry> local = cached;
         if (local == null) {
             return load(context, tileWidthPx);
@@ -80,6 +81,27 @@ public final class AppRepository {
         synchronized (LOAD_LOCK) {
             cached = null;
             cachedWidth = -1;
+        }
+    }
+
+    private static volatile boolean watching;
+
+    /**
+     * The list drops itself when the epoch is bumped or the tier choice moves
+     * the stored-artwork size, so callers only bump the epoch.
+     */
+    private static void watch(Context context) {
+        if (!watching) {
+            synchronized (AppRepository.class) {
+                if (!watching) {
+                    watching = true;
+                    Prefs.listen(context, (prefs, key) -> {
+                        if (key == null || Prefs.KEY_APPS_EPOCH.equals(key) || Prefs.KEY_PERFORMANCE.equals(key)) {
+                            invalidate();
+                        }
+                    });
+                }
+            }
         }
     }
 
@@ -156,21 +178,21 @@ public final class AppRepository {
                         }
                     } catch (RuntimeException ignored) {
                     }
-                    icon = Ui.drawableToBitmap(iconDrawable, iconMax, iconMax, true);
+                    icon = Bitmaps.drawableToBitmap(iconDrawable, iconMax, iconMax, true);
                     int iconW = iconDrawable == null ? 0 : iconDrawable.getIntrinsicWidth();
                     int iconH = iconDrawable == null ? 0 : iconDrawable.getIntrinsicHeight();
                     float iconRatio = iconH > 0 ? iconW / (float) iconH : 1f;
                     if (icon != null && iconRatio > 1.25f && iconRatio < 2.4f) {
                         // A wide icon is the tile's artwork; keeping the square
                         // copy as well would double the memory for nothing.
-                        banner = Ui.drawableToBitmap(iconDrawable, bannerW, bannerH, true);
+                        banner = Bitmaps.drawableToBitmap(iconDrawable, bannerW, bannerH, true);
                         icon = null;
                     }
                 }
             }
 
-            int accent = banner != null ? Ui.averageColor(banner)
-                    : icon != null ? Ui.averageColor(icon) : 0;
+            int accent = banner != null ? Bitmaps.averageColor(banner)
+                    : icon != null ? Bitmaps.averageColor(icon) : 0;
             if (accent == 0) {
                 accent = 0xFF3A3F4A;
             }
@@ -197,7 +219,7 @@ public final class AppRepository {
         int w = drawable.getIntrinsicWidth();
         int h = drawable.getIntrinsicHeight();
         if (w <= 0 || h <= 0) {
-            return Ui.drawableToBitmap(drawable, maxW, maxH, true);
+            return Bitmaps.drawableToBitmap(drawable, maxW, maxH, true);
         }
         float scale = Math.min(maxW / (float) w, maxH / (float) h);
         int tw = Math.max(1, Math.round(w * scale));

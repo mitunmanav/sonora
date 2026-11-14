@@ -3,7 +3,6 @@ package com.mitun.sonora.ui;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
-import android.view.FocusFinder;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -105,19 +104,6 @@ public final class AppSwitcherView extends FrameLayout {
         }
     }
 
-    /** Where a card is laid out in this screen-sized view, ignoring its scale. */
-    private Rect regionOf(View view) {
-        int x = 0;
-        int y = 0;
-        View walk = view;
-        while (walk != null && walk != this) {
-            x += walk.getLeft();
-            y += walk.getTop();
-            walk = walk.getParent() instanceof View ? (View) walk.getParent() : null;
-        }
-        return new Rect(x, y, x + view.getWidth(), y + view.getHeight());
-    }
-
     /** Brings the cards in, one after another, and puts the focus on the first. */
     public void open() {
         Motion.spring(this, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
@@ -151,20 +137,11 @@ public final class AppSwitcherView extends FrameLayout {
                 onGone);
     }
 
-    /**
-     * Keeps the focus in the row: the home screen is still underneath, and the
-     * D-pad must not walk out onto it. UP or DOWN leaves.
-     */
+    /** UP or DOWN leaves the row. */
     @Override
     public View focusSearch(View focused, int direction) {
-        View next = FocusFinder.getInstance().findNextFocus(this, focused, direction);
-        if (next != null) {
-            return next;
-        }
-        if (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN) {
-            listener.onDismiss();
-        }
-        return focused;
+        return Ui.focusSearchContained(this, focused, direction,
+                listener::onDismiss, View.FOCUS_UP, View.FOCUS_DOWN);
     }
 
     private LinearLayout.LayoutParams cardParams(int index) {
@@ -193,21 +170,11 @@ public final class AppSwitcherView extends FrameLayout {
         private final GlassDrawable material;
         private final AppEntry entry;
         private final TextView label;
-        private float focus;
         /** One property per card, so a focus change allocates nothing. */
-        private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return focus;
-            }
-
-            @Override
-            public void set(float value) {
-                focus = value;
-                material.setFocus(value);
-                label.setTextColor(Ui.mix(Theme.ink(), Ui.INK_ON_LIT, value));
-            }
-        };
+        private final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+            Card.this.material.setFocus(value);
+            Card.this.label.setTextColor(Ui.mix(Theme.ink(), Ui.INK_ON_LIT, value));
+        });
 
         Card(Context context, AppEntry app) {
             super(context);
@@ -225,7 +192,7 @@ public final class AppSwitcherView extends FrameLayout {
                 icon.setImageBitmap(app.icon);
             } else {
                 // An app that gave no icon still gets a card, in its colour.
-                icon.setImageDrawable(Ui.rounded(Ui.tileColor(app.accent),
+                icon.setImageDrawable(Ui.rounded(Bitmaps.tileColor(app.accent),
                         Ui.dpf(context, 12f)));
             }
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -278,16 +245,14 @@ public final class AppSwitcherView extends FrameLayout {
         /** Frost is one shared texture, so opening this panel makes no bitmaps. */
         void bakeGlass() {
             material.setFrost(frost, AppSwitcherView.this.getWidth(),
-                    AppSwitcherView.this.getHeight(), HeroBackgroundView.ZOOM, regionOf(this),
+                    AppSwitcherView.this.getHeight(), HeroBackgroundView.ZOOM, Ui.regionIn(AppSwitcherView.this, this),
                     Theme.glassVeil());
         }
 
         @Override
         public void setPressed(boolean pressed) {
             super.setPressed(pressed);
-            float base = isFocused() ? FOCUS_SCALE : 1f;
-            Motion.scale(this, pressed ? base * PRESS_SCALE : base,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+            Motion.press(this, pressed, isFocused() ? FOCUS_SCALE : 1f, PRESS_SCALE);
         }
 
         private void setInk(float value) {

@@ -13,7 +13,7 @@ import com.mitun.sonora.Prefs;
 import com.mitun.sonora.PhotoLoader;
 import com.mitun.sonora.RecentApps;
 import com.mitun.sonora.R;
-import com.mitun.sonora.ui.Motion;
+import com.mitun.sonora.ui.Glyph;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Theme;
 import com.mitun.sonora.ui.Ui;
@@ -21,6 +21,7 @@ import com.mitun.sonora.ui.Ui;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.mitun.sonora.Platform;
 
 /**
  * The settings.
@@ -36,28 +37,35 @@ import java.util.List;
 public final class SettingsPanel {
     private static final String TITLE = "Settings";
 
-    /** One screen of the settings. */
-    private static final class Page {
+    /** One screen of the settings; also its tag and its mark beside the page. */
+    static final class Page {
         final String title;
+        final int mark;
 
-        Page(String title) {
+        Page(String title, int mark) {
             this.title = title;
+            this.mark = mark;
         }
     }
 
-    private static final Page QUICK = new Page("Quick settings");
-    private static final Page HOME = new Page("Home Screen");
-    private static final Page CLOCK = new Page("Clock");
-    private static final Page SAVER = new Page("Screen Saver");
-    private static final Page APPS = new Page("Apps");
-    private static final Page TOOLS = new Page("Tools");
-    private static final Page SYSTEM = new Page("System");
+    static final Page QUICK = new Page("Quick settings", Glyph.SLIDERS);
+    static final Page HOME = new Page("Home Screen", Glyph.HOME);
+    static final Page CLOCK = new Page("Clock", Glyph.CLOCK);
+    static final Page SAVER = new Page("Screen Saver", Glyph.SAVER);
+    static final Page APPS = new Page("Apps", Glyph.APPS);
+    static final Page TOOLS = new Page("Tools", Glyph.TOOLS);
+    static final Page SYSTEM = new Page("System", Glyph.INFO);
+
+    /** The tag the Favourites screen carries; it is not one of the pages. */
+    static final Object FAVOURITES = new Object();
+    /** The tag the About screen carries on the stack. */
+    static final Object ABOUT = new Object();
 
     private SettingsPanel() {
     }
 
     public static void show(ToolActivity host) {
-        host.stack().showContent(TITLE, null, homeView(host, 0), true);
+        host.stack().showContent(null, TITLE, null, homeView(host, 0), true);
     }
 
     /** Rebuilds the screen the user is on, with the new values. */
@@ -70,18 +78,17 @@ public final class SettingsPanel {
             View top = host.stack().topContent();
             if (top instanceof SettingsHomeView) {
                 int selected = ((SettingsHomeView) top).selectedCategory();
-                host.stack().refreshContent(TITLE, null, homeView(host, selected), true);
+                host.stack().refreshContent(null, TITLE, null, homeView(host, selected), true);
             }
             return;
         }
-        host.stack().refreshSettings(page.title, rowsFor(host, page));
-        tagTop(host, page);
+        host.stack().refreshSettings(page, page.title, rowsFor(host, page));
         // The index behind the page shows the values this page edits, so it
         // is rebuilt too; otherwise BACK reveals the values from before.
         View below = host.stack().topContentBelow();
         if (below instanceof SettingsHomeView) {
             int selected = ((SettingsHomeView) below).selectedCategory();
-            host.stack().refreshContentBelow(TITLE, null, homeView(host, selected), true);
+            host.stack().refreshContentBelow(null, TITLE, null, homeView(host, selected), true);
         }
     }
 
@@ -90,31 +97,21 @@ public final class SettingsPanel {
         return topPage(host) != null;
     }
 
-    /** True when the screen on top is the settings page with this title. */
-    static boolean topIsPage(ToolActivity host, String title) {
-        Page page = topPage(host);
-        return page != null && page.title.equals(title);
+    /** True when the screen on top is this settings page. */
+    static boolean topIsPage(ToolActivity host, Page page) {
+        return topPage(host) == page;
     }
 
     /**
      * The page the screen on top is, or null when it is something else.
      *
-     * Pages are matched by the tag their view was pushed with, not by the
-     * title: a screen of its own can share a page's name, and it must not
-     * be rebuilt into a settings page on resume.
+     * Pages are matched by the tag they were pushed with, not by the title:
+     * a screen of its own can share a page's name, and it must not be
+     * rebuilt into a settings page on resume.
      */
-    private static Page topPage(ToolActivity host) {
-        View top = ToolActivity.stackTopView(host.stack());
-        Object tag = top == null ? null : top.getTag();
+    static Page topPage(ToolActivity host) {
+        Object tag = host.stack().topTag();
         return tag instanceof Page ? (Page) tag : null;
-    }
-
-    /** Marks the screen just pushed as a settings page. */
-    private static void tagTop(ToolActivity host, Page page) {
-        int count = host.stack().getChildCount();
-        if (count > 0) {
-            host.stack().getChildAt(count - 1).setTag(page);
-        }
     }
 
     private static Page pageFor(String title) {
@@ -218,7 +215,7 @@ public final class SettingsPanel {
                 () -> open(host, TOOLS)));
         categories.add(new SettingsHomeView.Category(SYSTEM.title,
                 "Set Sonora as home, open TV updates or reset its settings.",
-                detail("Home screen", Ui.isDefaultLauncher(host) ? "Sonora" : "Not set"),
+                detail("Home screen", Platform.isDefaultLauncher(host) ? "Sonora" : "Not set"),
                 detail("System update", "Open the TV’s settings"),
                 () -> open(host, SYSTEM)));
         categories.add(new SettingsHomeView.Category("Mode",
@@ -247,9 +244,6 @@ public final class SettingsPanel {
                 () -> Pickers.labels(host, () -> refresh(host))));
         rows.add(SettingRow.toggle("Reduce motion", prefs.reduceMotion(), () -> {
             prefs.setReduceMotion(!prefs.reduceMotion());
-            // The launcher caches the setting, so it has to be told that it
-            // changed or the next motion keeps animating.
-            Motion.refresh(host);
             refresh(host);
         }));
         rows.add(SettingRow.toggle("Search key", prefs.searchKey(), () -> {
@@ -264,7 +258,7 @@ public final class SettingsPanel {
             rows.add(SettingRow.note("Double-press Home lists recent apps. Allow usage "
                     + "access so Sonora can see them."));
             rows.add(SettingRow.action("Allow usage access",
-                    () -> Ui.openUsageAccessSettings(host)));
+                    () -> Platform.openUsageAccessSettings(host)));
         }
         if (prefs.technical()) {
             rows.add(SettingRow.choice("Apps per row", Pickers.columnsName(host),
@@ -283,7 +277,7 @@ public final class SettingsPanel {
                     boolean light = index == 1;
                     if (light != prefs.lightAppearance()) {
                         prefs.setLightAppearance(light);
-                        host.reopenAt(HOME.title);
+                        host.reopenAt(HOME);
                     }
                 });
     }
@@ -307,9 +301,7 @@ public final class SettingsPanel {
                 "Balanced, for 2 GB of memory", "Full, for 3 GB or more"},
                 prefs.performance() + 1, index -> {
                     prefs.setPerformance(index - 1);
-                    DeviceTier.refresh();
-                    AppRepository.invalidate();
-                    host.reopenAt(HOME.title);
+                    host.reopenAt(HOME);
                 });
     }
 
@@ -361,18 +353,18 @@ public final class SettingsPanel {
             rows.add(SettingRow.choice("Clock", Pickers.screensaverClockName(prefs),
                     () -> Pickers.screensaverClock(host, () -> refresh(host))));
         }
-        Ui.DreamState dream = Ui.dreamState(host);
-        if (dream == Ui.DreamState.STALE) {
+        Platform.DreamState dream = Platform.dreamState(host);
+        if (dream == Platform.DreamState.STALE) {
             rows.add(SettingRow.note("The TV's screen saver is set to an app that is not "
                     + "installed, so it shows nothing. Pick Sonora in the TV's settings."));
-        } else if (dream != Ui.DreamState.SELECTED) {
+        } else if (dream != Platform.DreamState.SELECTED) {
             rows.add(SettingRow.note("When the TV dozes it can show Sonora's scenes too. "
                     + "Pick Sonora in the TV's screen saver settings."));
         }
-        rows.add(SettingRow.action("Screen saver settings", () -> Ui.openDreamSettings(host)));
+        rows.add(SettingRow.action("Screen saver settings", () -> Platform.openDreamSettings(host)));
         rows.add(SettingRow.header("Screen saver preferences"));
         rows.add(SettingRow.push("Aerials", "", () -> host.stack().pushFullBleed(
-                "Choose Aerials", new AerialsView(host, prefs))));
+                null, "Choose Aerials", new AerialsView(host, prefs))));
         rows.add(SettingRow.note("Choose which pictures the screen saver shows. Left and right "
                 + "on the remote change the picture while it is running."));
         return rows;
@@ -408,7 +400,6 @@ public final class SettingsPanel {
                         return;
                     }
                     prefs.setScreensaverPhotoSource(index);
-                    PhotoLoader.invalidateCache();
                     refresh(host);
                 });
     }
@@ -430,7 +421,6 @@ public final class SettingsPanel {
             }));
         }
         rows.add(SettingRow.action("Reload apps", () -> {
-            AppRepository.invalidate();
             // The launcher compares this key on resume, so this is how it
             // learns that the app list has to be read again.
             prefs.bumpAppsEpoch();
@@ -449,7 +439,7 @@ public final class SettingsPanel {
     private static void openFavourites(ToolActivity host) {
         // The app list can be cold, and reading it means asking the system
         // for every installed app. That is not work for the main thread.
-        host.stack().pushSettings("Favourites",
+        host.stack().pushSettings(FAVOURITES, "Favourites",
                 Collections.singletonList(SettingRow.value("Reading", "…")));
         reloadFavourites(host);
     }
@@ -469,18 +459,18 @@ public final class SettingsPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!"Favourites".equals(host.stack().topTitle())) {
+                if (host.stack().topTag() != FAVOURITES) {
                     // The user left the screen while the list was being read.
                     return;
                 }
-                host.stack().refreshSettings("Favourites", rows);
+                host.stack().refreshSettings(FAVOURITES, "Favourites", rows);
             });
         }, "sonora-favourites").start();
     }
 
     /** The screen is not a settings page, so it asks for its own rebuild on resume. */
     static void resumedFavourites(ToolActivity host) {
-        if ("Favourites".equals(host.stack().topTitle())) {
+        if (host.stack().topTag() == FAVOURITES) {
             reloadFavourites(host);
         }
     }
@@ -523,17 +513,17 @@ public final class SettingsPanel {
     private static List<SettingRow> systemRows(ToolActivity host) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
-        boolean home = Ui.isDefaultLauncher(host);
+        boolean home = Platform.isDefaultLauncher(host);
         rows.add(SettingRow.value("Home screen", home ? "Sonora" : "Not yet"));
         if (!home) {
             rows.add(SettingRow.action("Set Sonora as the home screen",
-                    () -> Ui.openDefaultLauncherSettings(host)));
+                    () -> Platform.openDefaultLauncherSettings(host)));
         }
         rows.add(SettingRow.push("System update", "", () -> QuickPanel.openUpdate(host)));
         rows.add(SettingRow.action("Tidy up again", () -> QuickPanel.tidyUpNow(host)));
         rows.add(SettingRow.action("About Sonora", () -> showAbout(host)));
         if (prefs.technical()) {
-            rows.add(SettingRow.action("Run setup again", () -> ToolActivity.open(host, "wizard")));
+            rows.add(SettingRow.action("Run setup again", () -> ToolActivity.open(host, ToolActivity.SCREEN_WIZARD)));
         }
         rows.add(SettingRow.danger("Reset all settings", () -> confirmReset(host)));
         return rows;
@@ -547,19 +537,15 @@ public final class SettingsPanel {
                         return;
                     }
                     host.prefs().reset();
-                    Motion.refresh(host);
-                    DeviceTier.refresh();
-                    Theme.load(host);
                     Ui.toast(host, "Settings reset");
                     // The reset can change the theme and the motion, which a
                     // rebuilt row cannot repaint - the screens are remade.
-                    host.reopenAt(SYSTEM.title);
+                    host.reopenAt(SYSTEM);
                 });
     }
 
     private static void open(ToolActivity host, Page page) {
-        host.stack().pushSettings(page.title, rowsFor(host, page));
-        tagTop(host, page);
+        host.stack().pushSettings(page, page.title, rowsFor(host, page));
     }
 
     /**
@@ -583,6 +569,6 @@ public final class SettingsPanel {
         scroller.setVerticalScrollBarEnabled(false);
         scroller.addView(text, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        host.stack().pushContent("About Sonora", "Imagery and credits", scroller);
+        host.stack().pushContent(ABOUT, "About Sonora", "Imagery and credits", scroller);
     }
 }

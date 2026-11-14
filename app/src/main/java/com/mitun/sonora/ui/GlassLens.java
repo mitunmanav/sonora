@@ -57,7 +57,7 @@ public final class GlassLens {
         Canvas flatCanvas = new Canvas(flat);
         flatCanvas.scale(1f / scale, 1f / scale);
         flatCanvas.translate(-region.left, -region.top);
-        Ui.drawCenterCrop(flatCanvas, wallpaper, new RectF(0, 0, screenWidth, screenHeight),
+        Bitmaps.drawCenterCrop(flatCanvas, wallpaper, new RectF(0, 0, screenWidth, screenHeight),
                 zoom, 0f, 0f);
 
         Bitmap bent = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);

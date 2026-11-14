@@ -2,8 +2,6 @@ package com.mitun.sonora.tools;
 
 import android.content.pm.PackageManager;
 
-import com.mitun.sonora.AppManager;
-import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Ui;
@@ -11,6 +9,7 @@ import com.mitun.sonora.ui.Ui;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import com.mitun.sonora.Platform;
 
 /**
  * Turns off apps the user does not want without uninstalling them.
@@ -21,6 +20,9 @@ import java.util.List;
  */
 public final class DebloatPanel {
     private static final String TITLE = "Debloat";
+
+    /** The tag the panel carries on the stack. */
+    static final Object TAG = new Object();
 
     private static final class BloatItem {
         final String packageName;
@@ -62,7 +64,7 @@ public final class DebloatPanel {
     public static void show(ToolActivity host) {
         List<SettingRow> reading = new ArrayList<>();
         reading.add(SettingRow.value("Reading", "…"));
-        host.stack().pushSettings(TITLE, reading);
+        host.stack().pushSettings(TAG, TITLE, reading);
         reload(host);
     }
 
@@ -71,7 +73,7 @@ public final class DebloatPanel {
      * turned off or removed while the panel sits under a system screen.
      */
     static void resumed(ToolActivity host) {
-        if (TITLE.equals(host.stack().topTitle())) {
+        if (host.stack().topTag() == TAG) {
             reload(host);
         }
     }
@@ -90,11 +92,11 @@ public final class DebloatPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!TITLE.equals(host.stack().topTitle())) {
+                if (host.stack().topTag() != TAG) {
                     // The user left the screen while the list was being read.
                     return;
                 }
-                host.stack().refreshSettings(TITLE, rows);
+                host.stack().refreshSettings(TAG, TITLE, rows);
             });
         }, "sonora-debloat").start();
     }
@@ -117,7 +119,7 @@ public final class DebloatPanel {
                 rows.add(SettingRow.note(item.warn));
             }
             if (enabled && "com.google.android.tvlauncher".equals(item.packageName)
-                    && !Ui.isDefaultLauncher(host)) {
+                    && !Platform.isDefaultLauncher(host)) {
                 // Turning off the launcher that still answers HOME leaves the
                 // button with nowhere to go, so there is no switch to flip.
                 rows.add(SettingRow.value(item.name,
@@ -140,10 +142,8 @@ public final class DebloatPanel {
         if (!result.ok) {
             return;
         }
-        // A turned-off app leaves the home screen, so the launcher and the
-        // app manager both have to read the list again.
-        AppRepository.invalidate();
-        AppManager.invalidate();
+        // A turned-off app leaves the home screen: the epoch bump drops the
+        // cached lists in the launcher and the app manager.
         host.prefs().bumpAppsEpoch();
         reload(host);
     }

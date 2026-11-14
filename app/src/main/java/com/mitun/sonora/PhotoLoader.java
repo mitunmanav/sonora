@@ -160,11 +160,6 @@ public final class PhotoLoader {
         }
     }
 
-    /** Wipe the cache so the next call rebuilds it. */
-    public static void invalidateCache() {
-        cachedPaths = null;
-        cacheTime = 0;
-    }
 
     private static List<String> scanPicturesFolder() {
         List<String> out = new ArrayList<>();

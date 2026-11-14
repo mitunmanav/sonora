@@ -22,21 +22,11 @@ public final class GlyphPillView extends FrameLayout {
     private final GlassDrawable material;
     private final Glyph glyph;
     private final int restInk;
-    private float focus;
     /** One property per pill, so a focus change allocates nothing. */
-    private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-        @Override
-        public float get() {
-            return focus;
-        }
-
-        @Override
-        public void set(float value) {
-            focus = value;
-            material.setFocus(value);
-            glyph.setInk(Ui.mix(restInk, Ui.INK_ON_LIT, value));
-        }
-    };
+    private final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+        GlyphPillView.this.material.setFocus(value);
+        GlyphPillView.this.glyph.setInk(Ui.mix(GlyphPillView.this.restInk, Ui.INK_ON_LIT, value));
+    });
 
     public GlyphPillView(Context context, int mark, String label) {
         this(context, mark, label, Theme.ink());
@@ -82,9 +72,7 @@ public final class GlyphPillView extends FrameLayout {
     @Override
     public void setPressed(boolean pressed) {
         super.setPressed(pressed);
-        float base = isFocused() ? FOCUS_SCALE : 1f;
-        Motion.scale(this, pressed ? base * PRESS_SCALE : base,
-                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+        Motion.press(this, pressed, isFocused() ? FOCUS_SCALE : 1f, PRESS_SCALE);
     }
 
     @Override

@@ -81,7 +81,6 @@ public final class AppSearch {
         return -1;
     }
 
-    /** True when the needle starts a word inside the label. */
     private static boolean wordStartsWith(String label, String needle) {
         int index = label.indexOf(needle);
         while (index > 0) {

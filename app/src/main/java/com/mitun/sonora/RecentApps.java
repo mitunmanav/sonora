@@ -9,7 +9,6 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 
-import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +17,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.mitun.sonora.ui.Bitmaps;
 
 /**
  * The apps the switcher can offer, most recent first.
@@ -152,7 +152,7 @@ public final class RecentApps {
             ApplicationInfo info = pm.getApplicationInfo(pkg, 0);
             CharSequence label = info.loadLabel(pm);
             Drawable drawable = info.loadIcon(pm);
-            Bitmap icon = Ui.drawableToBitmap(drawable, 192, 192, true);
+            Bitmap icon = Bitmaps.drawableToBitmap(drawable, 192, 192, true);
             return new AppEntry(label == null || label.length() == 0 ? pkg
                     : label.toString(), pkg, null, icon, null, 0, false);
         } catch (RuntimeException | android.content.pm.PackageManager.NameNotFoundException e) {

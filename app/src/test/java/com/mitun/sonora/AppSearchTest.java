@@ -53,9 +53,15 @@ public class AppSearchTest {
 
     @Test
     public void putsTheBestMatchFirst() {
-        List<AppEntry> found = AppSearch.filter(APPS, "s");
-        assertTrue(found.size() > 1);
-        assertEquals("com.settings", found.get(0).packageName);
+        // The weaker word-start match is earlier in the list; the prefix match
+        // still wins whatever order the apps arrive in.
+        List<AppEntry> apps = Arrays.asList(
+                app("com.gp", "Google Play"),
+                app("com.playtv", "Play TV")
+        );
+        List<AppEntry> found = AppSearch.filter(apps, "play");
+        assertEquals(2, found.size());
+        assertEquals("com.playtv", found.get(0).packageName);
     }
 
     @Test

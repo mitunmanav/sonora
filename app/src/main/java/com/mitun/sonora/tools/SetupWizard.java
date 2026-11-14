@@ -2,10 +2,10 @@ package com.mitun.sonora.tools;
 
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.ui.SettingRow;
-import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.mitun.sonora.Platform;
 
 /**
  * The first-run setup.
@@ -31,13 +31,13 @@ public final class SetupWizard {
 
     /** The first screen of the setup. */
     public void start() {
-        host.stack().pushSettings(titleFor(0), rowsFor(0));
+        host.stack().pushSettings(0, titleFor(0), rowsFor(0));
     }
 
     /** Rebuilds the screen the user is on, e.g. after the wallpaper picker. */
     public void refreshCurrent() {
         int here = position();
-        host.stack().refreshSettings(titleFor(here), rowsFor(here));
+        host.stack().refreshSettings(here, titleFor(here), rowsFor(here));
     }
 
     private void next() {
@@ -46,7 +46,7 @@ public final class SetupWizard {
             finish();
             return;
         }
-        host.stack().pushSettings(titleFor(next), rowsFor(next));
+        host.stack().pushSettings(next, titleFor(next), rowsFor(next));
     }
 
     /**
@@ -153,9 +153,9 @@ public final class SetupWizard {
                             () -> Pickers.screensaverClock(host, this::refreshCurrent)));
                 }
                 rows.add(SettingRow.note("It stops the moment you press a button."));
-                if (Ui.dreamState(host) != Ui.DreamState.SELECTED) {
+                if (Platform.dreamState(host) != Platform.DreamState.SELECTED) {
                     rows.add(SettingRow.action("Use Sonora when the TV dozes",
-                            () -> Ui.openDreamSettings(host)));
+                            () -> Platform.openDreamSettings(host)));
                 }
                 break;
             case APPS:
@@ -167,10 +167,10 @@ public final class SetupWizard {
                 break;
             case ROLE:
                 rows.add(SettingRow.value("Home screen",
-                        Ui.isDefaultLauncher(host) ? "Sonora" : "Not yet"));
-                if (!Ui.isDefaultLauncher(host)) {
+                        Platform.isDefaultLauncher(host) ? "Sonora" : "Not yet"));
+                if (!Platform.isDefaultLauncher(host)) {
                     rows.add(SettingRow.action("Set Sonora as the home screen",
-                            () -> Ui.openDefaultLauncherSettings(host)));
+                            () -> Platform.openDefaultLauncherSettings(host)));
                 }
                 rows.add(SettingRow.note("Sonora works either way. Without this, BACK leaves "
                         + "for the TV's own home screen."));

@@ -59,6 +59,7 @@ public final class AppManager {
 
     /** The cached list, loading it on a background thread if it is stale. */
     public static List<Item> get(Context context) {
+        watch(context);
         List<Item> local = cached;
         if (local != null && android.os.SystemClock.elapsedRealtime() - cachedAt < 30_000L) {
             return local;
@@ -140,6 +141,24 @@ public final class AppManager {
     public static void invalidate() {
         cached = null;
         cachedAt = 0;
+    }
+
+    private static volatile boolean watching;
+
+    /** The list drops itself when the epoch is bumped, so callers only bump it. */
+    private static void watch(Context context) {
+        if (!watching) {
+            synchronized (AppManager.class) {
+                if (!watching) {
+                    watching = true;
+                    Prefs.listen(context, (prefs, key) -> {
+                        if (key == null || Prefs.KEY_APPS_EPOCH.equals(key)) {
+                            invalidate();
+                        }
+                    });
+                }
+            }
+        }
     }
 
     /**

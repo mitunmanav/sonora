@@ -27,9 +27,30 @@ public final class Prefs {
     private final SharedPreferences sp;
     private final Context appContext;
 
+    /** Keys a cached module listens on to drop itself; same package only. */
+    static final String KEY_APPS_EPOCH = "apps_epoch";
+    static final String KEY_PERFORMANCE = "performance";
+
     public Prefs(Context context) {
         appContext = context.getApplicationContext();
         sp = appContext.getSharedPreferences(FILE, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * Tells a module when a stored value changed, so a static cache can drop
+     * itself instead of every caller remembering to refresh it. Listeners are
+     * held here: SharedPreferences keeps them weakly, and a callback that is
+     * not also held elsewhere would be collected and the cache never dropped.
+     */
+    private static final java.util.List<SharedPreferences.OnSharedPreferenceChangeListener>
+            LISTENERS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public static void listen(Context context,
+                              SharedPreferences.OnSharedPreferenceChangeListener listener) {
+        LISTENERS.add(listener);
+        context.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .registerOnSharedPreferenceChangeListener(listener);
     }
 
     public int wallpaper() {
@@ -104,11 +125,11 @@ public final class Prefs {
 
     /** The tier chosen in Settings, or {@link DeviceTier#AUTO} to decide from the RAM. */
     public int performance() {
-        return getInt("performance", DeviceTier.AUTO);
+        return getInt(KEY_PERFORMANCE, DeviceTier.AUTO);
     }
 
     public void setPerformance(int tier) {
-        sp.edit().putInt("performance", tier).apply();
+        sp.edit().putInt(KEY_PERFORMANCE, tier).apply();
     }
 
     /**
@@ -220,15 +241,6 @@ public final class Prefs {
         sp.edit().putInt("ss_photo_source", Math.max(0, Math.min(2, value))).apply();
     }
 
-    /** Custom photo folder path for device storage photos. */
-    public String screensaverPhotoFolder() {
-        return getString("ss_photo_folder", null);
-    }
-
-    public void setScreensaverPhotoFolder(String path) {
-        sp.edit().putString("ss_photo_folder", path).apply();
-    }
-
     /** True when the technical settings should be shown. */
     public boolean technical() {
         return mode() == MODE_TECHNICAL;
@@ -267,12 +279,12 @@ public final class Prefs {
      * changing, so the launcher needs a way to notice.
      */
     public int appsEpoch() {
-        return getInt("apps_epoch", 0);
+        return getInt(KEY_APPS_EPOCH, 0);
     }
 
     public void bumpAppsEpoch() {
         synchronized (EPOCH_LOCK) {
-            sp.edit().putInt("apps_epoch", appsEpoch() + 1).apply();
+            sp.edit().putInt(KEY_APPS_EPOCH, appsEpoch() + 1).apply();
         }
     }
 

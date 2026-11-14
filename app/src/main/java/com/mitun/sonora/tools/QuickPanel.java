@@ -13,6 +13,7 @@ import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.mitun.sonora.Platform;
 
 /**
  * The control centre: the TV's own settings, one tap away.
@@ -22,11 +23,14 @@ import java.util.List;
  * through the settings first, in the order somebody would want them.
  */
 public final class QuickPanel {
+    /** The tag the quick settings screen carries on the stack. */
+    static final Object TAG = new Object();
+
     private QuickPanel() {
     }
 
     public static void show(ToolActivity host) {
-        host.stack().pushSettings("Quick settings", rows(host));
+        host.stack().pushSettings(TAG, "Quick settings", rows(host));
     }
 
     public static List<SettingRow> rows(ToolActivity host) {
@@ -215,7 +219,7 @@ public final class QuickPanel {
                 final Cleanup.Result result = Cleanup.run(host);
                 host.runOnUiThread(() -> {
                     String message = result.message();
-                    if (!Ui.isDefaultLauncher(host)) {
+                    if (!Platform.isDefaultLauncher(host)) {
                         message += ". Sonora is not the home screen any more";
                     }
                     Ui.toast(host, message);

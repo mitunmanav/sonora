@@ -62,6 +62,35 @@ public final class Motion {
         void set(float value);
     }
 
+    /**
+     * A FloatProperty that stores its own value and forwards each set to one
+     * sink. Focused surfaces drive their ink and glass from this: one property
+     * per view, so a focus change allocates nothing.
+     */
+    public static final class FocusValue implements FloatProperty {
+        public interface Sink {
+            void apply(float value);
+        }
+
+        private float value;
+        private final Sink sink;
+
+        public FocusValue(Sink sink) {
+            this.sink = sink;
+        }
+
+        @Override
+        public float get() {
+            return value;
+        }
+
+        @Override
+        public void set(float v) {
+            value = v;
+            sink.apply(v);
+        }
+    }
+
     private static final class Track {
         final FloatProperty property;
         final Spring spring;
@@ -74,7 +103,7 @@ public final class Motion {
     }
 
     private static final class Runner {
-        final Track[] tracks = new Track[KINDS + 8];
+        Track[] tracks = new Track[KINDS + 8];
         final Choreographer.FrameCallback frame = this::onFrame;
         long lastNanos;
         boolean running;
@@ -141,10 +170,32 @@ public final class Motion {
         }
     }
 
+    /**
+     * The card sinks under OK, off the focus scale it was already at.
+     * A press has to answer now, so it uses the press response.
+     */
+    public static void press(View view, boolean pressed, float baseScale, float pressScale) {
+        scale(view, pressed ? baseScale * pressScale : baseScale,
+                DAMPING_CRITICAL, RESPONSE_PRESS);
+    }
+
     private static final Map<View, Runner> runners = Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile Boolean reduced;
+    private static volatile boolean watching;
 
     private Motion() {
+    }
+
+    /** The pref half of reduced motion drops itself; the system scale half is re-read on refresh. */
+    private static void watch(Context context) {
+        if (!watching) {
+            synchronized (Motion.class) {
+                if (!watching) {
+                    watching = true;
+                    Prefs.listen(context, (prefs, key) -> reduced = null);
+                }
+            }
+        }
     }
 
     /**
@@ -153,6 +204,7 @@ public final class Motion {
      * setting actually changes.
      */
     public static boolean isReduced(Context context) {
+        watch(context);
         Boolean cached = reduced;
         if (cached != null) {
             return cached;
@@ -247,7 +299,10 @@ public final class Motion {
             return;
         }
         Runner runner = runner(owner);
-        int index = KINDS + Math.max(0, Math.min(7, slot));
+        int index = KINDS + Math.max(0, slot);
+        if (index >= runner.tracks.length) {
+            runner.tracks = java.util.Arrays.copyOf(runner.tracks, index + 1);
+        }
         Track track = runner.tracks[index];
         if (track == null) {
             track = new Track(property, property.get());
@@ -258,12 +313,10 @@ public final class Motion {
         start(runner);
     }
 
-    /** Scales a view on both axes. */
     public static void scale(View view, float target, float dampingRatio, float response) {
         spring(view, SCALE, target, dampingRatio, response);
     }
 
-    /** Slides a view along X. */
     public static void translateX(View view, float target, float dampingRatio, float response) {
         spring(view, TRANSLATION_X, target, dampingRatio, response);
     }

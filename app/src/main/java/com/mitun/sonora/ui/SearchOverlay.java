@@ -31,10 +31,8 @@ import java.util.List;
  */
 public final class SearchOverlay extends FrameLayout {
     public interface Listener {
-        /** The user picked an app. */
         void onPicked(AppEntry entry);
 
-        /** The search is over. */
         void onClosed();
     }
 
@@ -426,9 +424,7 @@ public final class SearchOverlay extends FrameLayout {
         @Override
         public void setPressed(boolean pressed) {
             super.setPressed(pressed);
-            float base = isFocused() ? FOCUS_SCALE : 1f;
-            Motion.scale(icon, pressed ? base * PRESS_SCALE : base,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+            Motion.press(icon, pressed, isFocused() ? FOCUS_SCALE : 1f, PRESS_SCALE);
         }
 
         void bind(AppEntry entry) {
@@ -449,7 +445,6 @@ public final class SearchOverlay extends FrameLayout {
         }
     }
 
-    /** Picks a result. */
     private interface OnPick {
         void onPick(AppEntry entry);
     }

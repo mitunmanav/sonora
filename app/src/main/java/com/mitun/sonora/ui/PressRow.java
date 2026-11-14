@@ -33,8 +33,6 @@ public final class PressRow extends LinearLayout {
     @Override
     public void setPressed(boolean pressed) {
         super.setPressed(pressed);
-        float base = isFocused() ? focusScale : 1f;
-        Motion.scale(this, pressed ? base * PRESS : base,
-                Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+        Motion.press(this, pressed, isFocused() ? focusScale : 1f, PRESS);
     }
 }
