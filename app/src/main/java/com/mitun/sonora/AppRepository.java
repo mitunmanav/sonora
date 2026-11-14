@@ -59,6 +59,10 @@ public final class AppRepository {
 
     /** Rebuilds the list and the artwork. Call off the main thread. */
     public static List<AppEntry> load(Context context, int tileWidthPx) {
+        // The old artwork is let go before the new one is made: two sets of
+        // pictures alive at once is what a low-memory TV cannot afford.
+        cached = null;
+        cachedWidth = -1;
         PackageManager pm = context.getPackageManager();
         Map<String, AppEntry> byPackage = new LinkedHashMap<>();
         collect(context, pm, new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), byPackage, tileWidthPx);
@@ -92,8 +96,16 @@ public final class AppRepository {
                 continue;
             }
             ApplicationInfo app = ai.applicationInfo;
-            if (pm.getLeanbackLaunchIntentForPackage(pkg) == null
-                    && pm.getLaunchIntentForPackage(pkg) == null) {
+            boolean launchable;
+            try {
+                launchable = pm.getLeanbackLaunchIntentForPackage(pkg) != null
+                        || pm.getLaunchIntentForPackage(pkg) != null;
+            } catch (RuntimeException e) {
+                // One package the system will not answer for must not cost
+                // the user the whole list.
+                continue;
+            }
+            if (!launchable) {
                 continue;
             }
             CharSequence loadedLabel = null;

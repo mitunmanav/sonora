@@ -15,6 +15,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import com.mitun.sonora.AppManager;
+import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Ui;
@@ -102,6 +103,9 @@ public final class AppPanel {
                 if (result.ok) {
                     item.hidden = !item.hidden;
                     adapter.reload();
+                    // The home screen has to forget the app list, or the app
+                    // stays on it until the app is restarted.
+                    appsChanged(host);
                 }
                 // The screen is rebuilt, or the row would keep showing the
                 // value it had before the tap.
@@ -126,10 +130,23 @@ public final class AppPanel {
         rows.add(SettingRow.value("Note",
                 "Disabling an app hides it from every launcher, including this one."));
         rows.add(SettingRow.danger("Uninstall", () -> {
-            PackageActions.Result result = PackageActions.requestUninstall(host, item.packageName, item.label);
-            Ui.toast(host, result.message);
+            host.uninstallApp(item.packageName, item.label);
+            // The package may be gone by the time the home screen looks at
+            // its list again.
+            appsChanged(host);
         }));
         return rows;
+    }
+
+    /**
+     * Tells the home screen that the list of apps has changed.
+     *
+     * The cache is dropped and the epoch is moved, so the launcher rebuilds
+     * its grid the next time it comes back.
+     */
+    private static void appsChanged(ToolActivity host) {
+        AppRepository.invalidate();
+        host.prefs().bumpAppsEpoch();
     }
 
     /** The rows of the app list: an icon, the name and the package. */
@@ -146,7 +163,7 @@ public final class AppPanel {
         ImageView icon = new ImageView(context);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(Ui.dp(context, 44), Ui.dp(context, 44));
-        ip.rightMargin = Ui.dp(context, 14);
+        ip.setMarginEnd(Ui.dp(context, 14));
         row.addView(icon, ip);
 
         LinearLayout text = new LinearLayout(context);

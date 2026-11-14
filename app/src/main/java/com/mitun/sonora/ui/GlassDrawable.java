@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -12,32 +13,42 @@ import android.graphics.drawable.Drawable;
 
 /**
  * A cheap Liquid Glass imitation: a translucent slab with a light top edge, a
- * soft specular pool and a shadowed underside. It uses four canvas draws, no
- * blur, no bitmap sampling.
+ * soft specular pool and a shadowed underside. It uses a handful of canvas
+ * draws, no blur, no bitmap sampling.
  *
- * The edge is brightest at the top, where the light catches the material, and
- * fades towards the bottom. That single gradient is what makes a flat shape
- * read as a surface with a thickness rather than a rectangle.
+ * The material has two states, and the difference between them is the point.
  *
- * Glass only reads as glass when there is something behind it to bend, so the
- * fill is a gradient rather than a flat colour: light where the light falls,
- * dark where the material turns away. Over a photograph that is the whole
- * difference between a grey box and a pane of glass.
+ * <ul>
+ *   <li>At rest it is a <b>dark lens</b>. Glass gathers the light around it
+ *       and dims what is behind it, so the inside of the lens is smooth and
+ *       darker than the wallpaper. That smooth ground is what lets a white
+ *       mark on it read over any picture, and the bright rim around it is
+ *       what makes the shape visible.</li>
+ *   <li>When it is focused the lens <b>catches the light</b>: a soft white
+ *       layer comes over the dark one, the rim fades into it, and the mark
+ *       on it turns dark so it never fights the surface it sits on. Google
+ *       TV's launcher does exactly this, which is why the focus state there
+ *       cannot be missed.</li>
+ * </ul>
+ *
+ * The colours are set once, with the bounds. Only the alpha changes while
+ * the focus moves, so focusing a button costs a redraw and nothing else.
  */
 public final class GlassDrawable extends Drawable {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint underPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint litPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final RectF inner = new RectF();
     private final RectF under = new RectF();
+    private final Path shape = new Path();
     private final float radius;
     private final float tint;
     private final boolean circle;
     private int alpha = 255;
-    private int glow;
+    private float focus;
 
     /**
      * @param tint how heavy the material is. A big surface reads thicker than
@@ -67,17 +78,20 @@ public final class GlassDrawable extends Drawable {
     }
 
     /**
-     * The light the material catches when it is focused.
+     * How much light the material has caught: nothing at rest, all of it when
+     * the control has the focus.
      *
-     * Only the alpha of the glow changes, so focusing a button costs nothing
-     * but a redraw: the gradient itself is built once, with the bounds.
+     * Only the alpha of each layer changes, so this is a redraw rather than a
+     * new shader.
      */
-    public void setGlow(int glow) {
-        if (this.glow != glow) {
-            this.glow = glow;
-            glowPaint.setAlpha(Math.round(alpha * (glow / 255f)));
-            invalidateSelf();
+    public void setFocus(float focus) {
+        float f = focus < 0f ? 0f : (focus > 1f ? 1f : focus);
+        if (f == this.focus) {
+            return;
         }
+        this.focus = f;
+        applyAlphas();
+        invalidateSelf();
     }
 
     @Override
@@ -87,36 +101,48 @@ public final class GlassDrawable extends Drawable {
         float stroke = edgePaint.getStrokeWidth();
         inner.set(bounds.left + stroke, bounds.top + stroke,
                 bounds.right - stroke, bounds.bottom - stroke);
-        // The slab of material: light where the light falls on it, and a little
-        // darker where it turns away from the light at the bottom.
+        // The lens at rest: darker than what is behind it, so a mark on it
+        // has a smooth ground to stand on.
         fillPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.WHITE, 0.20f * tint), adjust(Color.WHITE, 0.07f * tint),
-                        adjust(Color.BLACK, 0.13f * tint)},
+                new int[]{adjust(Color.BLACK, 0.46f * tint), adjust(Color.BLACK, 0.30f * tint),
+                        adjust(Color.BLACK, 0.40f * tint)},
                 new float[]{0f, 0.52f, 1f}, Shader.TileMode.CLAMP));
         // The specular pool: where the sky would be reflected.
         highlightPaint.setShader(new RadialGradient(bounds.width() * 0.28f, bounds.height() * 0.02f,
-                bounds.width() * 0.85f, new int[]{adjust(Color.WHITE, 0.20f * tint),
-                        adjust(Color.WHITE, 0.04f * tint), Color.TRANSPARENT},
+                bounds.width() * 0.85f, new int[]{adjust(Color.WHITE, 0.16f * tint),
+                        adjust(Color.WHITE, 0.03f * tint), Color.TRANSPARENT},
                 new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
-        // The light catches the top edge, so that is where the edge is
+        // The light catches the top edge, so that is where the rim is
         // brightest. It fades out towards the bottom of the material.
         edgePaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
-                new int[]{adjust(Color.WHITE, 0.72f * tint), adjust(Color.WHITE, 0.26f * tint),
-                        adjust(Color.WHITE, 0.12f * tint)},
+                new int[]{adjust(Color.WHITE, 0.90f * tint), adjust(Color.WHITE, 0.30f * tint),
+                        adjust(Color.WHITE, 0.10f * tint)},
                 new float[]{0f, 0.6f, 1f}, Shader.TileMode.CLAMP));
         // The underside catches no light at all, which is what gives the
         // material its edge.
         under.set(bounds.left, bounds.bottom - Math.max(2f, stroke * 3f),
                 bounds.right, bounds.bottom);
         underPaint.setShader(new LinearGradient(0, under.top, 0, under.bottom,
-                new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.22f * tint)},
+                new int[]{Color.TRANSPARENT, adjust(Color.BLACK, 0.34f * tint)},
                 new float[]{0f, 1f}, Shader.TileMode.CLAMP));
-        // The pool of light the material catches when it is focused. It is
-        // drawn over the fill, from the same corner the highlight comes from.
-        glowPaint.setShader(new RadialGradient(bounds.width() * 0.32f, bounds.height() * 0.10f,
-                bounds.width() * 0.95f, new int[]{0x8CFFFFFF, 0x2EFFFFFF, Color.TRANSPARENT},
-                new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-        glowPaint.setAlpha(Math.round(alpha * (glow / 255f)));
+        // The same lens with the light on it.
+        litPaint.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom,
+                new int[]{adjust(Color.WHITE, 0.95f), adjust(Color.WHITE, 0.86f),
+                        adjust(Color.WHITE, 0.66f)},
+                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+        applyAlphas();
+    }
+
+    private void applyAlphas() {
+        fillPaint.setAlpha(alpha);
+        // The rim of a lit lens is no longer a bright edge: the lens itself is
+        // the bright thing now.
+        edgePaint.setAlpha(Math.round(alpha * (1f - 0.78f * focus)));
+        // The specular pool belongs to the resting lens.
+        highlightPaint.setAlpha(Math.round(alpha * (1f - focus)));
+        underPaint.setAlpha(alpha);
+        // The lit layer fades in over the dark one.
+        litPaint.setAlpha(Math.round(alpha * 0.96f * focus));
     }
 
     private static int adjust(int color, float factor) {
@@ -129,26 +155,25 @@ public final class GlassDrawable extends Drawable {
         float r = circle ? Math.min(rect.width(), rect.height()) / 2f : radius;
         float innerRadius = Math.max(0, r - edgePaint.getStrokeWidth() / 2f);
         canvas.drawRoundRect(rect, r, r, fillPaint);
+        if (focus > 0f) {
+            canvas.drawRoundRect(rect, r, r, litPaint);
+        }
+        // The shadowed underside, cut to the shape so it does not stick out
+        // past the corners.
+        shape.rewind();
+        shape.addRoundRect(rect, r, r, Path.Direction.CW);
+        canvas.save();
+        canvas.clipPath(shape);
+        canvas.drawRect(under, underPaint);
+        canvas.restore();
         canvas.drawRoundRect(inner, innerRadius, innerRadius, highlightPaint);
-        if (!circle) {
-            // A circle has no flat underside to shade, and the strip would
-            // stick out past its corners.
-            canvas.drawRect(under, underPaint);
-        }
-        if (glow > 0) {
-            canvas.drawRoundRect(rect, r, r, glowPaint);
-        }
         canvas.drawRoundRect(inner, innerRadius, innerRadius, edgePaint);
     }
 
     @Override
     public void setAlpha(int alpha) {
         this.alpha = alpha;
-        fillPaint.setAlpha(alpha);
-        edgePaint.setAlpha(alpha);
-        highlightPaint.setAlpha(alpha);
-        underPaint.setAlpha(alpha);
-        glowPaint.setAlpha(Math.round(alpha * (glow / 255f)));
+        applyAlphas();
         invalidateSelf();
     }
 

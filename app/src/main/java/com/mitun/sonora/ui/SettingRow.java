@@ -153,19 +153,27 @@ public final class SettingRow {
         valueView.setGravity(Gravity.END);
         valueView.setMaxLines(1);
         valueView.setEllipsize(TextUtils.TruncateAt.END);
+        // A value is a technical thing: an address, a package name, a path.
+        // It stays in reading order even in a right-to-left language.
+        valueView.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG_LTR);
         line.addView(valueView, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
 
         if (type == PUSH) {
             TextView chevron = new TextView(context);
-            chevron.setText("›");
+            // The arrow points the way the row opens, which is the other way
+            // round in a right-to-left language.
+            boolean rtl = context.getResources().getConfiguration().getLayoutDirection()
+                    == View.LAYOUT_DIRECTION_RTL;
+            chevron.setText(rtl ? "‹" : "›");
             chevron.setTextColor(0x80FFFFFF);
             chevron.setTextSize(22);
             chevron.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             // The chevron needs air, or it reads as part of the text beside it.
-            chevronParams.leftMargin = Ui.dp(context, 14);
+            // A start margin is mirrored with the row; a left margin is not.
+            chevronParams.setMarginStart(Ui.dp(context, 14));
             line.addView(chevron, chevronParams);
         }
 

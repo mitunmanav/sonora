@@ -93,7 +93,7 @@ public final class SearchOverlay extends FrameLayout {
         int glyphSize = Ui.dp(context, 22);
         LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(glyphSize, glyphSize);
         glyphParams.gravity = Gravity.CENTER_VERTICAL;
-        glyphParams.rightMargin = Ui.dp(context, 14);
+        glyphParams.setMarginEnd(Ui.dp(context, 14));
         pill.addView(glyph, glyphParams);
 
         field = new EditText(context);
@@ -135,7 +135,7 @@ public final class SearchOverlay extends FrameLayout {
         mic.setOnOpen(this::openAssistant);
         LinearLayout.LayoutParams micParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        micParams.leftMargin = Ui.dp(context, 12);
+        micParams.setMarginStart(Ui.dp(context, 12));
         top.addView(mic, micParams);
         column.addView(top, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -277,8 +277,16 @@ public final class SearchOverlay extends FrameLayout {
         if (noKeyboard) {
             note.setText("This TV has no keyboard. Use the remote to browse the apps.");
             note.setVisibility(VISIBLE);
-        } else if (shown == 0 && !query.trim().isEmpty()) {
-            note.setText("No apps match \"" + query.trim() + "\"");
+        } else if (shown == 0) {
+            // Nothing to show, and the reason why: a TV with no apps at all
+            // is not the same as a search that found nothing.
+            note.setText(query.trim().isEmpty()
+                    ? "There are no apps on this TV to search."
+                    : "No apps match \"" + query.trim() + "\"");
+            note.setVisibility(VISIBLE);
+        } else if (matches.size() > shown) {
+            // The results are capped, so the user is told what is not there.
+            note.setText("Showing " + shown + " of " + matches.size() + " matches");
             note.setVisibility(VISIBLE);
         } else {
             note.setVisibility(GONE);

@@ -15,6 +15,7 @@ import com.mitun.sonora.ui.SettingRow;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -242,8 +243,24 @@ public final class SettingsPanel {
      * ticked. Everything else follows.
      */
     private static void openFavourites(ToolActivity host) {
-        host.stack().push("Favourites", "Ticked apps sit at the top of the home screen",
-                favouriteRows(host));
+        final String subtitle = "Ticked apps sit at the top of the home screen";
+        // The app list can be cold, and reading it means asking the system
+        // for every installed app. That is not work for the main thread.
+        host.stack().push("Favourites", subtitle,
+                Collections.singletonList(SettingRow.value("Reading", "…")));
+        new Thread(() -> {
+            final List<SettingRow> rows = favouriteRows(host);
+            host.runOnUiThread(() -> {
+                if (host.isFinishing() || host.isDestroyed()) {
+                    return;
+                }
+                if (!"Favourites".equals(host.stack().topTitle())) {
+                    // The user left the screen while the list was being read.
+                    return;
+                }
+                host.stack().refresh("Favourites", subtitle, rows);
+            });
+        }, "sonora-favourites").start();
     }
 
     private static List<SettingRow> favouriteRows(ToolActivity host) {

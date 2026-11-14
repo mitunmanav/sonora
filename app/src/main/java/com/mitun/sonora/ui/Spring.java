@@ -94,6 +94,11 @@ public final class Spring {
      * same rate.
      */
     public boolean atRest() {
+        // A target that is not a number can never be reached, and a spring
+        // that never rests would keep the frame clock awake for good.
+        if (Float.isNaN(value) || Float.isNaN(target) || Float.isNaN(velocity)) {
+            return true;
+        }
         float positionTolerance = Math.max(0.0005f, travel * 0.001f);
         float velocityTolerance = Math.max(0.005f, travel * 0.02f);
         return Math.abs(value - target) <= positionTolerance

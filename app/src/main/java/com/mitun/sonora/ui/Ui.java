@@ -12,8 +12,6 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -34,7 +32,13 @@ import java.io.InputStream;
 /** Drawing and platform helpers shared by the launcher and the screen saver. */
 public final class Ui {
     public static final int INK = 0xFFF5F6F8;
-    public static final int INK_TERTIARY = 0x7AF5F6F8;
+    // The least prominent ink still has to be readable over the wallpaper, so
+    // it is dimmer than the ink but not faint.
+    public static final int INK_TERTIARY = 0xB3F5F6F8;
+    /** A mark that sits on the glass while it is at rest. */
+    public static final int INK_ON_GLASS = 0x99F5F6F8;
+    /** A mark that sits on the glass once it has caught the light. */
+    public static final int INK_ON_LIT = 0xFF0A0D12;
     public static final int NIGHT = 0xFF05070B;
 
     private Ui() {
@@ -57,6 +61,19 @@ public final class Ui {
     public static int alpha(int color, float factor) {
         int a = Math.round(Color.alpha(color) * Math.max(0f, Math.min(1f, factor)));
         return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    /**
+     * Blends two colours. A mark that changes with the state of the surface
+     * under it is one colour at a time, not one at a time and another after.
+     */
+    public static int mix(int from, int to, float amount) {
+        float t = amount < 0f ? 0f : (amount > 1f ? 1f : amount);
+        return Color.argb(
+                Math.round(Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * t),
+                Math.round(Color.red(from) + (Color.red(to) - Color.red(from)) * t),
+                Math.round(Color.green(from) + (Color.green(to) - Color.green(from)) * t),
+                Math.round(Color.blue(from) + (Color.blue(to) - Color.blue(from)) * t));
     }
 
     /**
@@ -283,16 +300,12 @@ public final class Ui {
             canvas.drawRoundRect(new RectF(0, 0, s, s), s * 0.18f, s * 0.18f, bg);
         }
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(withTile ? Color.WHITE : 0xFFF5F6F8);
+        // The gear is always a white mark. The tile behind it, when it has
+        // one, is drawn below.
+        p.setColor(Color.WHITE);
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(s * 0.045f);
         p.setStrokeCap(Paint.Cap.ROUND);
-        p.setColorFilter(new PorterDuffColorFilter(withTile ? Color.WHITE : 0xFF15181F,
-                PorterDuff.Mode.SRC_IN));
-        if (!withTile) {
-            p.setColor(0xFF15181F);
-            p.setColorFilter(null);
-        }
         float cx = s / 2f;
         float cy = s / 2f;
         float outer = s * 0.31f;

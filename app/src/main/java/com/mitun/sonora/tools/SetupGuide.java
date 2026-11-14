@@ -29,7 +29,9 @@ public final class SetupGuide {
     }
 
     public static void show(ToolActivity host) {
-        host.stack().show("Setup guide",
+        // It is pushed, not shown: the screen the user came from stays behind
+        // it, so BACK goes back there instead of out of the activity.
+        host.stack().showOrPush("Setup guide",
                 "Turn on debugging, then connect from your computer", rows(host));
     }
 

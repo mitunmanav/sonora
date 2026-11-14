@@ -30,7 +30,11 @@ public final class Pickers {
             names[i] = Scenes.ALL.get(i).name;
         }
         names[count] = "Choose a photo…";
-        host.choose("Wallpaper", names, host.prefs().wallpaper(), index -> {
+        // A wallpaper that is a photo is stored as -1, which is not a row of
+        // the list. The photo row is the one that is ticked then, or the
+        // picker would claim nothing is chosen and OK would replace it.
+        int stored = host.prefs().wallpaper();
+        host.choose("Wallpaper", names, stored < 0 ? count : stored, index -> {
             if (index == count) {
                 host.pickWallpaperPhoto();
             } else {
@@ -122,26 +126,35 @@ public final class Pickers {
     /** Unhide one of the apps that were hidden from the home screen. */
     public static void hiddenApps(ToolActivity host, Runnable after) {
         Set<String> hidden = host.prefs().hidden();
-        List<String> names = new ArrayList<>();
-        List<String> packages = new ArrayList<>();
-        for (AppEntry entry : AppRepository.get(host, 0)) {
-            if (hidden.contains(entry.packageName)) {
-                names.add(entry.label);
-                packages.add(entry.packageName);
+        // The app list can be cold, and reading it means asking the system
+        // for every installed app. That is not work for the main thread.
+        new Thread(() -> {
+            List<String> names = new ArrayList<>();
+            List<String> packages = new ArrayList<>();
+            for (AppEntry entry : AppRepository.get(host, 0)) {
+                if (hidden.contains(entry.packageName)) {
+                    names.add(entry.label);
+                    packages.add(entry.packageName);
+                }
             }
-        }
-        if (names.isEmpty()) {
-            Ui.toast(host, "No hidden apps");
-            return;
-        }
-        host.choose("Unhide app", names.toArray(new String[0]), -1, index -> {
-            Set<String> current = host.prefs().hidden();
-            current.remove(packages.get(index));
-            host.prefs().setHidden(current);
-            if (after != null) {
-                after.run();
-            }
-        });
+            host.runOnUiThread(() -> {
+                if (host.isFinishing() || host.isDestroyed()) {
+                    return;
+                }
+                if (names.isEmpty()) {
+                    Ui.toast(host, "No hidden apps");
+                    return;
+                }
+                host.choose("Unhide app", names.toArray(new String[0]), -1, index -> {
+                    Set<String> current = host.prefs().hidden();
+                    current.remove(packages.get(index));
+                    host.prefs().setHidden(current);
+                    if (after != null) {
+                        after.run();
+                    }
+                });
+            });
+        }, "sonora-hidden-apps").start();
     }
 
     // The names the rows show.

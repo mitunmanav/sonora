@@ -20,8 +20,10 @@ import java.util.Locale;
 public final class GlassPillView extends FrameLayout {
     private final TextView time;
     private final TextView date;
+    private final GlassDrawable material;
     private final Prefs prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private float focus;
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -35,7 +37,8 @@ public final class GlassPillView extends FrameLayout {
         this.prefs = prefs;
         setFocusable(true);
         setClickable(true);
-        setBackground(new GlassDrawable(context, 27f, 1.15f));
+        material = new GlassDrawable(context, 27f, 1.15f);
+        setBackground(material);
         setElevation(Ui.dpf(context, 8f));
         int padH = Ui.dp(context, 14);
         int padV = Ui.dp(context, 7);
@@ -67,7 +70,10 @@ public final class GlassPillView extends FrameLayout {
         FrameLayout avatar = new FrameLayout(context);
         GradientDrawable oval = new GradientDrawable();
         oval.setShape(GradientDrawable.OVAL);
-        oval.setColor(0xFFF1F3F6);
+        // A well in the glass rather than a sticker on top of it: dark, with
+        // a thin rim, so it reads as a hole the gear sits in.
+        oval.setColors(new int[]{0xFF262B35, 0xFF14171D});
+        oval.setStroke(Math.max(1, Ui.dp(context, 1)), 0x2EFFFFFF);
         avatar.setBackground(oval);
         ImageView gear = new ImageView(context);
         gear.setImageBitmap(Ui.gear(context, Ui.dp(context, 64), false));
@@ -77,7 +83,7 @@ public final class GlassPillView extends FrameLayout {
         avatar.addView(gear, gp);
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(
                 Ui.dp(context, 31), Ui.dp(context, 31));
-        ap.leftMargin = Ui.dp(context, 10);
+        ap.setMarginStart(Ui.dp(context, 10));
         row.addView(avatar, ap);
 
         addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
@@ -89,6 +95,9 @@ public final class GlassPillView extends FrameLayout {
             Motion.scale(this, hasFocus ? 1.055f : 1f, Motion.DAMPING_CRITICAL,
                     Motion.RESPONSE_FOCUS);
             setElevation(Ui.dpf(context, hasFocus ? 18f : 8f));
+            // The glass catches the light, and the clock turns dark with it.
+            Motion.springCustom(this, 0, hasFocus ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, focusValue());
         });
         setOnClickListener(v -> {
             if (onOpenSettings != null) {
@@ -100,6 +109,25 @@ public final class GlassPillView extends FrameLayout {
     }
 
     private Runnable onOpenSettings;
+
+    private Motion.FloatProperty focusValue() {
+        return new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return focus;
+            }
+
+            @Override
+            public void set(float value) {
+                focus = value;
+                material.setFocus(value);
+                // The clock turns dark as the glass lights up: white on a lit
+                // lens would be white on white.
+                time.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
+                date.setTextColor(Ui.mix(Ui.INK_TERTIARY, 0xB30A0D12, value));
+            }
+        };
+    }
 
     public void setOnOpenSettings(Runnable runnable) {
         onOpenSettings = runnable;
