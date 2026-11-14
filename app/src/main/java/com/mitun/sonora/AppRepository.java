@@ -96,7 +96,7 @@ public final class AppRepository {
                 if (!watching) {
                     watching = true;
                     Prefs.listen(context, (prefs, key) -> {
-                        if (Prefs.KEY_APPS_EPOCH.equals(key) || Prefs.KEY_PERFORMANCE.equals(key)) {
+                        if (key == null || Prefs.KEY_APPS_EPOCH.equals(key) || Prefs.KEY_PERFORMANCE.equals(key)) {
                             invalidate();
                         }
                     });

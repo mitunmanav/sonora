@@ -152,7 +152,7 @@ public final class AppManager {
                 if (!watching) {
                     watching = true;
                     Prefs.listen(context, (prefs, key) -> {
-                        if (Prefs.KEY_APPS_EPOCH.equals(key)) {
+                        if (key == null || Prefs.KEY_APPS_EPOCH.equals(key)) {
                             invalidate();
                         }
                     });
