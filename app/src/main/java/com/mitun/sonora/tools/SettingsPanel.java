@@ -374,6 +374,8 @@ public final class SettingsPanel {
         rows.add(SettingRow.push("Favourites", Pickers.favouritesName(prefs),
                 () -> openFavourites(host)));
         rows.add(SettingRow.push("Manage apps", "", () -> AppPanel.show(host)));
+        rows.add(SettingRow.push("Debloat", "Turn off apps you do not use",
+                () -> DebloatPanel.show(host)));
         rows.add(SettingRow.choice("Hidden apps", Pickers.hiddenName(prefs),
                 () -> Pickers.hiddenApps(host, () -> refresh(host))));
         if (prefs.technical()) {

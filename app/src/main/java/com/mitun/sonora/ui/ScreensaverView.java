@@ -131,15 +131,20 @@ public final class ScreensaverView extends FrameLayout {
         private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint creditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint clockPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Prefs prefs;
         private int sceneIndex = -1;
         private boolean show;
 
         OverlayView(Context context) {
             super(context);
-            Type.apply(titlePaint, Type.DISPLAY, context);
+            prefs = new Prefs(context);
+            Type.apply(titlePaint, Type.HEADING, context);
             Type.apply(creditPaint, Type.BODY, context);
+            Type.apply(clockPaint, Type.DISPLAY, context);
             titlePaint.setColor(Color.WHITE);
             creditPaint.setColor(Ui.alpha(Color.WHITE, 0.72f));
+            clockPaint.setColor(Color.WHITE);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
 
@@ -172,6 +177,11 @@ public final class ScreensaverView extends FrameLayout {
             java.util.List<Scenes.Scene> all = Scenes.all(getContext());
             Scenes.Scene scene = all.get(Math.max(0, Math.min(all.size() - 1, sceneIndex)));
             float density = getResources().getDisplayMetrics().density;
+            // The clock sits above the place, as it does over Apple's aerials.
+            String pattern = prefs.clock24() ? "HH:mm" : "h:mm a";
+            canvas.drawText(new java.text.SimpleDateFormat(pattern,
+                    java.util.Locale.getDefault()).format(new java.util.Date()),
+                    48 * density, h - 102 * density, clockPaint);
             canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
             if (scene.credit != null) {
                 canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
@@ -198,6 +208,8 @@ public final class ScreensaverView extends FrameLayout {
     private long fadeStart;
     private boolean running;
     private boolean tickerPosted;
+    /** The minute the overlay clock was last drawn for. */
+    private int lastMinute = -1;
     private boolean showOverlay = true;
     private int sceneDurationMs = 60000;
     private float panDirection = 1f;
@@ -383,6 +395,15 @@ public final class ScreensaverView extends FrameLayout {
     };
 
     private void step(long now) {
+        // The overlay clock only moves once a minute; one invalidate a minute
+        // is the whole cost of keeping it honest.
+        int minute = (int) (now / 60000L);
+        if (minute != lastMinute) {
+            lastMinute = minute;
+            if (showOverlay) {
+                overlay.invalidate();
+            }
+        }
         if (fadeStart > 0 && incoming != null) {
             float fade = Math.min(1f, (now - fadeStart) / (float) FADE_MS);
             incoming.setAlpha(fade);
