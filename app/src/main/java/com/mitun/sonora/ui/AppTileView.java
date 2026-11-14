@@ -82,11 +82,21 @@ public final class AppTileView extends LinearLayout {
         return entry;
     }
 
+    /** True when the tile shows a name under the card. */
+    public boolean labelSpace() {
+        return labelSpace;
+    }
+
     public void setEntry(AppEntry entry) {
         this.entry = entry;
         icon.setEntry(entry);
         label.setText(entry.label);
         setContentDescription(entry.label);
+    }
+
+    /** Marks the card as one the user pinned to the top of the home screen. */
+    public void setFavourite(boolean favourite) {
+        icon.setFavourite(favourite);
     }
 
     public void setFocusListener(FocusListener listener) {

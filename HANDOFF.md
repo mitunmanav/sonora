@@ -201,7 +201,7 @@ device is a **Xiaomi MiTV-AYFR0, Android 11 (API 30), 1920×1080 @ 320dpi =
 
 ```bash
 export PATH=$PATH:/home/mitun/Android/Sdk/platform-tools
-adb connect 192.168.68.108:5555     # may refuse for a while; retry every ~6s
+adb connect 192.168.68.105:5555     # may refuse for a while; retry every ~6s
 adb install -r -t /home/mitun/aerial/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.mitun.sonora/.HomeActivity
 adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png /tmp/opencode/s.png
@@ -219,12 +219,14 @@ adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png /tmp/opencode/s.p
 - **`ToolActivity`, `ShareActivity`, `BrowserActivity` are `exported=false`**,
   so `adb shell am start` on them is refused. Reach them through the UI:
   Settings tile on the home screen → OK.
-- **`com.mitun.aerial` (the old package) is still installed on the TV**, so
-  there are two launchers with the same name in the grid. The user has not
-  said whether to uninstall it — **ask before removing it**.
-- **Sonora is not the default launcher on the TV** (`com.google.android.tvlauncher`
-  is). So BACK at the top of the grid leaves to the Google TV launcher. That
-  is the designed behaviour when Sonora is not the default home.
+- **`com.mitun.aerial` (the old package) is no longer installed** — only
+  `com.mitun.sonora` is on the TV.
+- **Sonora IS the home app now** (2026-10-31). `cmd package set-home-activity`
+  and the HOME role both point at it, but Google TV's launcher declares its
+  HOME filter with `priority=2` and wins the resolver anyway; the shell may
+  not disable just its component (`SecurityException`), so the package was
+  disabled: `pm disable-user --user 0 com.google.android.tvlauncher`.
+  Undo with `pm enable com.google.android.tvlauncher`.
 
 ### WHAT THE LAST SESSION FOUND AND FIXED (all verified on the TV)
 

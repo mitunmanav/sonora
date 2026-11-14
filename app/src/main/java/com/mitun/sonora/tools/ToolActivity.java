@@ -24,7 +24,7 @@ import com.mitun.sonora.ui.Ui;
  * the activity and its views are the whole footprint.
  */
 public final class ToolActivity extends Activity {
-    /** "settings" (the default), "tools" or "wizard". */
+    /** "settings" (the default), "tools", "quick" or "wizard". */
     public static final String EXTRA_SCREEN = "screen";
     private static final int REQUEST_PICK_WALLPAPER = 41;
 
@@ -68,6 +68,8 @@ public final class ToolActivity extends Activity {
             wizard.start();
         } else if ("tools".equals(screen)) {
             ToolsPanel.show(this);
+        } else if ("quick".equals(screen)) {
+            QuickPanel.show(this);
         } else {
             SettingsPanel.show(this);
         }
@@ -97,9 +99,15 @@ public final class ToolActivity extends Activity {
     }
 
     public void dismissChoice() {
-        if (choiceOverlay != null) {
-            root.removeView(choiceOverlay);
-            choiceOverlay = null;
+        if (choiceOverlay == null) {
+            return;
+        }
+        final View overlay = choiceOverlay;
+        choiceOverlay = null;
+        if (overlay instanceof ChoiceOverlay) {
+            ((ChoiceOverlay) overlay).dismiss(() -> root.removeView(overlay));
+        } else {
+            root.removeView(overlay);
         }
     }
 
