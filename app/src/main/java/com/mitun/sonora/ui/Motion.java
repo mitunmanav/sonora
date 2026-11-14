@@ -313,12 +313,10 @@ public final class Motion {
         start(runner);
     }
 
-    /** Scales a view on both axes. */
     public static void scale(View view, float target, float dampingRatio, float response) {
         spring(view, SCALE, target, dampingRatio, response);
     }
 
-    /** Slides a view along X. */
     public static void translateX(View view, float target, float dampingRatio, float response) {
         spring(view, TRANSLATION_X, target, dampingRatio, response);
     }

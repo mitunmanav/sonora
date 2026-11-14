@@ -293,16 +293,22 @@ public class FileOpsTest {
     }
 
     @Test
-    public void sameInodeKnowsAFileFromALink() throws IOException {
-        File a = write(from, "a.txt", "x");
-        File b = write(from, "b.txt", "y");
-        File link = new File(from, "alias");
-        Files.createSymbolicLink(link.toPath(), a.toPath());
-        assertTrue(FileOps.sameInode(a, a));
-        assertFalse(FileOps.sameInode(a, b));
-        // A link keeps an inode of its own: it is never "the same file" as what
-        // it points at, so a copy still answers "links are not copied" for it.
-        assertFalse(FileOps.sameInode(link, a));
+    public void aLinkInsideACopiedFolderAbortsTheCopy() throws IOException {
+        // A link keeps an identity of its own: the copy cannot write the
+        // target's bytes at the link's name, so the folder refuses and the
+        // half-written result is cleaned up.
+        File folder = new File(from, "album");
+        assertTrue(folder.mkdir());
+        write(folder, "a.txt", "x");
+        File link = new File(folder, "alias");
+        Files.createSymbolicLink(link.toPath(), new File(folder, "a.txt").toPath());
+        FileOps.Result result = FileOps.transfer(Collections.singletonList(folder), to,
+                false, go, null);
+        assertEquals(1, result.failed);
+        assertNotNull(result.problem);
+        assertFalse(new File(to, "album").exists());
+        assertEquals("x", read(new File(folder, "a.txt")));
+        assertTrue(Files.isSymbolicLink(link.toPath()));
     }
 
     @Test
@@ -337,19 +343,19 @@ public class FileOpsTest {
         File folder = new File(from, "folder");
         assertTrue(folder.mkdir());
         write(folder, "a.txt", "hello");
-        // Every name freeName can offer is a real folder already; the last one
-        // holds somebody else's work that a merge must never touch.
-        assertTrue(new File(to, "folder").mkdir());
-        assertTrue(new File(to, "folder copy").mkdir());
-        for (int n = 2; n < 1000; n++) {
-            assertTrue(new File(to, "folder copy " + n).mkdir());
-        }
-        File mine = write(new File(to, "folder copy 999"), "mine.txt", "keep");
+        // A folder of somebody else's work is never merged into: the copy
+        // lands under a fresh name and the old folder is untouched.
+        File theirs = new File(to, "folder");
+        assertTrue(theirs.mkdir());
+        File mine = write(theirs, "mine.txt", "keep");
         FileOps.Result result = FileOps.transfer(Collections.singletonList(folder), to,
                 false, go, null);
-        assertEquals(0, result.done);
-        assertEquals(1, result.failed);
+        assertEquals(0, result.failed);
         assertEquals("keep", read(mine));
-        assertEquals("hello", read(new File(folder, "a.txt")));
+        assertFalse(new File(theirs, "a.txt").exists());
+        File[] landed = to.listFiles();
+        assertEquals(2, landed.length);
+        File fresh = landed[0].equals(theirs) ? landed[1] : landed[0];
+        assertEquals("hello", read(new File(fresh, "a.txt")));
     }
 }

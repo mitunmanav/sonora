@@ -128,17 +128,22 @@ public final class Ui {
      * surface is asked to close instead.
      */
     public static View focusSearchContained(ViewGroup host, View focused, int direction,
-                                            int escapeDirections, Runnable onEscape) {
+                                            Runnable onEscape, int... escapeDirections) {
         View next = FocusFinder.getInstance().findNextFocus(host, focused, direction);
         if (next != null) {
             return next;
         }
-        if ((direction & escapeDirections) != 0) {
-            onEscape.run();
+        // View.FOCUS_* are not bit flags, so escapes compare one at a time.
+        for (int escape : escapeDirections) {
+            if (direction == escape) {
+                onEscape.run();
+                return focused;
+            }
         }
         return focused;
     }
 
+    /** Where a view is laid out inside a host, ignoring its focus scale. */
     public static Rect regionIn(View host, View view) {
         int x = 0;
         int y = 0;

@@ -34,4 +34,8 @@ public final class Clock {
         String time = time(prefs);
         return prefs.showDate() ? date() + "  " + time : time;
     }
+    /** Milliseconds until the next tick a seconds/minute clock should re-draw at. */
+    public static long tickDelay(boolean showSeconds, long nowMs) {
+        return showSeconds ? 1000 - nowMs % 1000 : 60000 - nowMs % 60000;
+    }
 }

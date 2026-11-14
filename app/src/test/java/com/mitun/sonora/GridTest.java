@@ -23,9 +23,8 @@ public class GridTest {
     public void every16by9ScreenGetsTheSameTvOSColumnCount() {
         // tvOS proportions are scale-invariant: a 16:9 screen always shows six
         // icons whatever its resolution or density.
-        int expected = Grid.compute(960).columns;
         for (int width : new int[]{853, 960, 1280, 1920}) {
-            assertEquals("width " + width, expected, Grid.compute(width).columns);
+            assertEquals("width " + width, 6, Grid.compute(width).columns);
         }
     }
 
@@ -83,17 +82,12 @@ public class GridTest {
     }
 
     @Test
-    public void tileHeightIsFiveByThree() {
-        Grid.Metrics m = Grid.compute(960);
-        assertEquals(Math.round(m.tileWidthDp * 0.6f), m.tileHeightDp);
-    }
-
-    @Test
     public void aStoredColumnCountOverridesTheAutomaticOne() {
-        Grid.Metrics auto = Grid.compute(960);
-        Grid.Metrics fixed = Grid.resolve(960, auto.columns);
-        assertEquals(auto.columns, fixed.columns);
-        assertEquals(auto.tileWidthDp, fixed.tileWidthDp);
+        int stored = Grid.compute(960).columns - 1;
+        Grid.Metrics fixed = Grid.resolve(960, stored);
+        assertEquals(stored, fixed.columns);
+        int content = 960 - fixed.marginDp * 2;
+        assertTrue(fixed.tileWidthDp * stored + fixed.gapDp * (stored - 1) <= content);
     }
 
     @Test

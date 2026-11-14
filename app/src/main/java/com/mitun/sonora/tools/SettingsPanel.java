@@ -37,7 +37,6 @@ import com.mitun.sonora.Platform;
 public final class SettingsPanel {
     private static final String TITLE = "Settings";
 
-    /** One screen of the settings. */
     /** One screen of the settings; also its tag and its mark beside the page. */
     static final class Page {
         final String title;
@@ -59,6 +58,8 @@ public final class SettingsPanel {
 
     /** The tag the Favourites screen carries; it is not one of the pages. */
     static final Object FAVOURITES = new Object();
+    /** The tag the About screen carries on the stack. */
+    static final Object ABOUT = new Object();
 
     private SettingsPanel() {
     }
@@ -568,6 +569,6 @@ public final class SettingsPanel {
         scroller.setVerticalScrollBarEnabled(false);
         scroller.addView(text, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        host.stack().pushContent(null, "About Sonora", "Imagery and credits", scroller);
+        host.stack().pushContent(ABOUT, "About Sonora", "Imagery and credits", scroller);
     }
 }

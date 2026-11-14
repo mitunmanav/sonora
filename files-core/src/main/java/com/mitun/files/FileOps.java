@@ -18,7 +18,6 @@ public final class FileOps {
         void onProgress(long done, long total, String name);
     }
 
-    /** What happened. */
     public static final class Result {
         public int done;
         public int failed;
@@ -65,7 +64,6 @@ public final class FileOps {
         return total;
     }
 
-    /** Copies or moves these into a folder. */
     public static Result transfer(List<File> sources, File target, boolean move,
                                   AtomicBoolean cancel, Progress progress) {
         Result result = new Result();

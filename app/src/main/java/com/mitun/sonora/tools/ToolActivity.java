@@ -111,10 +111,6 @@ public final class ToolActivity extends ImmersiveActivity {
             }
 
             @Override
-            public void onPushed() {
-            }
-
-            @Override
             public void onTopChanged(Object tag) {
                 showMark(markFor(tag));
             }
@@ -279,7 +275,6 @@ public final class ToolActivity extends ImmersiveActivity {
         return stack.getChildAt(depth - 1);
     }
 
-    /** True when the view sits inside the screen's view tree. */
     private static boolean inside(View view, View screen) {
         for (android.view.ViewParent parent = view.getParent(); parent != null;
              parent = parent.getParent()) {

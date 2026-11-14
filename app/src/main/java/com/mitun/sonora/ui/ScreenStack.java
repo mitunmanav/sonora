@@ -36,8 +36,6 @@ public final class ScreenStack extends FrameLayout {
         /** BACK was pressed and the stack is now empty. */
         void onEmpty();
 
-        /** A screen was pushed. */
-        void onPushed();
 
         /** A different screen is now on top, so what stands beside it can follow. */
         void onTopChanged(Object tag);
@@ -469,7 +467,6 @@ public final class ScreenStack extends FrameLayout {
             screen.scroller.post(() -> screen.scroller.scrollTo(0, 0));
         }
         if (listener != null) {
-            listener.onPushed();
             listener.onTopChanged(screen.tag);
         }
     }

@@ -27,18 +27,26 @@ import com.mitun.sonora.Platform;
 public final class DebugPanel {
     private static final int LOG_LINES = 60;
 
+    /** The tags the device and processes screens carry on the stack. */
+    private static final Object TAG_DEVICE = new Object();
+    private static final Object TAG_PROCESSES = new Object();
+    private static final Object TAG_BATTERY = new Object();
+    private static final Object TAG_NETWORK = new Object();
+    private static final Object TAG_LOG = new Object();
+    private static final Object TAG_SELF_CHECK = new Object();
+
     private DebugPanel() {
     }
 
     public static void show(ToolActivity host) {
         SystemInfo.invalidate();
-        host.stack().pushSettings("Device", "Device", rows(host));
+        host.stack().pushSettings(TAG_DEVICE, "Device", rows(host));
     }
 
     /** Rebuilds the device screen with the numbers as they are now. */
     private static void refresh(ToolActivity host) {
         SystemInfo.invalidate();
-        host.stack().refreshSettings("Device", "Device", rows(host));
+        host.stack().refreshSettings(TAG_DEVICE, "Device", rows(host));
     }
 
     private static List<SettingRow> rows(ToolActivity host) {
@@ -90,7 +98,7 @@ public final class DebugPanel {
         List<SettingRow> reading = new ArrayList<>();
         reading.add(SettingRow.note("Everything running right now."));
         reading.add(SettingRow.value("Reading", "…"));
-        host.stack().pushSettings(title, title, reading);
+        host.stack().pushSettings(TAG_PROCESSES, title, reading);
         // Asking the system for every process is a binder call each time. On a
         // slow stick that is long enough to be an ANR, so it happens off the
         // UI thread and the screen fills in when it is done.
@@ -100,13 +108,13 @@ public final class DebugPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!title.equals(host.stack().topTag())) {
+                if (host.stack().topTag() != TAG_PROCESSES) {
                     // The user pressed BACK while the list was being read, so
                     // the screen on top is another one. Rebuilding it with
                     // these rows would replace the wrong screen.
                     return;
                 }
-                host.stack().refreshSettings(title, title, rows);
+                host.stack().refreshSettings(TAG_PROCESSES, title, rows);
             });
         }, "sonora-processes").start();
     }
@@ -185,7 +193,7 @@ public final class DebugPanel {
         rows.add(SettingRow.value("Power", plugged < 0 ? "Unknown"
                 : plugged == 0 ? "On battery" : "Plugged in"));
         rows.add(SettingRow.value("Low power mode", isPowerSaver(host) ? "On" : "Off"));
-        host.stack().pushSettings("Battery", "Battery", rows);
+        host.stack().pushSettings(TAG_BATTERY, "Battery", rows);
     }
 
     private static String batteryStatus(int status) {
@@ -228,7 +236,7 @@ public final class DebugPanel {
             rows.add(SettingRow.value("Wireless debugging",
                     SetupGuide.wirelessDebuggingOn(host) ? "On" : "Off"));
         }
-        host.stack().pushSettings("Network", "Network", rows);
+        host.stack().pushSettings(TAG_NETWORK, "Network", rows);
     }
 
     private static String wifiName(Context context) {
@@ -268,7 +276,7 @@ public final class DebugPanel {
         scroller.addView(text, new android.widget.ScrollView.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
-        host.stack().pushContent(null, "Sonora's log", "The last " + LOG_LINES + " lines", scroller);
+        host.stack().pushContent(TAG_LOG, "Sonora's log", "The last " + LOG_LINES + " lines", scroller);
 
         new Thread(() -> {
             StringBuilder sb = new StringBuilder();
@@ -339,7 +347,7 @@ public final class DebugPanel {
                 SystemInfo.bytes(heapUsed) + " of " + SystemInfo.bytes(info.javaHeapLimit)));
         rows.add(SettingRow.value("Low RAM device", info.lowRam ? "Yes" : "No"));
         rows.add(SettingRow.value("Screen saver", screenSaverState(host)));
-        host.stack().pushSettings("Self check", "Self check", rows);
+        host.stack().pushSettings(TAG_SELF_CHECK, "Self check", rows);
     }
 
     /**

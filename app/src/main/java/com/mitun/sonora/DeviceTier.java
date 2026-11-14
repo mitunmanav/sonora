@@ -84,7 +84,11 @@ public final class DeviceTier {
             synchronized (DeviceTier.class) {
                 if (!watching) {
                     watching = true;
-                    Prefs.listen(context, (prefs, key) -> cached = Integer.MIN_VALUE);
+                    Prefs.listen(context, (prefs, key) -> {
+                        if (Prefs.KEY_PERFORMANCE.equals(key)) {
+                            cached = Integer.MIN_VALUE;
+                        }
+                    });
                 }
             }
         }

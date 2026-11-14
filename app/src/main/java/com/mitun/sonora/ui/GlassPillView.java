@@ -39,8 +39,7 @@ public final class GlassPillView extends FrameLayout {
             refresh();
             long now = System.currentTimeMillis();
             // On the next change of the display, not on a poll.
-            handler.postDelayed(this, prefs.showSeconds()
-                    ? 1000 - now % 1000 : 60000 - now % 60000);
+            handler.postDelayed(this, Clock.tickDelay(prefs.showSeconds(), now));
         }
     };
 

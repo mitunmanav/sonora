@@ -83,7 +83,6 @@ public final class SettingRow {
         return row;
     }
 
-    /** A row with a tick in it. */
     public static SettingRow check(String title, boolean checked, Runnable action) {
         SettingRow row = new SettingRow(title, CHECK, action);
         row.value = checked ? "✓" : "";

@@ -88,7 +88,8 @@ public final class WallpaperGlass {
      * to the listener on the way back. The shared blur covers the screen while
      * the full-size picture is still being read.
      */
-    public void apply(Prefs prefs, int tier) {
+    public void apply(Prefs prefs) {
+        final int tier = DeviceTier.get(root.getContext());
         final int index = prefs.wallpaper();
         final String uri = prefs.wallpaperUri();
         final int divisor = DeviceTier.wallpaperDivisor(tier);
@@ -184,9 +185,9 @@ public final class WallpaperGlass {
         if (width == 0 || height == 0) {
             return;
         }
-        final Rect dock = screenRect(dockBar);
-        final Rect clock = screenRect(clockPill);
-        final Rect search = screenRect(searchPill);
+        final Rect dock = Ui.regionIn(root, dockBar);
+        final Rect clock = Ui.regionIn(root, clockPill);
+        final Rect search = Ui.regionIn(root, searchPill);
         final Bitmap source = lensSource;
         boolean bend = source != null && !source.isRecycled()
                 && DeviceTier.bentGlass(DeviceTier.get(root.getContext()));
@@ -255,19 +256,6 @@ public final class WallpaperGlass {
     private void useSoftened(Bitmap blur) {
         softened = blur;
         listener.onSoftened(blur);
-    }
-
-    /** Where a view is laid out on the screen, ignoring its focus scale. */
-    private Rect screenRect(View view) {
-        int left = 0;
-        int top = 0;
-        View walk = view;
-        while (walk != null && walk != root) {
-            left += walk.getLeft();
-            top += walk.getTop();
-            walk = walk.getParent() instanceof View ? (View) walk.getParent() : null;
-        }
-        return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
     }
 
     private static Bitmap halfSize(Bitmap picture) {

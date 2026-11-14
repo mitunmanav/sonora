@@ -31,10 +31,8 @@ import java.util.List;
  */
 public final class SearchOverlay extends FrameLayout {
     public interface Listener {
-        /** The user picked an app. */
         void onPicked(AppEntry entry);
 
-        /** The search is over. */
         void onClosed();
     }
 
@@ -447,7 +445,6 @@ public final class SearchOverlay extends FrameLayout {
         }
     }
 
-    /** Picks a result. */
     private interface OnPick {
         void onPick(AppEntry entry);
     }

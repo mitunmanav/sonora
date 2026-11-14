@@ -70,8 +70,6 @@ public class HomeActivity extends ImmersiveActivity {
     private static final float OPEN_DOCK_TOP = 0.056f;
     /** The corner of the glass dock. */
     private static final float DOCK_RADIUS_DP = 29f;
-    /** The dock is baked at half size: the bend hides it, and it costs a quarter. */
-    private static final int DOCK_LENS_SCALE = 2;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -305,7 +303,7 @@ public class HomeActivity extends ImmersiveActivity {
         peekPx = Ui.dp(this, PEEK_DP);
 
         gridBackdrop = new BackdropView(this);
-        gridBackdrop.setSoftened(wallpaperGlass == null ? null : wallpaperGlass.softened());
+        gridBackdrop.setSoftened(null);
         gridBackdrop.setVisibility(View.GONE);
         root.addView(gridBackdrop, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -796,7 +794,6 @@ public class HomeActivity extends ImmersiveActivity {
                 Motion.RESPONSE_FOCUS);
     }
 
-    /** The row of icons the focus is in. */
     private int focusedRow() {
         View focused = getCurrentFocus();
         int index = focused instanceof AppTileView ? tiles.indexOf(focused) : -1;
@@ -1359,7 +1356,7 @@ public class HomeActivity extends ImmersiveActivity {
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
         searchOverlay = new SearchOverlay(this, apps, Ui.dp(this, metrics.tileWidthDp),
                 Ui.dp(this, metrics.tileHeightDp), Ui.dp(this, metrics.gapDp), metrics.columns,
-                Ui.dp(this, metrics.marginDp), wallpaperGlass == null ? null : wallpaperGlass.softened(),
+                Ui.dp(this, metrics.marginDp), wallpaperGlass.softened(),
                 new SearchOverlay.Listener() {
             @Override
             public void onPicked(AppEntry entry) {
@@ -1470,9 +1467,7 @@ public class HomeActivity extends ImmersiveActivity {
         // The wallpaper is invisible under the screen saver, which holds two
         // screen-sized scenes of its own. Letting it go keeps the peak at two
         // full-screen bitmaps instead of three.
-        if (wallpaperGlass != null) {
-            wallpaperGlass.release();
-        }
+        wallpaperGlass.release();
         // Everything under the saver is fully covered, so it stops drawing:
         // hero, shelf, dock, rows and the glass all go GONE until it returns.
         hero.setVisibility(View.GONE);
@@ -1545,9 +1540,7 @@ public class HomeActivity extends ImmersiveActivity {
             return;
         }
         // It was released when the screen saver came up.
-        if (wallpaperGlass != null) {
-            wallpaperGlass.apply(prefs, DeviceTier.get(this));
-        }
+        wallpaperGlass.apply(prefs);
         restoreFocus();
         // The watcher stops when the screen saver comes up, so it has to
         // start again now that it is gone.
@@ -1689,7 +1682,6 @@ public class HomeActivity extends ImmersiveActivity {
         return false;
     }
 
-    /** Handles BACK. Returns true when something consumed it. */
     private boolean handleBack() {
         if (screensaver != null) {
             hideScreensaver();
@@ -1789,9 +1781,7 @@ public class HomeActivity extends ImmersiveActivity {
             artworkDropped = false;
             loadApps();
         }
-        if (wallpaperGlass != null) {
-            wallpaperGlass.apply(prefs, DeviceTier.get(this));
-        }
+        wallpaperGlass.apply(prefs);
         clockPill.refresh();
         SystemInfo.invalidate();
         Motion.refresh(this);
@@ -1838,9 +1828,7 @@ public class HomeActivity extends ImmersiveActivity {
             if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
                     && DeviceTier.get(this) != DeviceTier.LOW) {
                 DeviceTier.degrade();
-                if (wallpaperGlass != null) {
-                    wallpaperGlass.apply(prefs, DeviceTier.get(this));
-                }
+                wallpaperGlass.apply(prefs);
             }
             return;
         }
@@ -1848,9 +1836,7 @@ public class HomeActivity extends ImmersiveActivity {
         boolean low = DeviceTier.get(this) == DeviceTier.LOW;
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
                 || low && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            if (wallpaperGlass != null) {
-                wallpaperGlass.release();
-            }
+            wallpaperGlass.release();
         }
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
             // The tiles and the entries hold the artwork too, so they go with
@@ -1869,9 +1855,7 @@ public class HomeActivity extends ImmersiveActivity {
         super.onStop();
         // Settings opens over this screen on a TV that has nothing to spare.
         if (DeviceTier.get(this) == DeviceTier.LOW) {
-            if (wallpaperGlass != null) {
-                wallpaperGlass.release();
-            }
+            wallpaperGlass.release();
         }
     }
 

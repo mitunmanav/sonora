@@ -141,7 +141,7 @@ public final class AppSwitcherView extends FrameLayout {
     @Override
     public View focusSearch(View focused, int direction) {
         return Ui.focusSearchContained(this, focused, direction,
-                View.FOCUS_UP | View.FOCUS_DOWN, listener::onDismiss);
+                listener::onDismiss, View.FOCUS_UP, View.FOCUS_DOWN);
     }
 
     private LinearLayout.LayoutParams cardParams(int index) {

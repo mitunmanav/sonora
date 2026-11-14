@@ -87,7 +87,6 @@ public final class Theme {
     }
 
     /** The surface of a modal task. */
-    /** The surface of a modal task. */
     public static int modal() {
         return light ? 0xF5F2F2F7 : 0xF7000000;
     }

@@ -38,10 +38,16 @@ public final class Prefs {
 
     /**
      * Tells a module when a stored value changed, so a static cache can drop
-     * itself instead of every caller remembering to refresh it.
+     * itself instead of every caller remembering to refresh it. Listeners are
+     * held here: SharedPreferences keeps them weakly, and a callback that is
+     * not also held elsewhere would be collected and the cache never dropped.
      */
+    private static final java.util.List<SharedPreferences.OnSharedPreferenceChangeListener>
+            LISTENERS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
     public static void listen(Context context,
                               SharedPreferences.OnSharedPreferenceChangeListener listener) {
+        LISTENERS.add(listener);
         context.getApplicationContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE)
                 .registerOnSharedPreferenceChangeListener(listener);

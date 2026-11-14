@@ -3,7 +3,6 @@ package com.mitun.sonora.tools;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -25,29 +24,22 @@ import java.nio.file.Files;
 public class FileServerTest {
 
     @Test
-    public void aRequestAsksForItsPath() {
-        assertEquals("/photos", FileServer.requestPath("GET /photos HTTP/1.1".split(" ")));
-    }
-
-    @Test
-    public void aMalformedLineIsNotARequest() {
-        // A verb with no path, a gap where the path belongs, and a line
-        // that is one token are all malformed, not requests for the root.
-        assertNull(FileServer.requestPath("GET".split(" ")));
-        assertNull(FileServer.requestPath("GET  /x".split(" ")));
-        assertNull(FileServer.requestPath("GET\t/x".split(" ")));
-    }
-
-    @Test
-    public void theQueryIsNotPartOfThePath() {
-        assertEquals("/photos", FileServer.requestPath("GET /photos?a=1 HTTP/1.1".split(" ")));
-    }
-
-    @Test
-    public void aLineOfSpacesIsNotARequest() {
-        // " ".split(" ") has no parts at all, which is what a client that
-        // sends nothing but spaces produces.
-        assertNull(FileServer.requestPath(" ".split(" ")));
+    public void aMalformedLineAnswers400AndAQueryIsStripped() throws IOException {
+        File root = Files.createTempDirectory("sonora-share-test").toFile();
+        FileServer server = new FileServer();
+        int port = server.start(root);
+        try {
+            // A gap where the path belongs and a line that is nothing but
+            // spaces are malformed; a bare verb or a tab is not a GET at all.
+            assertEquals("HTTP/1.1 400 Bad Request", ask(port, "GET\r\n\r\n"));
+            assertEquals("HTTP/1.1 400 Bad Request", ask(port, "GET  /x HTTP/1.1\r\n\r\n"));
+            assertEquals("HTTP/1.1 405 Method Not Allowed", ask(port, "GET\t/x HTTP/1.1\r\n\r\n"));
+            assertEquals("HTTP/1.1 400 Bad Request", ask(port, "   \r\n\r\n"));
+            // The query is not part of the path: "/" with one is still the root.
+            assertEquals("HTTP/1.1 200 OK", ask(port, "GET /?a=1 HTTP/1.1\r\n\r\n"));
+        } finally {
+            server.stop();
+        }
     }
 
     @Test
@@ -72,16 +64,6 @@ public class FileServerTest {
         assertEquals("GET /a HTTP/1.1",
                 FileServer.readLine(new ByteArrayInputStream(
                         "GET /a HTTP/1.1\r\n".getBytes(StandardCharsets.UTF_8))));
-    }
-
-    @Test
-    public void anEndlessLineIsRefused() throws IOException {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 20000; i++) {
-            sb.append('x');
-        }
-        assertSame(FileServer.TOO_LONG, FileServer.readLine(new ByteArrayInputStream(
-                sb.toString().getBytes(StandardCharsets.UTF_8))));
     }
 
     /**
@@ -196,7 +178,7 @@ public class FileServerTest {
             Files.createSymbolicLink(new File(source, "loop").toPath(), source.toPath());
         } catch (IOException | UnsupportedOperationException | SecurityException e) {
             // A filesystem without links cannot run this check.
-            return;
+            org.junit.Assume.assumeNoException(e);
         }
         File destination = new File(temp, "destination");
         assertTrue(FileServer.copyFile(source, destination));

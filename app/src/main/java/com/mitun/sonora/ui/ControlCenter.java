@@ -64,8 +64,7 @@ public final class ControlCenter extends FrameLayout {
         public void run() {
             time.setText(clockText());
             long now = System.currentTimeMillis();
-            handler.postDelayed(this, prefs.showSeconds()
-                    ? 1000 - now % 1000 : 60000 - now % 60000);
+            handler.postDelayed(this, Clock.tickDelay(prefs.showSeconds(), now));
         }
     };
     private boolean glassBaked;
@@ -183,8 +182,8 @@ public final class ControlCenter extends FrameLayout {
     /** DOWN from the last row leaves the panel. */
     @Override
     public View focusSearch(View focused, int direction) {
-        return Ui.focusSearchContained(this, focused, direction, View.FOCUS_DOWN,
-                listener::onDismiss);
+        return Ui.focusSearchContained(this, focused, direction,
+                listener::onDismiss, View.FOCUS_DOWN);
     }
 
     @Override

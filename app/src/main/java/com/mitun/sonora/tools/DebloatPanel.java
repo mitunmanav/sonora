@@ -21,6 +21,9 @@ import com.mitun.sonora.Platform;
 public final class DebloatPanel {
     private static final String TITLE = "Debloat";
 
+    /** The tag the panel carries on the stack. */
+    static final Object TAG = new Object();
+
     private static final class BloatItem {
         final String packageName;
         final String name;
@@ -61,7 +64,7 @@ public final class DebloatPanel {
     public static void show(ToolActivity host) {
         List<SettingRow> reading = new ArrayList<>();
         reading.add(SettingRow.value("Reading", "…"));
-        host.stack().pushSettings(TITLE, TITLE, reading);
+        host.stack().pushSettings(TAG, TITLE, reading);
         reload(host);
     }
 
@@ -70,7 +73,7 @@ public final class DebloatPanel {
      * turned off or removed while the panel sits under a system screen.
      */
     static void resumed(ToolActivity host) {
-        if (TITLE.equals(host.stack().topTag())) {
+        if (host.stack().topTag() == TAG) {
             reload(host);
         }
     }
@@ -89,11 +92,11 @@ public final class DebloatPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!TITLE.equals(host.stack().topTag())) {
+                if (host.stack().topTag() != TAG) {
                     // The user left the screen while the list was being read.
                     return;
                 }
-                host.stack().refreshSettings(TITLE, TITLE, rows);
+                host.stack().refreshSettings(TAG, TITLE, rows);
             });
         }, "sonora-debloat").start();
     }

@@ -293,7 +293,6 @@ public final class PackageActions {
         return false;
     }
 
-    /** Opens the system app-info page for a package. */
     public static Result openAppInfo(Context context, String packageName) {
         try {
             Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -306,7 +305,6 @@ public final class PackageActions {
         }
     }
 
-    /** Launches an app by package name. */
     public static Result launch(Context context, String packageName) {
         try {
             PackageManager pm = context.getPackageManager();
