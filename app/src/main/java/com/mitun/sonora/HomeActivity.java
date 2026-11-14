@@ -15,6 +15,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -110,6 +111,8 @@ public class HomeActivity extends Activity {
     };
     private ControlCenter controlCenter;
     private AppSwitcherView appSwitcher;
+    /** Bumped for each switcher request, so a stale list is never shown. */
+    private int switcherGeneration;
     /** When the TV last sent a HOME signal here; two in a row open the switcher. */
     private long lastHomeSignalAt;
     private long lastHomePressAt;
@@ -151,6 +154,13 @@ public class HomeActivity extends Activity {
     private Bitmap softened;
     /** Bumped for each bake, so a slow one that was overtaken is dropped. */
     private int glassGeneration;
+    /** One thread for the bakes, so rapid layout churn cannot flood the CPU. */
+    private final java.util.concurrent.ExecutorService glassBaker =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "sonora-glass");
+                thread.setDaemon(true);
+                return thread;
+            });
     /** The instance on screen. HOME and a launcher tile each make one, in their own task. */
     private static java.lang.ref.WeakReference<HomeActivity> latest;
     private boolean resumed;
@@ -176,15 +186,21 @@ public class HomeActivity extends Activity {
                 return;
             }
             if (!suppressIdle && screensaver == null
-                    && System.currentTimeMillis() - lastInteraction > delay * 1000L) {
+                    && SystemClock.elapsedRealtime() - lastInteraction > delay * 1000L) {
                 showScreensaver();
+                return;
+            }
+            if (suppressIdle || screensaver != null) {
+                // Nothing to wake for: the due time is past, so reposting would
+                // spin every second. updateSuppressIdle() and hideScreensaver()
+                // post the watcher again once it can fire.
                 return;
             }
             // Sleep until it is actually due. Waking up every second to find
             // out that it is not is exactly the kind of thing a launcher on a
             // TV must not do.
             long due = lastInteraction + delay * 1000L;
-            handler.postDelayed(this, Math.max(1000L, due - System.currentTimeMillis()));
+            handler.postDelayed(this, Math.max(1000L, due - SystemClock.elapsedRealtime()));
         }
     };
 
@@ -308,7 +324,8 @@ public class HomeActivity extends Activity {
         rowGapPx = Ui.dp(this, ROW_GAP_DP);
         peekPx = Ui.dp(this, PEEK_DP);
 
-        gridBackdrop = new BackdropView(this, softened);
+        gridBackdrop = new BackdropView(this);
+        gridBackdrop.setSoftened(softened);
         gridBackdrop.setVisibility(View.GONE);
         root.addView(gridBackdrop, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -371,9 +388,11 @@ public class HomeActivity extends Activity {
         gridLabel.setEllipsize(TextUtils.TruncateAt.END);
         gridLabel.setAlpha(0f);
         gridLabel.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        // The label is slid with an absolute translationX, so the anchor is the
+        // physical left edge in a right-to-left language too.
         dockPort.addView(gridLabel, new FrameLayout.LayoutParams(
                 Ui.dp(this, metrics.tileWidthDp + 40), ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.START));
+                Gravity.TOP | Gravity.LEFT));
         openExtraPx = Ui.dp(this, OPEN_ROW_GAP_DP - ROW_GAP_DP);
         applyDockMetrics(labelSpacePx(), tileHeightPx());
 
@@ -384,6 +403,7 @@ public class HomeActivity extends Activity {
         };
         dockBar.addOnLayoutChangeListener(rebake);
         clockPill.addOnLayoutChangeListener(rebake);
+        searchPill.addOnLayoutChangeListener(rebake);
 
         root.addView(shelf, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -401,7 +421,7 @@ public class HomeActivity extends Activity {
         // Stored at the size the focused card draws at, so it stays sharp.
         final int tileWidthPx = DeviceTier.artworkWidth(DeviceTier.get(this),
                 Ui.dp(this, gridMetrics().tileWidthDp), AppTileView.FOCUS_SCALE);
-        new Thread(() -> {
+        Thread loader = new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             List<AppEntry> result;
             try {
@@ -410,10 +430,17 @@ public class HomeActivity extends Activity {
                 result = new ArrayList<>();
             }
             final List<AppEntry> loaded = result;
-            final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(),
-                    prefs.hidden(), prefs.favourites());
+            List<AppEntry> reordered;
+            try {
+                reordered = AppOrdering.order(loaded, prefs.order(),
+                        prefs.hidden(), prefs.favourites());
+            } catch (RuntimeException | OutOfMemoryError e) {
+                // The saved order is a nicety; the apps as they came beat an empty grid.
+                reordered = loaded;
+            }
+            final List<AppEntry> ordered = reordered;
             runOnUiThread(() -> {
-                if (isFinishing() || gen != appsLoadGeneration) {
+                if (isFinishing() || isDestroyed() || gen != appsLoadGeneration) {
                     return;
                 }
                 favourites.clear();
@@ -421,7 +448,15 @@ public class HomeActivity extends Activity {
                 appEntries = ordered.toArray(new AppEntry[0]);
                 buildGrid();
             });
-        }, "sonora-apps-" + gen).start();
+        }, "sonora-apps-" + gen);
+        try {
+            loader.start();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A thread that cannot start never posts its result: an honest
+            // empty grid beats a spinner that never ends.
+            appEntries = new AppEntry[0];
+            buildGrid();
+        }
     }
 
     /** Puts the apps back in order after the user changed the order or a pin. */
@@ -541,7 +576,7 @@ public class HomeActivity extends Activity {
      * that had it gets it again; if it is no longer there, the first tile does.
      */
     private void restoreFocus() {
-        if (tiles.isEmpty()) {
+        if (tiles.isEmpty() || overlayOpen() || screensaver != null) {
             return;
         }
         AppTileView target = null;
@@ -561,10 +596,44 @@ public class HomeActivity extends Activity {
         focus.post(() -> {
             // isFocused, not hasWindowFocus: the window having focus says
             // nothing about which tile in it is focused.
-            if (!isFinishing() && !focus.isFocused()) {
+            if (!isFinishing() && !isDestroyed() && !focus.isFocused()
+                    && !overlayOpen() && screensaver == null) {
                 focus.requestFocus();
             }
         });
+    }
+
+    /** True while a panel or a picker sits over the grid. */
+    private boolean overlayOpen() {
+        return controlCenter != null || appSwitcher != null
+                || searchOverlay != null || choiceOverlay != null;
+    }
+
+    /** The idle watch stays off while anything is open over the grid. */
+    private void updateSuppressIdle() {
+        boolean was = suppressIdle;
+        suppressIdle = overlayOpen();
+        if (was && !suppressIdle && screensaver == null && resumed) {
+            // The watcher stopped itself while the overlay was up.
+            handler.removeCallbacks(idleWatcher);
+            handler.post(idleWatcher);
+        }
+    }
+
+    /** Two panels never sit on top of each other: a new one dismisses the old. */
+    private void dismissOverlays() {
+        if (controlCenter != null) {
+            closeControlCenter(null);
+        }
+        if (appSwitcher != null) {
+            closeAppSwitcher(null);
+        }
+        if (searchOverlay != null) {
+            closeSearch();
+        }
+        if (choiceOverlay != null) {
+            dismissChoice();
+        }
     }
 
     /** Grid metrics for the real screen, so a 720p stick and a 4K panel match. */
@@ -648,9 +717,13 @@ public class HomeActivity extends Activity {
         shelf.setAlpha(Math.max(0f, 1f - open * 2f));
         chevron.setTranslationY(value);
         gridBackdrop.setAlpha(open);
-        gridBackdrop.setVisibility(open > 0f ? View.VISIBLE : View.GONE);
-        // Once the blur covers it, drawing the wallpaper is a screen of wasted pixels.
-        hero.setVisibility(open >= 1f ? View.INVISIBLE : View.VISIBLE);
+        if (screensaver == null) {
+            // Under the saver everything stays GONE; a scroll spring still in
+            // flight must not bring the wallpaper back over it.
+            gridBackdrop.setVisibility(open > 0f ? View.VISIBLE : View.GONE);
+            // Once the blur covers it, drawing the wallpaper is a screen of wasted pixels.
+            hero.setVisibility(open >= 1f ? View.INVISIBLE : View.VISIBLE);
+        }
         // The lens fade is quantised: every step still reads as motion, but the
         // dock does not repaint on every frame of the scroll.
         dockMaterial.setLens(Math.round((1f - open) * 16f) / 16f);
@@ -699,7 +772,7 @@ public class HomeActivity extends Activity {
         }
         // The name fades in under the new card rather than jumping there from the
         // old one, while the card it belongs to is still growing.
-        if (!entry.label.contentEquals(gridLabel.getText())) {
+        if (!TextUtils.equals(entry.label, gridLabel.getText())) {
             gridLabel.setAlpha(0f);
             gridLabel.setText(entry.label);
         }
@@ -747,13 +820,13 @@ public class HomeActivity extends Activity {
         if (initialFocusDone || tiles.isEmpty()) {
             return;
         }
-        View focused = getCurrentFocus();
-        if (focused instanceof AppTileView) {
-            // The framework already picked a tile; leave it alone.
-            initialFocusDone = true;
+        initialFocusDone = true;
+        if (overlayOpen() || screensaver != null || getCurrentFocus() != null) {
+            // Anything already on screen, inside an overlay or not, keeps what
+            // it has: pulling focus to a tile would drive a grid the user
+            // cannot see.
             return;
         }
-        initialFocusDone = true;
         tiles.get(0).requestFocus();
     }
 
@@ -766,6 +839,9 @@ public class HomeActivity extends Activity {
         shelfTitle.setText(entry.label);
         if (editing) {
             setSubtitle("Arranging. Move with the arrows, BACK to finish");
+        } else if (entry.settings && appEntries.length == 0) {
+            // With only the Settings tile the empty-shelf hint still applies.
+            setSubtitle("No apps yet. Open Settings to add some");
         } else if (entry.settings) {
             setSubtitle("Press OK to open Sonora settings");
         } else if (isFavourite(entry)) {
@@ -792,6 +868,7 @@ public class HomeActivity extends Activity {
         if (controlCenter != null) {
             return;
         }
+        dismissOverlays();
         suppressIdle = true;
         showChevron(false);
         clockPill.refresh();
@@ -821,15 +898,17 @@ public class HomeActivity extends Activity {
         }
         final ControlCenter closing = controlCenter;
         controlCenter = null;
-        suppressIdle = false;
+        updateSuppressIdle();
         Motion.spring(clockPill, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
                 Motion.RESPONSE_FOCUS);
-        restoreFocus();
         showChevron(true);
-        closing.close(() -> overlayHost.removeView(closing));
-        if (after != null) {
-            after.run();
-        }
+        closing.close(() -> {
+            overlayHost.removeView(closing);
+            restoreFocus();
+            if (after != null) {
+                after.run();
+            }
+        });
     }
 
     private void runControl(int action) {
@@ -875,7 +954,9 @@ public class HomeActivity extends Activity {
         } else if (intent != null && Intent.ACTION_ALL_APPS.equals(intent.getAction())) {
             // The grid is the all-apps screen; an app asking for it gets the
             // launcher back at the top, not a second copy of the same list.
-            scrollGridToTop();
+            if (!overlayOpen() && screensaver == null) {
+                scrollGridToTop();
+            }
         }
     }
 
@@ -886,13 +967,21 @@ public class HomeActivity extends Activity {
      * double-press of the TV button on tvOS.
      */
     private void onHomeSignal() {
-        long now = System.currentTimeMillis();
+        // The monotonic clock: a wall-clock jump must not fake a double-HOME.
+        long now = SystemClock.elapsedRealtime();
         if (now - lastHomeSignalAt < 150) {
             return;
         }
         lastHomeSignalAt = now;
+        if (screensaver != null) {
+            hideScreensaver();
+            return;
+        }
         if (appSwitcher != null) {
             closeAppSwitcher(null);
+            // Closing still counts as a press: without it a fast fourth press
+            // would read as the second half of a double-press and reopen.
+            lastHomePressAt = now;
             return;
         }
         if (now - lastHomePressAt < 450) {
@@ -905,37 +994,72 @@ public class HomeActivity extends Activity {
         if (appSwitcher != null || screensaver != null) {
             return;
         }
+        if (editing) {
+            endEditing();
+        }
+        dismissOverlays();
         suppressIdle = true;
         showChevron(false);
-        List<AppEntry> apps = RecentApps.recent(this);
-        appSwitcher = new AppSwitcherView(this, apps, gridBackdrop.softened(),
-                new AppSwitcherView.Listener() {
-                    @Override
-                    public void onPick(AppEntry entry) {
-                        closeAppSwitcher(() -> {
-                            if (!entry.launch(HomeActivity.this)) {
-                                Ui.toast(HomeActivity.this, "Could not open " + entry.label);
+        // The usage query and the icon decodes are too slow for a key press.
+        final int generation = ++switcherGeneration;
+        Thread recentsLoader = new Thread(() -> {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            List<AppEntry> recents;
+            try {
+                recents = RecentApps.recent(this);
+            } catch (Throwable t) {
+                // An Error up here must not kill the thread before the callback
+                // runs: suppressIdle would stay set and the saver never fire.
+                recents = new ArrayList<>();
+            }
+            final List<AppEntry> apps = recents;
+            runOnUiThread(() -> {
+                if (generation != switcherGeneration) {
+                    // A newer request owns the state now.
+                    return;
+                }
+                if (isFinishing() || isDestroyed() || !resumed || screensaver != null
+                        || overlayOpen()) {
+                    updateSuppressIdle();
+                    return;
+                }
+                appSwitcher = new AppSwitcherView(this, apps, gridBackdrop.softened(),
+                        new AppSwitcherView.Listener() {
+                            @Override
+                            public void onPick(AppEntry entry) {
+                                closeAppSwitcher(() -> {
+                                    if (!entry.launch(HomeActivity.this)) {
+                                        Ui.toast(HomeActivity.this, "Could not open " + entry.label);
+                                    }
+                                });
+                            }
+
+                            @Override
+                            public void onCloseApp(String packageName) {
+                                try {
+                                    ((android.app.ActivityManager) getSystemService(
+                                            Context.ACTIVITY_SERVICE)).killBackgroundProcesses(packageName);
+                                } catch (RuntimeException ignored) {
+                                }
+                            }
+
+                            @Override
+                            public void onDismiss() {
+                                closeAppSwitcher(null);
                             }
                         });
-                    }
-
-                    @Override
-                    public void onCloseApp(String packageName) {
-                        try {
-                            ((android.app.ActivityManager) getSystemService(
-                                    Context.ACTIVITY_SERVICE)).killBackgroundProcesses(packageName);
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-
-                    @Override
-                    public void onDismiss() {
-                        closeAppSwitcher(null);
-                    }
-                });
-        overlayHost.addView(appSwitcher, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        appSwitcher.open();
+                overlayHost.addView(appSwitcher, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                appSwitcher.open();
+            });
+        }, "sonora-recents");
+        try {
+            recentsLoader.start();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // The callback that clears suppressIdle lives on the thread: if it
+            // never starts, the saver must be re-armed from here.
+            updateSuppressIdle();
+        }
     }
 
     private void closeAppSwitcher(Runnable after) {
@@ -944,13 +1068,15 @@ public class HomeActivity extends Activity {
         }
         final AppSwitcherView closing = appSwitcher;
         appSwitcher = null;
-        suppressIdle = false;
-        restoreFocus();
+        updateSuppressIdle();
         showChevron(true);
-        closing.close(() -> overlayHost.removeView(closing));
-        if (after != null) {
-            after.run();
-        }
+        closing.close(() -> {
+            overlayHost.removeView(closing);
+            restoreFocus();
+            if (after != null) {
+                after.run();
+            }
+        });
     }
 
     private void openTool(String screen) {
@@ -1024,8 +1150,12 @@ public class HomeActivity extends Activity {
             searchPill.setFrost(frost, width, height, HeroBackgroundView.ZOOM, search);
             return;
         }
+        if (isDestroyed()) {
+            // The executor is down with the activity.
+            return;
+        }
         final float dockRadius = Ui.dpf(this, DOCK_RADIUS_DP);
-        new Thread(() -> {
+        glassBaker.execute(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             Bitmap dockLens = null;
             Bitmap clockLens = null;
@@ -1050,7 +1180,7 @@ public class HomeActivity extends Activity {
                     searchPill.setBackdrop(bakedSearch);
                 }
             });
-        }, "sonora-glass").start();
+        });
     }
 
     /** Where a view is laid out on the screen, ignoring its focus scale. */
@@ -1087,27 +1217,33 @@ public class HomeActivity extends Activity {
         }
         suppressIdle = true;
         boolean favourite = isFavourite(entry);
+        // Deleting a preinstalled app only hides it for this user, which a
+        // launcher cannot promise, so hiding is what it gets offered instead.
+        boolean system = PackageActions.isSystemApp(this, entry.packageName);
         // Google TV's verified order: Open · Move · Favourites · Info · Uninstall.
         // "Edit Home Screen" is merged into Move, which starts arrange mode on
         // this app; "Search apps" is redundant now that the search pill opens it.
-        String[] options = {"Open " + entry.label,
+        // The isolate keeps a right-to-left name from bending "Open" around it.
+        String[] options = {"Open \u2066" + entry.label + "\u2069",
                 "Move",
                 favourite ? "Remove from Favourites" : "Add to Favourites",
                 "App info",
-                "Uninstall"};
+                system ? "Hide" : "Uninstall"};
         ChoiceOverlay overlay = new ChoiceOverlay(this, entry.label, options, -1, index -> {
+            if (index == 1) {
+                // Arrange mode waits until the picker is gone: during its fade
+                // the arrows would move a tile the user cannot see.
+                focusedPackage = entry.packageName;
+                dismissChoice(this::startEditing);
+                updateSuppressIdle();
+                return;
+            }
             dismissChoice();
             switch (index) {
                 case 0:
                     if (!entry.launch(this)) {
                         Ui.toast(this, "Could not open " + entry.label);
                     }
-                    break;
-                case 1:
-                    // Arrange mode starts on this app so it is already the one
-                    // the user is moving.
-                    focusedPackage = entry.packageName;
-                    startEditing();
                     break;
                 case 2:
                     toggleFavourite(entry);
@@ -1123,12 +1259,16 @@ public class HomeActivity extends Activity {
                     }
                     break;
                 case 4:
-                    uninstall(entry);
+                    if (system) {
+                        hide(entry);
+                    } else {
+                        uninstall(entry);
+                    }
                     break;
                 default:
                     break;
             }
-            suppressIdle = false;
+            updateSuppressIdle();
         });
         showOverlay(overlay);
         overlay.focusSelected();
@@ -1214,7 +1354,7 @@ public class HomeActivity extends Activity {
         int row = index / columns;
         int column = index % columns;
         int target;
-        switch (key) {
+        switch (dpadKey(key)) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
                 target = column > 0 ? index - 1 : -1;
                 break;
@@ -1255,6 +1395,9 @@ public class HomeActivity extends Activity {
         tiles.add(to, tile);
 
         prefs.setOrder(AppOrdering.saveOrder(list));
+        // The order is part of the grid fingerprint; without the refresh the
+        // next resume would rebuild the grid the move just built.
+        gridKey = prefs.gridKey();
         layoutRows();
         // The tile that moved keeps the focus, so the user can keep moving it.
         focusedPackage = moved.packageName;
@@ -1268,6 +1411,7 @@ public class HomeActivity extends Activity {
         if (searchOverlay != null) {
             return;
         }
+        dismissOverlays();
         suppressIdle = true;
         Grid.Metrics metrics = gridMetrics();
         List<AppEntry> apps = new ArrayList<>(Arrays.asList(appEntries));
@@ -1307,7 +1451,7 @@ public class HomeActivity extends Activity {
         }
         final SearchOverlay overlay = searchOverlay;
         searchOverlay = null;
-        suppressIdle = false;
+        updateSuppressIdle();
         overlay.dismiss(() -> {
             overlayHost.removeView(overlay);
             restoreFocus();
@@ -1339,33 +1483,44 @@ public class HomeActivity extends Activity {
     }
 
     private void showOverlay(View overlay) {
-        if (choiceOverlay != null) {
-            overlayHost.removeView(choiceOverlay);
-        }
+        dismissOverlays();
         choiceOverlay = overlay;
         overlayHost.addView(overlay, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void dismissChoice() {
-        suppressIdle = false;
-        if (choiceOverlay == null) {
-            return;
-        }
+        dismissChoice(null);
+    }
+
+    /** Removes the picker; {@code after} runs once the fade has finished. */
+    private void dismissChoice(final Runnable after) {
         final View overlay = choiceOverlay;
         choiceOverlay = null;
+        updateSuppressIdle();
+        if (overlay == null) {
+            if (after != null) {
+                after.run();
+            }
+            return;
+        }
         if (overlay instanceof ChoiceOverlay) {
             // The picker leaves the way it came, and the tile the user came
             // from gets the focus back when it is gone.
             ((ChoiceOverlay) overlay).dismiss(() -> {
                 overlayHost.removeView(overlay);
                 restoreFocus();
+                if (after != null) {
+                    after.run();
+                }
             });
         } else {
             overlayHost.removeView(overlay);
             restoreFocus();
+            if (after != null) {
+                after.run();
+            }
         }
-        suppressIdle = false;
     }
 
     private void applyWallpaper() {
@@ -1382,6 +1537,11 @@ public class HomeActivity extends Activity {
             bakeGlass();
             return;
         }
+        if (key.equals(wallpaperRequest)) {
+            // A decode for this wallpaper is already in flight; a second thread
+            // would read the same full-size image twice under memory pressure.
+            return;
+        }
         // The blur from the last decode covers the screen until this one lands, so
         // a return to the launcher never shows an empty frame.
         Bitmap blur = BackdropView.remembered(blurKey);
@@ -1390,7 +1550,7 @@ public class HomeActivity extends Activity {
         }
         final String wanted = key;
         wallpaperRequest = wanted;
-        new Thread(() -> {
+        Thread decoder = new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             Bitmap picture = null;
             Bitmap thumbnail = BackdropView.remembered(blurKey);
@@ -1430,12 +1590,21 @@ public class HomeActivity extends Activity {
                 }
                 wallpaperBitmap = decoded;
                 wallpaperKey = wanted;
+                // The request has landed, so it is no longer in flight. A decode
+                // that came back empty may be asked for again on the next resume.
+                wallpaperRequest = "";
                 lensSource = source;
                 useSoftened(blurred);
                 hero.setWallpaper(decoded);
                 bakeGlass();
             });
-        }, "sonora-wallpaper").start();
+        }, "sonora-wallpaper");
+        try {
+            decoder.start();
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // The request must not stay marked in flight, or nothing retries it.
+            wallpaperRequest = "";
+        }
     }
 
     private void useSoftened(Bitmap blur) {
@@ -1481,12 +1650,16 @@ public class HomeActivity extends Activity {
         if (dockMaterial != null) {
             dockMaterial.setBackdrop(null, 0x1F000000);
             clockPill.setBackdrop(null);
+            searchPill.setBackdrop(null);
         }
     }
 
     private void showScreensaver() {
         if (screensaver != null) {
             return;
+        }
+        if (editing) {
+            endEditing();
         }
         // The wallpaper is invisible under the screen saver, which holds two
         // screen-sized scenes of its own. Letting it go keeps the peak at two
@@ -1531,6 +1704,14 @@ public class HomeActivity extends Activity {
     }
 
     private void hideScreensaver() {
+        hideScreensaver(true);
+    }
+
+    /**
+     * @param restore false when the window is going away, so no decode thread
+     *                starts for a screen nobody will see.
+     */
+    private void hideScreensaver(boolean restore) {
         if (screensaver == null) {
             return;
         }
@@ -1544,7 +1725,10 @@ public class HomeActivity extends Activity {
         chevron.setVisibility(View.VISIBLE);
         focusGlass.setVisibility(View.VISIBLE);
         applyGridScroll(gridScroll);
-        lastInteraction = System.currentTimeMillis();
+        lastInteraction = SystemClock.elapsedRealtime();
+        if (!restore) {
+            return;
+        }
         // It was released when the screen saver came up.
         applyWallpaper();
         restoreFocus();
@@ -1557,17 +1741,22 @@ public class HomeActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            lastInteraction = System.currentTimeMillis();
+            lastInteraction = SystemClock.elapsedRealtime();
             // The remote's search key opens Sonora's own search: the names of
             // the apps on this TV, with nothing sent anywhere.
             if (prefs.searchKey() && isSearchKey(event.getKeyCode())) {
-                if (searchOverlay == null) {
+                if (searchOverlay == null && screensaver == null) {
+                    if (editing) {
+                        endEditing();
+                    }
                     openSearch();
                 }
                 return true;
             }
-            // While the apps are being arranged, OK means "done".
-            if (editing && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER
+            // While the apps are being arranged, OK means "done". Anything over
+            // the grid, an overlay or the saver, gets the key first instead.
+            if (editing && !overlayOpen() && screensaver == null
+                    && (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER
                     || event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
                 endEditing();
                 return true;
@@ -1589,12 +1778,11 @@ public class HomeActivity extends Activity {
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (editing) {
-                        // While arranging, the arrows move the app itself.
-                        if (editMove(event.getKeyCode())) {
-                            return true;
-                        }
-                        break;
+                    if (editing && !overlayOpen() && screensaver == null) {
+                        // While arranging, the arrows move the app itself, and
+                        // they must not also walk the framework's focus.
+                        editMove(event.getKeyCode());
+                        return true;
                     }
                     // Only the grid is driven from here. An overlay or the
                     // screen saver moves its own focus, and it can only do
@@ -1617,6 +1805,25 @@ public class HomeActivity extends Activity {
         return code == KeyEvent.KEYCODE_SEARCH
                 || code == KeyEvent.KEYCODE_ASSIST
                 || code == KeyEvent.KEYCODE_VOICE_ASSIST;
+    }
+
+    /**
+     * The rows mirror in a right-to-left language, so LEFT and RIGHT swap
+     * before they are turned into a grid position.
+     */
+    private int dpadKey(int key) {
+        if (getResources().getConfiguration().getLayoutDirection()
+                != View.LAYOUT_DIRECTION_RTL) {
+            return key;
+        }
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                return KeyEvent.KEYCODE_DPAD_RIGHT;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                return KeyEvent.KEYCODE_DPAD_LEFT;
+            default:
+                return key;
+        }
     }
 
     /**
@@ -1647,7 +1854,7 @@ public class HomeActivity extends Activity {
             }
             int columns = gridMetrics().columns;
             int row = index / columns;
-            int target = Grid.moveTarget(index, columns, tiles.size(), key);
+            int target = Grid.moveTarget(index, columns, tiles.size(), dpadKey(key));
             if (target >= 0) {
                 tiles.get(target).requestFocus();
             } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
@@ -1746,7 +1953,7 @@ public class HomeActivity extends Activity {
             return;
         }
         Ui.immersive(this);
-        lastInteraction = System.currentTimeMillis();
+        lastInteraction = SystemClock.elapsedRealtime();
         // The settings live in another activity, so a change made there is
         // only seen when the launcher comes back. The grid is rebuilt when
         // something that changes it has changed; the wallpaper has its own
@@ -1788,16 +1995,11 @@ public class HomeActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // The grid is sized from the live screen, so a resize or a density
-        // change has to rebuild it. The artwork is cached at the size of the
-        // old tile, so the cache goes too.
+        // The tiles, the dock, the shelf and the wallpaper are all sized from
+        // the screen at build time, so a resize or a density change starts
+        // the screen over rather than patching each metric.
         SystemInfo.invalidate();
-        Motion.refresh(this);
-        AppRepository.invalidate();
-        loadApps();
-        // The wallpaper is sized for the screen, so it goes as well.
-        releaseWallpaper();
-        applyWallpaper();
+        recreate();
     }
 
     @Override
@@ -1820,10 +2022,12 @@ public class HomeActivity extends Activity {
             releaseWallpaper();
         }
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
-            // The tiles hold the artwork too, so they go with the cache. The system
-            // is close to killing the process and a rebuild costs less than a restart.
+            // The tiles and the entries hold the artwork too, so they go with
+            // the cache. The system is close to killing the process and a
+            // rebuild costs less than a restart.
             tiles.clear();
             grid.removeAllViews();
+            appEntries = new AppEntry[0];
             AppRepository.invalidate();
             artworkDropped = true;
         }
@@ -1843,10 +2047,16 @@ public class HomeActivity extends Activity {
         super.onPause();
         resumed = false;
         if (screensaver != null) {
-            hideScreensaver();
+            hideScreensaver(false);
         }
         // Nothing runs while the launcher is in the background.
         handler.removeCallbacks(idleWatcher);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        glassBaker.shutdownNow();
     }
 
     @Override

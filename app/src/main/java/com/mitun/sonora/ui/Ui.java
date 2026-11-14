@@ -161,8 +161,14 @@ public final class Ui {
         if (components == null || components.trim().isEmpty()) {
             return DreamState.UNKNOWN;
         }
-        if (components.contains(context.getPackageName())) {
-            return DreamState.SELECTED;
+        // A package that merely contains our name is not us: compare the
+        // package token of each component, the part before the '/'.
+        for (String component : components.split(",")) {
+            int slash = component.indexOf('/');
+            String name = (slash >= 0 ? component.substring(0, slash) : component).trim();
+            if (context.getPackageName().equals(name)) {
+                return DreamState.SELECTED;
+            }
         }
         int slash = components.indexOf('/');
         String pkg = (slash >= 0 ? components.substring(0, slash) : components).trim();
@@ -207,8 +213,10 @@ public final class Ui {
         bounds.inJustDecodeBounds = true;
         BitmapFactory.decodeResource(resources, resId, bounds);
         int sample = 1;
-        while ((bounds.outWidth / (sample * 2)) >= reqWidth
-                && (bounds.outHeight / (sample * 2)) >= reqHeight) {
+        int reqW = Math.max(1, reqWidth);
+        int reqH = Math.max(1, reqHeight);
+        while ((bounds.outWidth / (sample * 2)) >= reqW
+                && (bounds.outHeight / (sample * 2)) >= reqH) {
             sample *= 2;
         }
         BitmapFactory.Options options = new BitmapFactory.Options();
@@ -231,9 +239,14 @@ public final class Ui {
                 try (InputStream in = resolver.openInputStream(uri)) {
                     BitmapFactory.decodeStream(in, null, bounds);
                 }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    // Bounds failed: decoding at full size is the worst case.
+                    return null;
+                }
                 int max = Math.max(bounds.outWidth, bounds.outHeight);
+                int dim = Math.max(1, maxDimension);
                 int sample = 1;
-                while (max / (sample * 2) >= maxDimension) {
+                while (max / (sample * 2) >= dim) {
                     sample *= 2;
                 }
                 final int target = sample;
@@ -247,9 +260,14 @@ public final class Ui {
             bounds.inJustDecodeBounds = true;
             try (InputStream in = resolver.openInputStream(uri)) {
                 BitmapFactory.decodeStream(in, null, bounds);
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    // Bounds failed: decoding at full size is the worst case.
+                    return null;
+                }
                 int max = Math.max(bounds.outWidth, bounds.outHeight);
+                int dim = Math.max(1, maxDimension);
                 int sample = 1;
-                while (max / (sample * 2) >= maxDimension) {
+                while (max / (sample * 2) >= dim) {
                     sample *= 2;
                 }
                 BitmapFactory.Options options = new BitmapFactory.Options();

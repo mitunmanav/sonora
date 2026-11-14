@@ -1,8 +1,7 @@
 package com.mitun.sonora.tools;
 
-import com.mitun.sonora.AppEntry;
-import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.Grid;
+import com.mitun.sonora.PackageActions;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.Scenes;
 import com.mitun.sonora.ui.Ui;
@@ -49,7 +48,10 @@ public final class Pickers {
     public static void columns(ToolActivity host, Runnable after) {
         String[] options = {"Auto", "4", "5", "6", "7", "8"};
         int stored = host.prefs().columns();
-        host.choose("Apps per row", options, stored == 0 ? 0 : stored - 3, index -> {
+        // A stored value outside the choices ticks nothing: ticking "Auto"
+        // would turn an honest OK into a silent change.
+        int selected = stored == 0 ? 0 : stored >= 4 && stored <= 8 ? stored - 3 : -1;
+        host.choose("Apps per row", options, selected, index -> {
             host.prefs().setColumns(index == 0 ? 0 : index + 3);
             if (after != null) {
                 after.run();
@@ -126,23 +128,35 @@ public final class Pickers {
     /** Unhide one of the apps that were hidden from the home screen. */
     public static void hiddenApps(ToolActivity host, Runnable after) {
         Set<String> hidden = host.prefs().hidden();
-        // The app list can be cold, and reading it means asking the system
-        // for every installed app. That is not work for the main thread.
+        // The list comes straight from the pref, not the app list: a hide
+        // that went through the app manager switched the launcher entry off,
+        // so a launchable-apps query could never name it back.
         new Thread(() -> {
             List<String> names = new ArrayList<>();
             List<String> packages = new ArrayList<>();
-            for (AppEntry entry : AppRepository.get(host, 0)) {
-                if (hidden.contains(entry.packageName)) {
-                    names.add(entry.label);
-                    packages.add(entry.packageName);
+            boolean failed = false;
+            android.content.pm.PackageManager pm = host.getPackageManager();
+            for (String pkg : hidden) {
+                try {
+                    names.add(pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString());
+                    packages.add(pkg);
+                } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                    // Gone is not hidden: it cannot come back either.
+                } catch (RuntimeException e) {
+                    failed = true;
                 }
             }
+            final boolean readFailed = failed;
             host.runOnUiThread(() -> {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!"Apps".equals(host.stack().topTitle())) {
+                if (!SettingsPanel.topIsPage(host, "Apps")) {
                     // The user left the Apps screen while the list was read.
+                    return;
+                }
+                if (readFailed) {
+                    Ui.toast(host, "The list of apps could not be read");
                     return;
                 }
                 if (names.isEmpty()) {
@@ -150,9 +164,17 @@ public final class Pickers {
                     return;
                 }
                 host.choose("Unhide app", names.toArray(new String[0]), -1, index -> {
+                    String pkg = packages.get(index);
                     Set<String> current = host.prefs().hidden();
-                    current.remove(packages.get(index));
+                    current.remove(pkg);
                     host.prefs().setHidden(current);
+                    // The other half of the hide: a launcher entry switched
+                    // off by the app manager is switched back on here.
+                    PackageActions.Result result =
+                            PackageActions.setHidden(host, pkg, false);
+                    if (!result.ok) {
+                        Ui.toast(host, result.message);
+                    }
                     if (after != null) {
                         after.run();
                     }
@@ -228,14 +250,40 @@ public final class Pickers {
         return prefs.technical() ? "Technical" : "Default";
     }
 
-    public static String hiddenName(Prefs prefs) {
-        int count = prefs.hidden().size();
+    public static String hiddenName(ToolActivity host) {
+        int count = installedCount(host, host.prefs().hidden());
         return count == 0 ? "None" : count + (count == 1 ? " app" : " apps");
     }
 
-    public static String favouritesName(Prefs prefs) {
-        int count = prefs.favourites().size();
+    public static String favouritesName(ToolActivity host) {
+        int count = installedCount(host, host.prefs().favourites());
         return count == 0 ? "None" : count + (count == 1 ? " app" : " apps");
+    }
+
+    /**
+     * How many of the packages are still installed.
+     *
+     * An uninstalled package cannot be hidden or pinned any more, and it can
+     * never be cleared from the list either - counting it would report a row
+     * that does not exist.
+     */
+    private static int installedCount(android.content.Context context,
+                                      java.util.Collection<String> packages) {
+        android.content.pm.PackageManager pm = context.getPackageManager();
+        int count = 0;
+        for (String pkg : packages) {
+            try {
+                pm.getPackageInfo(pkg, 0);
+                count++;
+            } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                // Gone is not hidden, and it is not a favourite either.
+            } catch (RuntimeException e) {
+                // The system cannot say, so it counts: saying fewer would hide
+                // a real row.
+                count++;
+            }
+        }
+        return count;
     }
 
     private static int clockIndex(Prefs prefs) {
@@ -251,6 +299,8 @@ public final class Pickers {
                 return i;
             }
         }
-        return 0;
+        // A stored value that is not a choice ticks nothing: ticking the
+        // first row would turn an honest OK into a silent change.
+        return -1;
     }
 }

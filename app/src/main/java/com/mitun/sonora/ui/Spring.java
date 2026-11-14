@@ -58,7 +58,8 @@ public final class Spring {
     public void setTarget(float target, float dampingRatio, float response) {
         float omega = (float) (2 * Math.PI / Math.max(0.05f, response));
         stiffness = omega * omega;
-        damping = 2f * dampingRatio * omega;
+        // No damping at all rings forever; a little of it still settles.
+        damping = 2f * Math.max(0.05f, dampingRatio) * omega;
         travel = Math.abs(target - value);
         this.target = target;
     }
@@ -73,6 +74,12 @@ public final class Spring {
 
     /** Advances the simulation by {@code dt} seconds. */
     public void step(float dt) {
+        if (Float.isNaN(dt) || Float.isNaN(accumulator)) {
+            // A bad frame time would turn the accumulator into NaN, and a
+            // NaN never reaches the step threshold: the clock ticks forever.
+            accumulator = 0f;
+            return;
+        }
         if (dt > 0.1f) {
             // A long stall must not turn into a huge step.
             dt = 0.1f;

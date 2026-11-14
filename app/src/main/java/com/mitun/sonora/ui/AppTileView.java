@@ -131,8 +131,12 @@ public final class AppTileView extends LinearLayout {
             setZ(0f);
             if (label != null) {
                 if (labelMode == Prefs.LABELS_FOCUSED) {
+                    // A focus that comes back mid-fade re-targets this spring
+                    // at 1 but keeps this callback, so it must not hide the
+                    // label of a tile that is focused again.
                     Motion.spring(label, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
-                            Motion.RESPONSE_FOCUS, () -> label.setVisibility(INVISIBLE));
+                            Motion.RESPONSE_FOCUS,
+                            () -> { if (!isFocused()) label.setVisibility(INVISIBLE); });
                 } else if (labelMode == Prefs.LABELS_ALL) {
                     Motion.spring(label, Motion.ALPHA, 0.82f, Motion.DAMPING_CRITICAL,
                             Motion.RESPONSE_FOCUS);

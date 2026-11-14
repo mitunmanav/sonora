@@ -3,6 +3,8 @@ package com.mitun.sonora.ui;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.FocusFinder;
 import android.view.Gravity;
 import android.view.View;
@@ -11,8 +13,13 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.mitun.sonora.Prefs;
+
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Control Center, laid out from tvOS 26: one large tile, four pills and a row of
@@ -48,9 +55,22 @@ public final class ControlCenter extends FrameLayout {
     private final Listener listener;
     private final LinearLayout panel;
     private final View first;
+    private final TextView time;
     private final List<Tile> tiles = new ArrayList<>();
     /** The blurred wallpaper the glass frosts, or null for dark glass. */
     private final Bitmap frost;
+    private final Prefs prefs;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    /** Once a minute while the panel is open, so the clock row stays true. */
+    private final Runnable clockTick = new Runnable() {
+        @Override
+        public void run() {
+            time.setText(clockText());
+            long now = System.currentTimeMillis();
+            handler.postDelayed(this, prefs.showSeconds()
+                    ? 1000 - now % 1000 : 60000 - now % 60000);
+        }
+    };
     private boolean glassBaked;
 
     public ControlCenter(Context context, String clock, String wifiName, Bitmap frost,
@@ -58,6 +78,7 @@ public final class ControlCenter extends FrameLayout {
         super(context);
         this.listener = listener;
         this.frost = frost;
+        prefs = new Prefs(context);
         setBackgroundColor(Theme.dim());
         setAlpha(0f);
         setClipChildren(false);
@@ -72,7 +93,7 @@ public final class ControlCenter extends FrameLayout {
         panelParams.setMarginEnd(dp(35));
         addView(panel, panelParams);
 
-        TextView time = new TextView(context);
+        time = new TextView(context);
         time.setText(clock);
         time.setTextColor(Theme.inkSecondary());
         Type.apply(time, Type.CAPTION);
@@ -152,12 +173,27 @@ public final class ControlCenter extends FrameLayout {
         return new Rect(x, y, x + view.getWidth(), y + view.getHeight());
     }
 
+    /** What the clock row says; the same shape the home screen's pill shows. */
+    private String clockText() {
+        boolean seconds = prefs.showSeconds();
+        String pattern = prefs.clock24()
+                ? (seconds ? "HH:mm:ss" : "HH:mm")
+                : (seconds ? "h:mm:ss a" : "h:mm a");
+        Date now = new Date();
+        String text = new SimpleDateFormat(pattern, Locale.getDefault()).format(now);
+        return prefs.showDate()
+                ? new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(now) + "  " + text
+                : text;
+    }
+
     /** Brings the panel in and puts the focus on the large tile. */
     public void open() {
         Motion.spring(this, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_FOCUS);
         panel.setTranslationY(-dp(14));
         Motion.spring(panel, Motion.TRANSLATION_Y, 0f, Motion.DAMPING_CRITICAL,
                 Motion.RESPONSE_PANEL);
+        time.setText(clockText());
+        handler.post(clockTick);
         first.requestFocus();
     }
 
@@ -183,6 +219,13 @@ public final class ControlCenter extends FrameLayout {
             listener.onDismiss();
         }
         return focused;
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        // The clock stops ticking the moment the panel is off screen.
+        handler.removeCallbacks(clockTick);
+        super.onDetachedFromWindow();
     }
 
     private LinearLayout row(Context context) {
@@ -216,6 +259,20 @@ public final class ControlCenter extends FrameLayout {
         private final int restInk;
         private final float focusScale;
         private float focus;
+        /** One property per tile, so a focus change allocates nothing. */
+        private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+            @Override
+            public float get() {
+                return focus;
+            }
+
+            @Override
+            public void set(float value) {
+                focus = value;
+                material.setFocus(value);
+                setInk(value);
+            }
+        };
 
         Tile(Context context, int action, int mark, String title, String subtitle, int shape) {
             super(context);
@@ -280,19 +337,7 @@ public final class ControlCenter extends FrameLayout {
                         Motion.RESPONSE_FOCUS);
                 setElevation(Ui.dpf(context, hasFocus ? 12f : 0f));
                 Motion.springCustom(this, 0, hasFocus ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                        Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
-                            @Override
-                            public float get() {
-                                return focus;
-                            }
-
-                            @Override
-                            public void set(float value) {
-                                focus = value;
-                                material.setFocus(value);
-                                setInk(value);
-                            }
-                        });
+                        Motion.RESPONSE_FOCUS, focusValue);
             });
             setOnClickListener(v -> listener.onPick(action));
         }

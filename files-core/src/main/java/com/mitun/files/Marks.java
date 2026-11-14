@@ -42,6 +42,13 @@ final class Marks extends Drawable {
         invalidateSelf();
     }
 
+    /** Draws another mark with the same pen, for a button whose meaning changed. */
+    void setKind(int kind) {
+        path.rewind();
+        build(kind);
+        invalidateSelf();
+    }
+
     private void build(int kind) {
         switch (kind) {
             case DOWNLOADS:

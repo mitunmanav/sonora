@@ -29,6 +29,22 @@ public final class GlassPillView extends FrameLayout {
     private final Prefs prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private float focus;
+    private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
+        @Override
+        public float get() {
+            return focus;
+        }
+
+        @Override
+        public void set(float value) {
+            focus = value;
+            material.setFocus(value);
+            // The clock turns dark as the glass lights up: white on a lit
+            // lens would be white on white.
+            time.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
+            date.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
+        }
+    };
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -91,7 +107,7 @@ public final class GlassPillView extends FrameLayout {
                     Motion.RESPONSE_FOCUS);
             // The glass catches the light, and the clock turns dark with it.
             Motion.springCustom(this, 0, hasFocus ? 1f : 0f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_FOCUS, focusValue());
+                    Motion.RESPONSE_FOCUS, focusValue);
         });
         setOnClickListener(v -> {
             if (onOpenSettings != null) {
@@ -112,25 +128,6 @@ public final class GlassPillView extends FrameLayout {
     public void setFrost(Bitmap picture, int screenWidth, int screenHeight, float zoom,
                          android.graphics.Rect region) {
         material.setFrost(picture, screenWidth, screenHeight, zoom, region, 0x38000000);
-    }
-
-    private Motion.FloatProperty focusValue() {
-        return new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return focus;
-            }
-
-            @Override
-            public void set(float value) {
-                focus = value;
-                material.setFocus(value);
-                // The clock turns dark as the glass lights up: white on a lit
-                // lens would be white on white.
-                time.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
-                date.setTextColor(Ui.mix(Ui.INK, Ui.INK_ON_LIT, value));
-            }
-        };
     }
 
     public void setOnOpenSettings(Runnable runnable) {

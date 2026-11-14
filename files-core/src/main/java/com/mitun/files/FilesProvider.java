@@ -34,12 +34,16 @@ public final class FilesProvider extends ContentProvider {
         File file = new File(path.substring(2));
         try {
             String canonical = file.getCanonicalPath();
-            // The app's own private data is not the user's to hand out, except the
-            // folder it keeps for them.
+            // Handed out only where the file manager itself can point: the storage
+            // roots and the app's own folder. A link reaching anywhere else is
+            // refused, whatever path it came in on.
             Context context = getContext();
-            String data = context.getApplicationInfo().dataDir;
-            String files = context.getFilesDir().getCanonicalPath();
-            if (FileLogic.isInside(data, canonical) && !FileLogic.isInside(files, canonical)) {
+            boolean inside = FileLogic.isInside(context.getFilesDir().getCanonicalPath(),
+                    canonical);
+            for (Places.Place place : Places.locations(context)) {
+                inside |= FileLogic.isInside(place.folder.getCanonicalPath(), canonical);
+            }
+            if (!inside) {
                 throw new FileNotFoundException("Private");
             }
             return new File(canonical);
@@ -58,13 +62,17 @@ public final class FilesProvider extends ContentProvider {
         if (!"r".equals(mode)) {
             throw new FileNotFoundException("Read only");
         }
-        return ParcelFileDescriptor.open(fileFor(uri), ParcelFileDescriptor.MODE_READ_ONLY);
+        File file = fileFor(uri);
+        if (!file.isFile()) {
+            throw new FileNotFoundException("Not a file");
+        }
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
     @Override
     public String getType(Uri uri) {
         String path = uri.getPath();
-        return path == null ? null : FileLogic.mimeOf(path);
+        return path == null ? null : FileLogic.mimeOf(new File(path).getName());
     }
 
     @Override
@@ -74,6 +82,9 @@ public final class FilesProvider extends ContentProvider {
         try {
             file = fileFor(uri);
         } catch (FileNotFoundException e) {
+            return null;
+        }
+        if (!file.isFile()) {
             return null;
         }
         String[] columns = {OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE};
