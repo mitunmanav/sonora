@@ -121,13 +121,31 @@ public final class ChoiceOverlay extends FrameLayout {
         line.addView(check, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        final TextView labelText = label;
+        final TextView checkText = check;
+        final GlassDrawable bg = (GlassDrawable) line.getBackground();
+        // The glass and the ink materialize together: alpha, rim light and ink
+        // color spring into focus, so a fast D-pad move never snaps the row.
+        final float[] focus = {0f};
         line.setOnFocusChangeListener((v, focused) -> {
-            GlassDrawable bg = (GlassDrawable) v.getBackground();
-            bg.setAlpha(focused ? 255 : 0);
-            bg.setFocus(focused ? 1f : 0f);
-            label.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
-            check.setTextColor(focused ? 0xFF101C26 : Color.WHITE);
-            v.setElevation(focused ? Ui.dpf(context, 8f) : 0f);
+            Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
+                    Motion.RESPONSE_FOCUS, new Motion.FloatProperty() {
+                        @Override
+                        public float get() {
+                            return focus[0];
+                        }
+
+                        @Override
+                        public void set(float value) {
+                            focus[0] = value;
+                            bg.setAlpha(Math.round(255f * value));
+                            bg.setFocus(value);
+                            int ink = Ui.lerpColor(Color.WHITE, 0xFF101C26, value);
+                            labelText.setTextColor(ink);
+                            checkText.setTextColor(ink);
+                        }
+                    });
+            v.setElevation(focused ? Ui.dpf(getContext(), 8f) : 0f);
         });
         line.setOnClickListener(v -> {
             int index = list.indexOfChild(v);
