@@ -378,3 +378,164 @@ empty box.
   process.
 - `AppDoctorReceiver` accepts self-repair actions from Play services.
 
+---
+
+## 9. The voice assistant and the keyboard
+
+The search entry point is the one part of the launcher that is *not* in the
+launcher. This is the whole mechanism, traced end to end.
+
+### The launcher has no voice code and no search key
+
+`KEYCODE_SEARCH` appears **nowhere** in the 13,269-file decode, and the
+manifest has no `SEARCH`, `ASSIST` or `VOICE` intent filter. The launcher
+never handles the remote's mic button. That is the system's job: the system
+fires `ACTION_ASSIST` at whatever assist handler is installed.
+
+What the launcher *does* own is the **search widget in the system bar**, and
+that widget is **two orbs in one slot**:
+
+| | id | title | icon |
+|---|---|---|---|
+| voice | `mic_orb` | "Click to speak" | `ic_mic_grey` |
+| keyboard | `keyboard_orb` | "Click to type" | `ic_keyboard_black` / `ic_keyboard_grey` |
+
+`keyboard_orb` is `visibility="invisible"` in the layout. The widget
+**morphs** between the two: `jib.a(0|1)` slides the outgoing orb out with
+`setTranslationX` and scales the incoming one in with `setScaleX/Y`, and
+`jhz.onAnimationEnd` then **restores the saved visibilities** — the mic
+title goes, the keyboard title comes, the "Search" label shifts. The saved
+state lives in `jia`, which also captures the scale, the translation and the
+background colour of all four views, so the morph can be undone exactly.
+
+### Both orbs fire the same intent
+
+`hkg.q(int)` builds it and `hkg.r(context, intent)` launches it:
+
+```
+action  android.intent.action.ASSIST
+flags   FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+extra   "search_type" : int   ->  1 = voice, 0 = keyboard
+```
+
+`search_type` is the entire difference between speaking and typing. It
+appears **exactly once** in the whole APK — the launcher sending it. Nothing
+in this APK reads it; the receiver is the Google app. It is a one-way,
+undocumented contract between two apps that ship together.
+
+If no assist handler resolves, `hkg.r` catches `ActivityNotFoundException`
+and toasts **`app_unavailable`** — "Application unavailable". That message
+is wrong about the cause: it is not the app that is missing, it is the
+assistant. Google TV never learned to fall back to the keyboard.
+
+### Google TV's launcher has no keyboard
+
+There is no `EditText`, no `InputMethodManager` and no IME handling anywhere
+in the launcher for search. The keyboard comes from the assist handler, so
+the launcher never has to worry about one.
+
+The only keyboard subtlety in the entire APK is in the Leanback library:
+`androidx.leanback.widget.SearchEditText.onKeyPreIme` intercepts
+`KEYCODE_BACK` **before** the IME sees it and turns it into "dismiss the
+search bar". The lesson is the hook, not the behaviour: `onKeyPreIme` fires
+*before* the IME, `setOnEditorActionListener` fires *after* it.
+
+### What this means for Sonora
+
+Sonora took the opposite route: its own `EditText` and
+`InputMethodManager.showSoftInput(field, SHOW_IMPLICIT)`. That is the right
+call for a local, offline search, but it moves three responsibilities onto
+the launcher that Google TV never had to carry:
+
+1. **An IME might not be enabled.** If no IME is enabled or none is the
+   default, the field still takes focus and the user can type nothing — a
+   silent dead end. Check `getEnabledInputMethodList()` first.
+2. **The TV IME can take the D-pad.** A TV keyboard navigated with the
+   remote wants the arrow keys. If it keeps them, the user is trapped in the
+   text field and cannot reach the results. `onKeyPreIme` is the hook that
+   takes them back.
+3. **Back with the keyboard open** must close the keyboard, not the
+   launcher.
+
+And the voice option itself is not a feature Sonora can build: a local voice
+search needs a speech recogniser, which means a new dependency and a
+network round trip — both forbidden. The only honest voice option is the one
+Google uses: fire `ACTION_ASSIST` and let the TV's own assistant take it,
+falling back to the keyboard when there is no assistant.
+
+So: **one search pill, keyboard first, voice as the extra that degrades to
+the keyboard** — not two entry points and not a toast that says "Application
+unavailable".
+
+---
+
+## 10. The rest of the subtle half
+
+Six more, found in this pass, on top of §8.
+
+### The top row is circles, not pills
+
+`HomeTopRowButton` gives its background an explicit `ViewOutlineProvider`
+whose `getOutline` calls **`Outline.setOval`** — the settings, inputs,
+profile and notification buttons are **round glass discs**, clipped with
+`setClipToOutline(true)` so the shadow follows the circle. The search orb
+does the same with the default outline provider (`jib.h`).
+
+tvOS 26 uses circular glass buttons in the top right for exactly this. Sonora
+uses pills. The circle is the correct shape.
+
+### Focus is four things at once, not one
+
+`HomeTopRowButton.onFinishInflate` builds the focus animation from four
+parts:
+
+- `expand_fade_in` — `alpha 0→1`, `scaleX/Y 0.8→1`
+- `shrink_fade_out` — `alpha 1→0`, `scaleX/Y 1→0.8`
+- an `ArgbEvaluator` tween between two background colours
+- the title's `alpha 0→1`
+
+All at `top_row_button_animation_duration_ms` = **250 ms**. The icon tint
+also flips on focus (`hasFocus() ? focused : unfocused`).
+
+Sonora's glass pill springs to 1.055 and raises its elevation, but the glass
+never *changes colour*. A tween of the glass tint is the missing half.
+
+### The system bar does not trap the focus
+
+`SystemBarView.addFocusables` routes the focus search into the search widget
+when the bar itself holds focus, and throws
+`IllegalStateException("Widget view must be added to System Bar")` if the
+widget was never added. The bar is a place you pass through, not a place
+you get stuck.
+
+### A disabled menu item is a feature
+
+`context_menu_can_not_move_text` = "Can't move" and
+`context_menu_can_not_remove_text` = "Can't remove from favorites". Google TV
+keeps the row **visible but disabled**, with a reason. A missing row teaches
+nothing; a greyed row with a reason teaches the rule.
+
+### Edit mode has a move menu, with accessibility labels
+
+`EditModeGridView` builds four menu items whose titles are the
+accessibility strings `accessibility_menu_item_move_up` / `_down` / `_left` /
+`_right`, and each one is enabled or disabled by a legality check
+(`aW(0x82)`, `aW(0x21)`). So arrange mode is not "drag the tile": it is a
+menu of four directional moves, each of which knows whether it is allowed.
+
+Sonora's arrange mode has no move menu at all — only the D-pad.
+
+### First-run guidance is a drawn arrow
+
+`OverlayTutorialArrow` draws a real arrow (`Path` + `Paint`) pointing at the
+control the user should press, and `TutorialActivity` + a tray notification
+("Awareness tour home screen notification") deliver it once. Sonora's
+`SetupGuide` is a text list of adb commands, and "Edit Home Screen" has never
+been confirmed to work on the device — an arrow pointing at the tile the
+first time someone long-presses would answer both.
+
+### A confirmation toast after every change
+
+`add_to_favorite_apps_toast_message` = "Added to favorites". Sonora already
+does this ("X pinned to the top"). Keep it.
+
