@@ -29,6 +29,7 @@ import com.mitun.sonora.tools.QuickPanel;
 import com.mitun.sonora.ui.AppTileView;
 import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.ChoiceOverlay;
+import com.mitun.sonora.ui.FocusGlassView;
 import com.mitun.sonora.ui.ControlCenter;
 import com.mitun.sonora.ui.GlassDrawable;
 import com.mitun.sonora.ui.GlassLens;
@@ -103,6 +104,7 @@ public class HomeActivity extends Activity {
         }
     };
     private ControlCenter controlCenter;
+    private FocusGlassView focusGlass;
     private LinearLayout grid;
     private FrameLayout dockPort;
     private View dockBar;
@@ -332,6 +334,16 @@ public class HomeActivity extends Activity {
         grid.setClipToPadding(false);
         dockPort.addView(grid, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The focus glass floats over the tiles and carries the rim and shadow,
+        // so a focus change never repaints a card.
+        focusGlass = new FocusGlassView(this);
+        root.addView(focusGlass, new FrameLayout.LayoutParams(0, 0));
+        root.getViewTreeObserver().addOnGlobalFocusChangeListener((oldFocus, newFocus) -> {
+            if (!(newFocus instanceof AppTileView)) {
+                focusGlass.setShown(false);
+            }
+        });
+
         gridLabel = new TextView(this);
         gridLabel.setTextColor(Color.WHITE);
         Type.apply(gridLabel, Type.BODY);
@@ -493,6 +505,7 @@ public class HomeActivity extends Activity {
         gridParams.height = barPadPx + rows * (rowHeightPx + rowGapPx + openExtraPx);
         grid.setLayoutParams(gridParams);
         scrollToRow(focusedRow(), false);
+        placeFocusGlass(false);
     }
 
     /**
@@ -612,7 +625,42 @@ public class HomeActivity extends Activity {
         gridBackdrop.setVisibility(open > 0f ? View.VISIBLE : View.GONE);
         // Once the blur covers it, drawing the wallpaper is a screen of wasted pixels.
         hero.setVisibility(open >= 1f ? View.INVISIBLE : View.VISIBLE);
-        dockMaterial.setLens(1f - open);
+        // The lens fade is quantised: every step still reads as motion, but the
+        // dock does not repaint on every frame of the scroll.
+        dockMaterial.setLens(Math.round((1f - open) * 16f) / 16f);
+        placeFocusGlass(false);
+    }
+
+    /**
+     * Puts the focus glass over the focused card. Position comes from layout
+     * offsets plus the translations the scroll applies, so it tracks the card
+     * through the whole move without a single invalidate.
+     */
+    private void placeFocusGlass(boolean animate) {
+        if (focusGlass == null) {
+            return;
+        }
+        View focused = getCurrentFocus();
+        if (!(focused instanceof AppTileView)) {
+            focusGlass.setShown(false);
+            return;
+        }
+        AppTileView tile = (AppTileView) focused;
+        if (tile.getChildCount() == 0) {
+            focusGlass.setShown(false);
+            return;
+        }
+        View icon = tile.getChildAt(0);
+        float x = 0f;
+        float y = 0f;
+        for (View v = icon; v != null && v != root;
+             v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            x += v.getLeft() + v.getTranslationX();
+            y += v.getTop() + v.getTranslationY();
+        }
+        focusGlass.showAt(x + icon.getWidth() / 2f, y + icon.getHeight() / 2f,
+                icon.getWidth() * AppTileView.FOCUS_SCALE,
+                icon.getHeight() * AppTileView.FOCUS_SCALE, animate);
     }
 
     /** Puts the app's name under its card, once the grid is open. */
@@ -658,6 +706,7 @@ public class HomeActivity extends Activity {
         }
         updateShelf(entry);
         focusedPackage = entry.packageName;
+        placeFocusGlass(true);
         int index = tiles.indexOf(tile);
         if (index >= 0) {
             int row = index / Math.max(1, gridMetrics().columns);
@@ -1321,6 +1370,15 @@ public class HomeActivity extends Activity {
         // screen-sized scenes of its own. Letting it go keeps the peak at two
         // full-screen bitmaps instead of three.
         releaseWallpaper();
+        // Everything under the saver is fully covered, so it stops drawing:
+        // hero, shelf, dock, rows and the glass all go GONE until it returns.
+        hero.setVisibility(View.GONE);
+        shelf.setVisibility(View.GONE);
+        dockPort.setVisibility(View.GONE);
+        dockBar.setVisibility(View.GONE);
+        chevron.setVisibility(View.GONE);
+        gridBackdrop.setVisibility(View.GONE);
+        focusGlass.setVisibility(View.GONE);
         screensaver = new ScreensaverView(this);
         screensaver.setSceneDurationSec(prefs.screensaverSceneSec());
         screensaver.setShowOverlay(prefs.screensaverClock() == 1);
@@ -1357,6 +1415,13 @@ public class HomeActivity extends Activity {
         screensaver.stop();
         root.removeView(screensaver);
         screensaver = null;
+        hero.setVisibility(View.VISIBLE);
+        shelf.setVisibility(View.VISIBLE);
+        dockPort.setVisibility(View.VISIBLE);
+        dockBar.setVisibility(View.VISIBLE);
+        chevron.setVisibility(View.VISIBLE);
+        focusGlass.setVisibility(View.VISIBLE);
+        applyGridScroll(gridScroll);
         lastInteraction = System.currentTimeMillis();
         // It was released when the screen saver came up.
         applyWallpaper();
