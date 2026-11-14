@@ -85,7 +85,8 @@ public final class DeviceTier {
                 if (!watching) {
                     watching = true;
                     Prefs.listen(context, (prefs, key) -> {
-                        if (Prefs.KEY_PERFORMANCE.equals(key)) {
+                        // clear() reports no key, and a reset drops the override too.
+                        if (key == null || Prefs.KEY_PERFORMANCE.equals(key)) {
                             cached = Integer.MIN_VALUE;
                         }
                     });
