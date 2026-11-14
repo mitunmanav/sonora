@@ -22,7 +22,10 @@ public final class SettingRow {
     public static final int ACTION = 2;
     public static final int TOGGLE = 3;
     public static final int PUSH = 4;
-    public static final int DANGER = 3 + 100;
+    /** A destructive action: drawn in the warning colour. */
+    public static final int DANGER = 5;
+    /** A value that opens a picker when OK is pressed. */
+    public static final int CHOICE = 6;
 
     private final String title;
     private final int type;
@@ -61,6 +64,13 @@ public final class SettingRow {
         return row;
     }
 
+    /** A value that opens a picker. No chevron: it picks, it does not navigate. */
+    public static SettingRow choice(String title, String value, Runnable action) {
+        SettingRow row = new SettingRow(title, CHOICE, action);
+        row.value = value;
+        return row;
+    }
+
     public static SettingRow danger(String title, Runnable action) {
         return new SettingRow(title, DANGER, action);
     }
@@ -83,9 +93,7 @@ public final class SettingRow {
             TextView view = new TextView(context);
             view.setText(title.toUpperCase(java.util.Locale.US));
             view.setTextColor(0x8CFFFFFF);
-            view.setTextSize(12);
-            view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            view.setLetterSpacing(0.12f);
+            Type.apply(view, Type.MICRO);
             view.setPadding(Ui.dp(context, 22), Ui.dp(context, 22), 0, Ui.dp(context, 6));
             return view;
         }
@@ -104,16 +112,15 @@ public final class SettingRow {
 
         TextView label = new TextView(context);
         label.setText(title);
-        label.setTextColor(Color.WHITE);
-        label.setTextSize(19);
-        label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        label.setTextColor(type == DANGER ? 0xFFFF6B6B : Color.WHITE);
+        Type.apply(label, Type.HEADING);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView valueView = new TextView(context);
         valueView.setText(value);
         valueView.setTextColor(0xB3FFFFFF);
-        valueView.setTextSize(17);
+        Type.apply(valueView, Type.BODY);
         valueView.setGravity(Gravity.END);
         valueView.setMaxLines(1);
         valueView.setEllipsize(TextUtils.TruncateAt.END);
@@ -135,7 +142,9 @@ public final class SettingRow {
         line.setOnFocusChangeListener((v, focused) -> {
             GradientDrawable bg = (GradientDrawable) v.getBackground();
             bg.setColor(focused ? 0x33FFFFFF : 0x00FFFFFF);
-            labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            if (type != DANGER) {
+                labelText.setTextColor(focused ? Color.WHITE : 0xE6FFFFFF);
+            }
         });
         if (action != null) {
             line.setOnClickListener(v -> action.run());

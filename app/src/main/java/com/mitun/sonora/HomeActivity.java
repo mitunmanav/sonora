@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -27,7 +28,6 @@ import com.mitun.sonora.ui.ChoiceOverlay;
 import com.mitun.sonora.ui.GlassDrawable;
 import com.mitun.sonora.ui.GlassPillView;
 import com.mitun.sonora.ui.HeroBackgroundView;
-import com.mitun.sonora.ui.SettingsOverlay;
 import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
@@ -43,8 +43,6 @@ import java.util.Set;
  * no networking - so it stays a few hundred KB and draws with the GPU only.
  */
 public class HomeActivity extends Activity {
-    private static final int REQUEST_PICK_WALLPAPER = 41;
-
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Prefs prefs;
     private AppEntry[] appEntries = new AppEntry[0];
@@ -59,14 +57,21 @@ public class HomeActivity extends Activity {
     private LinearLayout grid;
     private ScrollView scroller;
     private View topShelf;
-    private SettingsOverlay settingsOverlay;
     private FrameLayout overlayHost;
     private View choiceOverlay;
     private ScreensaverView screensaver;
 
     private long lastInteraction;
-    private boolean loading = true;
     private boolean suppressIdle;
+    private boolean initialFocusDone;
+
+    /** The decoded wallpaper, kept so a resume does not re-decode a full JPEG. */
+    private Bitmap wallpaperBitmap;
+    private String wallpaperKey;
+    private Bitmap settingsIcon;
+    private TextView emptyState;
+    /** Every launchable app, before the hidden ones are filtered out. */
+    private List<AppEntry> allApps = new ArrayList<>();
 
     private final Runnable idleWatcher = new Runnable() {
         @Override
@@ -167,17 +172,20 @@ public class HomeActivity extends Activity {
     }
 
     private void loadApps() {
-        loading = true;
+        final int tileWidthPx = Ui.dp(this, gridMetrics().tileWidthDp);
         new Thread(() -> {
-            List<AppEntry> loaded = AppRepository.load(this);
-            List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(), prefs.hidden());
-            Bitmap settingsIcon = Ui.gear(this, Ui.dp(this, 192), true);
-            AppEntry settingsEntry = new AppEntry("Settings", getPackageName(), null,
-                    settingsIcon, null, 0xFF4A505C, true);
+            List<AppEntry> result;
+            try {
+                result = AppRepository.get(this, tileWidthPx);
+            } catch (RuntimeException | OutOfMemoryError e) {
+                result = new ArrayList<>();
+            }
+            final List<AppEntry> loaded = result;
+            final List<AppEntry> ordered = AppOrdering.order(loaded, prefs.order(), prefs.hidden());
             runOnUiThread(() -> {
+                allApps = loaded;
                 appEntries = ordered.toArray(new AppEntry[0]);
                 buildGrid();
-                loading = false;
             });
         }, "sonora-apps").start();
     }
@@ -198,7 +206,12 @@ public class HomeActivity extends Activity {
         AppEntry[] all = new AppEntry[appEntries.length + 1];
         System.arraycopy(appEntries, 0, all, 0, appEntries.length);
         all[appEntries.length] = new AppEntry("Settings", getPackageName(), null,
-                Ui.gear(this, Ui.dp(this, 192), true), null, 0xFF4A505C, true);
+                settingsIcon(), null, 0xFF4A505C, true);
+
+        if (appEntries.length == 0) {
+            grid.addView(emptyStateView(), new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
 
         for (int start = 0; start < all.length; start += columns) {
             LinearLayout row = new LinearLayout(this);
@@ -248,11 +261,37 @@ public class HomeActivity extends Activity {
             }
             rows.add(row);
         }
-        wireFocus(columns);
         if (!tiles.isEmpty()) {
-            tiles.get(0).requestFocus();
+            // The grid is not laid out yet, so the focus has to wait for it.
+            // Asking now leaves the focus on whichever tile the framework
+            // picks instead of the first one.
+            final AppTileView first = tiles.get(0);
+            first.post(() -> focusFirstTile());
         }
         updateShelf(appEntries.length > 0 ? appEntries[0] : null);
+    }
+
+    /** The gear for the Settings tile, drawn once and reused. */
+    private Bitmap settingsIcon() {
+        if (settingsIcon == null || settingsIcon.isRecycled()) {
+            settingsIcon = Ui.gear(this, Ui.dp(this, 192), true);
+        }
+        return settingsIcon;
+    }
+
+    /** A real empty state, so a device with no apps shows a reason and a hint. */
+    private View emptyStateView() {
+        if (emptyState == null) {
+            emptyState = new TextView(this);
+            emptyState.setTextColor(Color.WHITE);
+            emptyState.setTextSize(20);
+            emptyState.setTypeface(Ui.light());
+            emptyState.setGravity(Gravity.CENTER);
+            emptyState.setLineSpacing(Ui.dpf(this, 6), 1f);
+            emptyState.setPadding(Ui.dp(this, 30), Ui.dp(this, 24), Ui.dp(this, 30), Ui.dp(this, 24));
+        }
+        emptyState.setText(getString(R.string.no_apps));
+        return emptyState;
     }
 
     /** Grid metrics for the real screen, so a 720p stick and a 4K panel match. */
@@ -260,35 +299,6 @@ public class HomeActivity extends Activity {
         int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels
                 / getResources().getDisplayMetrics().density);
         return Grid.resolve(widthDp, prefs.columns());
-    }
-
-    /** Explicit left/right/up/down so the D-pad behaves like tvOS, not like a list. */
-    private void wireFocus(int columns) {
-        for (int i = 0; i < tiles.size(); i++) {
-            AppTileView tile = tiles.get(i);
-            int rowIndex = i / columns;
-            int columnIndex = i % columns;
-            int left = i - 1;
-            int right = i + 1;
-            if (left >= 0) {
-                tile.setNextFocusLeftId(tiles.get(left).getId());
-            }
-            if (right < tiles.size()) {
-                tile.setNextFocusRightId(tiles.get(right).getId());
-            }
-            if (rowIndex > 0) {
-                int above = i - columns;
-                tile.setNextFocusUpId(tiles.get(above).getId());
-            } else {
-                tile.setNextFocusUpId(clockPill.getId());
-            }
-            if (rowIndex + 1 < rows.size()) {
-                int below = i + columns;
-                if (below < tiles.size()) {
-                    tile.setNextFocusDownId(tiles.get(below).getId());
-                }
-            }
-        }
     }
 
     private void onTileFocused(AppTileView tile, AppEntry entry) {
@@ -317,12 +327,27 @@ public class HomeActivity extends Activity {
         lastFocused = focused;
     }
 
+    /** Puts the focus on the first app, once, when the screen is ready for it. */
+    private void focusFirstTile() {
+        if (initialFocusDone || tiles.isEmpty()) {
+            return;
+        }
+        View focused = getCurrentFocus();
+        if (focused instanceof AppTileView) {
+            // The framework already picked a tile; leave it alone.
+            initialFocusDone = true;
+            return;
+        }
+        initialFocusDone = true;
+        tiles.get(0).requestFocus();
+    }
+
     private View lastFocused;
 
     private void updateShelf(AppEntry entry) {
         if (entry == null) {
-            shelfTitle.setText("");
-            shelfSubtitle.setText("");
+            shelfTitle.setText("Sonora");
+            shelfSubtitle.setText("No apps yet — open Settings to add some");
             return;
         }
         shelfTitle.setText(entry.label);
@@ -405,96 +430,13 @@ public class HomeActivity extends Activity {
     }
 
     private void openSettings() {
-        if (settingsOverlay == null) {
-            settingsOverlay = new SettingsOverlay(this, prefs, new SettingsOverlay.Callbacks() {
-                @Override
-                public void onSettingChanged(String key) {
-                    handleSetting(key);
-                }
-
-                @Override
-                public void onAction(String key) {
-                    handleSetting(key);
-                }
-
-                @Override
-                public void onClose() {
-                }
-            });
-            root.addView(settingsOverlay, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        }
-        settingsOverlay.rebuild();
-        settingsOverlay.setVisibility(View.VISIBLE);
-        suppressIdle = true;
-        settingsOverlay.focusFirst();
-    }
-
-    private void closeSettings() {
-        if (settingsOverlay != null) {
-            settingsOverlay.setVisibility(View.GONE);
-        }
-        suppressIdle = false;
-        if (!tiles.isEmpty()) {
-            tiles.get(0).requestFocus();
-        }
-    }
-
-    private void handleSetting(String key) {
-        switch (key) {
-            case "wallpaper":
-                pickWallpaper();
-                break;
-            case "columns":
-                pickColumns();
-                break;
-            case "labels":
-                pickLabels();
-                break;
-            case "clock24":
-                prefs.setClock24(!prefs.clock24());
-                clockPill.refresh();
-                settingsOverlay.rebuild();
-                break;
-            case "show_date":
-                prefs.setShowDate(!prefs.showDate());
-                clockPill.updateDateVisibility();
-                settingsOverlay.rebuild();
-                break;
-            case "show_seconds":
-                prefs.setShowSeconds(!prefs.showSeconds());
-                clockPill.refresh();
-                settingsOverlay.rebuild();
-                break;
-            case "ss_delay":
-                pickScreensaverDelay();
-                break;
-            case "ss_scene":
-                pickSceneDuration();
-                break;
-            case "ss_clock":
-                pickScreensaverClock();
-                break;
-            case "hidden":
-                pickHiddenApps();
-                break;
-            case "reset_order":
-                prefs.setOrder("");
-                loadApps();
-                settingsOverlay.rebuild();
-                break;
-            case "refresh":
-                loadApps();
-                Ui.toast(this, "Apps reloaded");
-                break;
-            case "set_default":
-                Ui.openDefaultLauncherSettings(this);
-                break;
-            case "about":
-                showAbout();
-                break;
-            default:
-                break;
+        // The settings and the tools live in their own screen stack, so they
+        // navigate the same way as everything else.
+        try {
+            startActivity(new Intent(this, com.mitun.sonora.tools.ToolActivity.class)
+                    .putExtra(com.mitun.sonora.tools.ToolActivity.EXTRA_SCREEN, "settings"));
+        } catch (RuntimeException e) {
+            Ui.toast(this, "Could not open the settings");
         }
     }
 
@@ -512,201 +454,32 @@ public class HomeActivity extends Activity {
             overlayHost.removeView(choiceOverlay);
             choiceOverlay = null;
         }
-    }
-
-    private void pickWallpaper() {
-        String[] names = new String[Scenes.ALL.size() + 1];
-        for (int i = 0; i < Scenes.ALL.size(); i++) {
-            names[i] = Scenes.ALL.get(i).name;
-        }
-        names[names.length - 1] = "Choose a photo…";
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Wallpaper", names, prefs.wallpaper(),
-                index -> {
-                    dismissChoice();
-                    if (index == names.length - 1) {
-                        pickWallpaperPhoto();
-                    } else {
-                        prefs.setWallpaper(index, null);
-                        applyWallpaper();
-                        settingsOverlay.rebuild();
-                    }
-                    suppressIdle = false;
-                });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickWallpaperPhoto() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("image/*");
-        try {
-            startActivityForResult(intent, REQUEST_PICK_WALLPAPER);
-        } catch (ActivityNotFoundException e) {
-            Ui.toast(this, "No file picker available");
-        }
-    }
-
-    private void pickColumns() {
-        String[] options = {"Auto", "4", "5", "6", "7", "8"};
-        int current = prefs.columns() == 0 ? 0 : prefs.columns() - 3;
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Apps per row", options, current, index -> {
-            dismissChoice();
-            prefs.setColumns(index == 0 ? 0 : index + 3);
-            buildGrid();
-            settingsOverlay.rebuild();
-            suppressIdle = false;
-        });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickLabels() {
-        String[] options = {"Hidden", "Focused only", "Always"};
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "App names", options, prefs.labels(),
-                index -> {
-                    dismissChoice();
-                    prefs.setLabels(index);
-                    buildGrid();
-                    settingsOverlay.rebuild();
-                    suppressIdle = false;
-                });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickScreensaverDelay() {
-        String[] options = {"Never", "1 min", "3 min", "5 min", "10 min", "30 min"};
-        int[] seconds = {0, 60, 180, 300, 600, 1800};
-        int current = 0;
-        for (int i = 0; i < seconds.length; i++) {
-            if (seconds[i] == prefs.screensaverDelaySec()) {
-                current = i;
-            }
-        }
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Start after", options, current, index -> {
-            dismissChoice();
-            prefs.setScreensaverDelaySec(seconds[index]);
-            settingsOverlay.rebuild();
-            suppressIdle = false;
-        });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickSceneDuration() {
-        String[] options = {"30 s", "45 s", "60 s", "90 s", "2 min", "5 min"};
-        int[] seconds = {30, 45, 60, 90, 120, 300};
-        int current = 0;
-        for (int i = 0; i < seconds.length; i++) {
-            if (seconds[i] == prefs.screensaverSceneSec()) {
-                current = i;
-            }
-        }
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Each scene", options, current, index -> {
-            dismissChoice();
-            prefs.setScreensaverSceneSec(seconds[index]);
-            settingsOverlay.rebuild();
-            suppressIdle = false;
-        });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickScreensaverClock() {
-        String[] options = {"On tap", "Always", "Never"};
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Clock in screen saver", options,
-                prefs.screensaverClock(), index -> {
-                    dismissChoice();
-                    prefs.setScreensaverClock(index);
-                    settingsOverlay.rebuild();
-                    suppressIdle = false;
-                });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void pickHiddenApps() {
-        Set<String> hidden = prefs.hidden();
-        if (hidden.isEmpty()) {
-            Ui.toast(this, "No hidden apps");
-            return;
-        }
-        List<String> names = new ArrayList<>();
-        List<String> packages = new ArrayList<>();
-        for (AppEntry entry : appEntries) {
-            if (hidden.contains(entry.packageName)) {
-                names.add(entry.label);
-                packages.add(entry.packageName);
-            }
-        }
-        if (names.isEmpty()) {
-            Ui.toast(this, "No hidden apps");
-            return;
-        }
-        String[] options = names.toArray(new String[0]);
-        ChoiceOverlay overlay = new ChoiceOverlay(this, "Unhide app", options, -1, index -> {
-            dismissChoice();
-            Set<String> current = prefs.hidden();
-            current.remove(packages.get(index));
-            prefs.setHidden(current);
-            loadApps();
-            settingsOverlay.rebuild();
-            suppressIdle = false;
-        });
-        showOverlay(overlay);
-        overlay.focusSelected();
-    }
-
-    private void showAbout() {
-        String text = getString(R.string.about_text);
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(Color.WHITE);
-        view.setTextSize(16);
-        view.setLineSpacing(Ui.dpf(this, 5), 1f);
-        view.setPadding(Ui.dp(this, 30), Ui.dp(this, 30), Ui.dp(this, 30), Ui.dp(this, 30));
-        view.setBackground(Ui.rounded(0xE61C1F26, Ui.dpf(this, 18)));
-        FrameLayout host = new FrameLayout(this);
-        host.setBackgroundColor(0xE6000000);
-        host.setPadding(Ui.dp(this, 90), Ui.dp(this, 70), Ui.dp(this, 90), Ui.dp(this, 70));
-        host.addView(view, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER));
-        showOverlay(host);
-        host.setFocusable(true);
-        host.requestFocus();
-        host.setOnKeyListener((v, keyCode, event) -> {
-            if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
-                    || keyCode == KeyEvent.KEYCODE_ENTER) {
-                dismissChoice();
-                settingsOverlay.focusFirst();
-                suppressIdle = false;
-                return true;
-            }
-            return false;
-        });
+        suppressIdle = false;
     }
 
     private void applyWallpaper() {
         int index = prefs.wallpaper();
-        if (index < 0) {
-            String uri = prefs.wallpaperUri();
-            if (uri == null) {
-                index = 0;
-            } else {
-                Bitmap bitmap = Ui.decodeUri(getResources(), getContentResolver(),
-                        Uri.parse(uri), getResources().getDisplayMetrics().widthPixels);
-                if (bitmap != null) {
-                    hero.setWallpaper(bitmap);
-                    return;
-                }
-            }
+        String uri = prefs.wallpaperUri();
+        int width = getResources().getDisplayMetrics().widthPixels;
+        int height = getResources().getDisplayMetrics().heightPixels;
+        String key = (index < 0 ? "u:" + uri : "s:" + index) + "@" + width + "x" + height;
+        if (key.equals(wallpaperKey) && wallpaperBitmap != null && !wallpaperBitmap.isRecycled()) {
+            hero.setWallpaper(wallpaperBitmap);
+            return;
         }
-        Bitmap bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
-                Scenes.safeIndex(index)).res,
-                getResources().getDisplayMetrics().widthPixels,
-                getResources().getDisplayMetrics().heightPixels);
+        Bitmap bitmap = null;
+        if (index < 0 && uri != null) {
+            // A photo the user picked; fall back to a bundled scene if the
+            // permission was refused or the file has gone.
+            bitmap = Ui.decodeUri(getResources(), getContentResolver(),
+                    Uri.parse(uri), width);
+        }
+        if (bitmap == null) {
+            bitmap = Ui.decodeScene(getResources(), Scenes.ALL.get(
+                    Scenes.safeIndex(index)).res, width, height);
+        }
+        wallpaperBitmap = bitmap;
+        wallpaperKey = key;
         hero.setWallpaper(bitmap);
     }
 
@@ -757,49 +530,115 @@ public class HomeActivity extends Activity {
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_WALLPAPER && resultCode == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            if (uri != null) {
-                try {
-                    getContentResolver().takePersistableUriPermission(uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                } catch (SecurityException ignored) {
-                }
-                prefs.setWallpaper(-1, uri.toString());
-                applyWallpaper();
-                if (settingsOverlay != null) {
-                    settingsOverlay.rebuild();
-                }
-            }
-        }
-    }
-
-    @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             lastInteraction = System.currentTimeMillis();
         }
-        if (choiceOverlay != null) {
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
-                dismissChoice();
-                if (settingsOverlay != null && settingsOverlay.getVisibility() == View.VISIBLE) {
-                    settingsOverlay.focusFirst();
-                }
-                suppressIdle = false;
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            // BACK is a breadcrumb, never a toggle and never a dialog.
+            if (event.getAction() == KeyEvent.ACTION_UP && handleBack()) {
                 return true;
             }
             return true;
         }
-        if (settingsOverlay != null && settingsOverlay.getVisibility() == View.VISIBLE) {
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
-                closeSettings();
-                return true;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            // The D-pad is driven here rather than by the framework's spatial
+            // search: on a grid that search jumps to whatever happens to be
+            // nearest on screen, which is not what a row of apps means.
+            switch (event.getKeyCode()) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    moveFocus(event.getKeyCode());
+                    return true;
+                default:
+                    break;
             }
-            return true;
         }
+        // Everything else must reach the focused view: swallowing it here is
+        // what kills the D-pad inside the overlays.
         return super.dispatchKeyEvent(event);
+    }
+
+    /**
+     * Moves the focus the way tvOS does: along the row, then between the
+     * rows, with the clock above the first one.
+     */
+    private void moveFocus(int key) {
+        if (tiles.isEmpty()) {
+            return;
+        }
+        int columns = gridMetrics().columns;
+        View focused = getCurrentFocus();
+        int index = focused instanceof AppTileView ? tiles.indexOf(focused) : -1;
+
+        if (index < 0) {
+            if (key == KeyEvent.KEYCODE_DPAD_DOWN && focused == clockPill) {
+                tiles.get(0).requestFocus();
+            }
+            return;
+        }
+
+        int row = index / columns;
+        int column = index % columns;
+        int target = -1;
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                target = column > 0 ? index - 1 : -1;
+                break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                target = (column + 1 < columns && index + 1 < tiles.size()) ? index + 1 : -1;
+                break;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                target = row > 0 ? index - columns : -1;
+                break;
+            default:
+                target = (index + columns < tiles.size()) ? index + columns : -1;
+                break;
+        }
+        if (target >= 0) {
+            tiles.get(target).requestFocus();
+        } else if (key == KeyEvent.KEYCODE_DPAD_UP && row == 0) {
+            clockPill.requestFocus();
+        }
+    }
+
+    /** Handles BACK. Returns true when something consumed it. */
+    private boolean handleBack() {
+        if (screensaver != null) {
+            hideScreensaver();
+            return true;
+        }
+        if (choiceOverlay != null) {
+            dismissChoice();
+            return true;
+        }
+        int focusedIndex = -1;
+        View focused = getCurrentFocus();
+        if (focused instanceof AppTileView) {
+            focusedIndex = tiles.indexOf(focused);
+        }
+        if (BackPolicy.atTopLevel(scroller.getScrollY(), focusedIndex,
+                Ui.isDefaultLauncher(this)) == BackPolicy.SCROLL_TO_TOP) {
+            scrollGridToTop();
+            return true;
+        }
+        // Nothing left to go back to, and Sonora is not the home screen, so
+        // hand the user back to the home screen the TV really uses.
+        finish();
+        return true;
+    }
+
+    /**
+     * BACK on the app grid returns to the first row and the first tile. It
+     * never exits the launcher.
+     */
+    private void scrollGridToTop() {
+        scroller.scrollTo(0, 0);
+        if (!tiles.isEmpty()) {
+            tiles.get(0).requestFocus();
+        }
     }
 
     @Override
@@ -811,6 +650,27 @@ public class HomeActivity extends Activity {
         clockPill.refresh();
         if (screensaver != null) {
             hideScreensaver();
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // The grid is sized from the live screen, so a resize or a density
+        // change has to rebuild it.
+        buildGrid();
+        applyWallpaper();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            // The wallpaper is a screen-sized bitmap; drop it and decode it
+            // again when the UI comes back.
+            wallpaperBitmap = null;
+            wallpaperKey = null;
+            hero.release();
         }
     }
 
@@ -827,6 +687,7 @@ public class HomeActivity extends Activity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             Ui.immersive(this);
+            focusFirstTile();
         }
     }
 }

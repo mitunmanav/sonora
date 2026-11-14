@@ -101,7 +101,7 @@ A complete, building app. **Do not rewrite it — continue from it.**
 ├── local.properties            # sdk.dir=/home/mitun/Android/Sdk
 ├── app/build.gradle            # AGP 8.13.0, compileSdk 35, minSdk 23, targetSdk 35,
 │                               # Java 17, junit:junit:4.13.2 (test only), NO runtime deps
-├── app/proguard-rules.pro      # keeps HomeActivity + SonoraDreamService  (NEEDS UPDATING)
+├── app/proguard-rules.pro      # keeps HomeActivity + SonoraDreamService  (FIXED - see P4)
 └── app/src
     ├── main/AndroidManifest.xml
     ├── main/res/values/{strings.xml,styles.xml}
@@ -169,6 +169,13 @@ Gradle **must** run `--offline`; all AGP/Gradle artifacts are cached locally.
 5. **`gradle.properties`**: added `android.r8.optimizedResourceShrinking=true`
    (required for AGP 8.12/8.13 per the r8-analyzer skill).
 6. **Git repo created** with 3 commits and a `.gitignore`.
+7. **A real bug found and fixed**: `proguard-rules.pro` still referenced the
+   old package `com.mitun.aerial`, so the **release build was stripping both the
+   launcher and the dream service** — a release APK with no launcher at all.
+   Now fixed and **verified**: `assembleRelease` builds, `dexdump` confirms both
+   `com.mitun.sonora.HomeActivity` and
+   `com.mitun.sonora.dream.SonoraDreamService` survive R8, and the release APK is
+   **3.2 MB** (budget is 6 MB).
 
 ### THE GRID — why it matters, do not undo it
 
@@ -305,12 +312,12 @@ The `android` CLI is at `/home/mitun/.local/bin/android`.
   colour. That is why the cards look like real tvOS app icons.
 - `AppOrdering` is pure and unit-tested — keep ordering logic out of
   `HomeActivity`.
-- `ScreenStack.refresh()` currently **rebuilds the top screen's rows list but
-  does not re-render the view** — it clears `screen.rows` and never repopulates
-  or rebuilds. It is half-finished; either finish it or delete it. Prefer
-  rebuilding the screen properly when you need fresh values.
-- `SettingRow.DANGER` is `3 + 100` = 103 — an odd constant; if you use it,
-  give it a real name.
+- `ScreenStack.refresh()` takes the new title, subtitle and rows and rebuilds
+  the top screen in place, keeping its position in the stack. Use it when a
+  displayed value has changed.
+- `SettingRow.DANGER` draws its label in the warning colour — use it for
+  destructive rows (uninstall, wipe). It is a real constant now, not a
+  decorative one.
 - `Prefs.columns()` now returns **0 = Auto**; `Grid.resolve(widthDp, stored)`
   handles the fallback. The settings row shows "Auto (N)".
 - The ADB device (`192.168.68.108:5555`, Xiaomi MiTV-AYFR0, Android 11) was
@@ -366,10 +373,13 @@ that "the launcher is main". So:
       bookmarks. Off by default; hide the tile entirely when disabled.
 
 **P4 — Ship**
-- [ ] Update `proguard-rules.pro` for every new component (activity, dream
-      service, anything else reachable from the manifest).
-- [ ] Verify the release APK builds, check the size against the < 6 MB budget,
-      and confirm the dream service survives minification.
+- [x] `proguard-rules.pro` fixed (was pointing at the old package) and the
+      release build verified: launcher + dream service survive R8, **3.2 MB**.
+- [ ] Keep `proguard-rules.pro` in sync as new components are added — a stale
+      keep rule here means a **silently broken release build**, which is exactly
+      the bug that was just fixed. Re-verify with:
+      `dexdump -f app/build/outputs/apk/release/app-release-unsigned.apk | grep <ClassName>`
+- [ ] Re-check the release APK size against the < 6 MB budget as features land.
 - [ ] Add unit tests for any new pure logic (e.g. file sorting, blocklist
       matching, path helpers). Keep pure logic out of Activities.
 

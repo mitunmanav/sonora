@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -25,11 +26,13 @@ public final class ChoiceOverlay extends FrameLayout {
                          Callback callback) {
         super(context);
         this.callback = callback;
-        setBackgroundColor(0xE6000000);
+        // Heavy dim: a modal task pushes the screen behind it back.
+        setBackgroundColor(0xF7000000);
 
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 40), Ui.dp(context, 60), Ui.dp(context, 40));
+        // Clear of the app title along the top, so the two never overlap.
+        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 120), Ui.dp(context, 60), Ui.dp(context, 40));
 
         TextView heading = new TextView(context);
         heading.setText(title);
@@ -102,5 +105,21 @@ public final class ChoiceOverlay extends FrameLayout {
         if (index < list.getChildCount()) {
             list.getChildAt(index).requestFocus();
         }
+    }
+
+    /** Keeps the D-pad inside the picker instead of walking into the grid. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int code = event.getKeyCode();
+            if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                Ui.moveListFocus(list, code == KeyEvent.KEYCODE_DPAD_UP);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 }
