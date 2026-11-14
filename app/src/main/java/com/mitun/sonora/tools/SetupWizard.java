@@ -31,13 +31,13 @@ public final class SetupWizard {
 
     /** The first screen of the setup. */
     public void start() {
-        host.stack().show(titleFor(0), subtitleFor(0), rowsFor(0));
+        host.stack().pushSettings(titleFor(0), rowsFor(0));
     }
 
     /** Rebuilds the screen the user is on, e.g. after the wallpaper picker. */
     public void refreshCurrent() {
         int here = position();
-        host.stack().refresh(titleFor(here), subtitleFor(here), rowsFor(here));
+        host.stack().refreshSettings(titleFor(here), rowsFor(here));
     }
 
     private void next() {
@@ -46,7 +46,7 @@ public final class SetupWizard {
             finish();
             return;
         }
-        host.stack().push(titleFor(next), subtitleFor(next), rowsFor(next));
+        host.stack().pushSettings(titleFor(next), rowsFor(next));
     }
 
     /**
@@ -108,6 +108,8 @@ public final class SetupWizard {
     private List<SettingRow> rowsFor(int position) {
         Prefs prefs = host.prefs();
         List<SettingRow> rows = new ArrayList<>();
+        // The split layout has no subtitle; the step counter is a note.
+        rows.add(SettingRow.note(subtitleFor(position)));
         switch (stepFor(position)) {
             case WALLPAPER:
                 rows.add(SettingRow.note("Pick the picture that sits behind your apps."));
