@@ -25,7 +25,8 @@ so build offline:
 
 A `perf` build type exists on `app`, `files` and `files-core`: release
 config signed with the debug key, for on-device measurement
-(`scripts/perf.sh`).
+(`scripts/perf.sh` for a quick read, `scripts/bench.py` + `scripts/perf-ab.md`
+for the full A/B protocol).
 
 ## TV
 
@@ -37,6 +38,7 @@ app has focus — the owner often has the remote). See `AGENTS.md` and
 ## Documentation
 
 - `AGENTS.md` — working rules for agents (also `CLAUDE.md`, a symlink).
+- `docs/ARCHITECTURE.md` — what the system is: modules, every screen, the rules.
 - `docs/plans/PLAN.md` — running project log; append a session section,
   never rewrite history.
 - `docs/plans/REQUIREMENTS-*.md` — dated owner requirements with status.

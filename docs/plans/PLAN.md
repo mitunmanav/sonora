@@ -943,3 +943,13 @@ The open items are now three separate efforts under `.scratch/`, each with a
   zero-dependency and 1 GB rules apply.
 
 Verified: docs only, no code changed.
+
+## 23. Session: docs consolidated
+
+Added `docs/ARCHITECTURE.md`: the module map, every launcher screen and what
+it does, and the standing rules (zero dependencies, no background work, no
+network, minSdk 23, pure logic tested, honest UI, no Apple assets, 1 GB
+first). Linked from `README.md` and the `AGENTS.md` layout (CLAUDE.md is a
+symlink, so it reads the same file).
+
+Verified: docs only, no code changed.

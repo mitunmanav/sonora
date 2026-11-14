@@ -7,8 +7,8 @@
 - `app/`: the launcher. Pure logic at the package root, views in `ui/`, screens in `tools/`.
 - `files/`: the standalone Files app. A thin shell around `files-core/`.
 - `files-core/`: the file manager itself, bundled into both apps.
-- `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only.
-- `docs/`: `research/` (design and performance notes), `plans/` (running log
+- `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`, `bench.py`, `perf-ab.md`. Linux and WSL only.
+- `docs/`: `ARCHITECTURE.md` (what exists + the rules), `research/` (design and performance notes), `plans/` (running log
   and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
 - `reference/`: vendor APKs for study. Git-ignored.
 - `README.md`: the human-facing overview. `GLOSSARY.md`: the domain vocabulary — use its terms.
