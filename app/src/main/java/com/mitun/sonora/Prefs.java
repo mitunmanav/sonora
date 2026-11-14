@@ -16,6 +16,13 @@ public final class Prefs {
     public static final int LABELS_FOCUSED = 1;
     public static final int LABELS_ALL = 2;
 
+    /**
+     * The two setups. Default is for anyone: short settings, plain words.
+     * Technical shows every knob, including the ones nobody will ever touch.
+     */
+    public static final int MODE_DEFAULT = 0;
+    public static final int MODE_TECHNICAL = 1;
+
     private final SharedPreferences sp;
     private final Context appContext;
 
@@ -187,13 +194,51 @@ public final class Prefs {
         return sp.getBoolean("welcome", false);
     }
 
+    /** Which setup the user picked. */
+    public int mode() {
+        return sp.getInt("mode", MODE_DEFAULT) == MODE_TECHNICAL ? MODE_TECHNICAL : MODE_DEFAULT;
+    }
+
+    public void setMode(int mode) {
+        sp.edit().putInt("mode", mode == MODE_TECHNICAL ? MODE_TECHNICAL : MODE_DEFAULT).apply();
+    }
+
+    /** True when the technical settings should be shown. */
+    public boolean technical() {
+        return mode() == MODE_TECHNICAL;
+    }
+
+    /**
+     * A fingerprint of everything that changes how the app grid is built. The
+     * launcher compares it on resume, so a change made in Settings shows up
+     * without the user having to restart anything.
+     */
+    public String gridKey() {
+        return columns() + "|" + labels() + "|" + order() + "|" + hidden().hashCode()
+                + "|" + appsEpoch();
+    }
+
+    /**
+     * Bumped when the app list should be read from the package manager
+     * again. The cache can be dropped without anything about the grid
+     * changing, so the launcher needs a way to notice.
+     */
+    public int appsEpoch() {
+        return sp.getInt("apps_epoch", 0);
+    }
+
+    public void bumpAppsEpoch() {
+        sp.edit().putInt("apps_epoch", appsEpoch() + 1).apply();
+    }
+
     public void setWelcomeSeen(boolean value) {
         sp.edit().putBoolean("welcome", value).apply();
     }
 
     public void reset() {
         boolean welcome = welcomeSeen();
+        int mode = mode();
         sp.edit().clear().apply();
-        sp.edit().putBoolean("welcome", welcome).apply();
+        sp.edit().putBoolean("welcome", welcome).putInt("mode", mode).apply();
     }
 }

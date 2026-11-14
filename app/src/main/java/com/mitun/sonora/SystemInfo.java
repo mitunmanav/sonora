@@ -92,6 +92,11 @@ public final class SystemInfo {
         return local;
     }
 
+    /** Forgets the cached facts, so the next read asks the device again. */
+    public static void invalidate() {
+        instance = null;
+    }
+
     /** Heap actually in use, in bytes. */
     public static long usedHeap() {
         Runtime runtime = Runtime.getRuntime();

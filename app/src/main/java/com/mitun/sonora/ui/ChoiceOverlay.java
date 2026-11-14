@@ -2,7 +2,6 @@ package com.mitun.sonora.ui;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -26,6 +25,9 @@ public final class ChoiceOverlay extends FrameLayout {
                          Callback callback) {
         super(context);
         this.callback = callback;
+        // The focus has to start on the option that is ticked. Opening on the
+        // first one and OK-ing it would silently change the setting.
+        this.selected = selectedIndex;
         // Heavy dim: a modal task pushes the screen behind it back.
         setBackgroundColor(0xF7000000);
 
@@ -37,8 +39,7 @@ public final class ChoiceOverlay extends FrameLayout {
         TextView heading = new TextView(context);
         heading.setText(title);
         heading.setTextColor(Color.WHITE);
-        heading.setTextSize(30);
-        heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(heading, Type.DISPLAY);
         heading.setPadding(0, 0, 0, Ui.dp(context, 18));
         column.addView(heading, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -64,31 +65,31 @@ public final class ChoiceOverlay extends FrameLayout {
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
         line.setPadding(Ui.dp(context, 22), Ui.dp(context, 12), Ui.dp(context, 22), Ui.dp(context, 12));
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(Ui.dpf(context, 12));
-        background.setColor(0x00FFFFFF);
-        line.setBackground(background);
+        // The same material as the rows behind it, so the picker belongs to
+        // the screen it came from.
+        GlassDrawable material = new GlassDrawable(context, 12f, 1f);
+        material.setAlpha(0);
+        line.setBackground(material);
         line.setFocusable(true);
 
         TextView label = new TextView(context);
         label.setText(text);
         label.setTextColor(Color.WHITE);
-        label.setTextSize(19);
-        label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        Type.apply(label, Type.HEADING);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView check = new TextView(context);
         check.setText("✓");
         check.setTextColor(Color.WHITE);
-        check.setTextSize(19);
+        Type.apply(check, Type.HEADING);
         check.setVisibility(checked ? VISIBLE : INVISIBLE);
         line.addView(check, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         line.setOnFocusChangeListener((v, focused) -> {
-            GradientDrawable bg = (GradientDrawable) v.getBackground();
-            bg.setColor(focused ? 0x33FFFFFF : 0x00FFFFFF);
+            GlassDrawable bg = (GlassDrawable) v.getBackground();
+            bg.setAlpha(focused ? 255 : 0);
         });
         line.setOnClickListener(v -> {
             selected = list.indexOfChild(v);

@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Hiding an app from the home screen by disabling its launcher activity. -->
+    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
+    <!-- Stopping an app that is running in the background. -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- The name of the Wi-Fi network, shown in the device panel. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Only ever used by the optional browser, and only once it is switched on. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

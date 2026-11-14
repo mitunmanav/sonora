@@ -1,10 +1,7 @@
 package com.mitun.sonora.ui;
 
-import android.view.Choreographer;
-import android.view.View;
-
 /**
- * A spring that drives one property of a view.
+ * A spring: a damped harmonic oscillator, solved rather than drawn.
  *
  * Android has no platform spring animation - {@code SpringAnimation} is
  * AndroidX and this app carries no dependencies - so the spring is solved
@@ -14,14 +11,13 @@ import android.view.View;
  * be re-targeted at any moment and keeps the value and the speed it already
  * has, so an animation the user interrupts carries on towards the new target
  * instead of stopping dead and starting again.
+ *
+ * This class is pure maths - no Android types - so the physics can be
+ * unit-tested. {@link Motion} owns the frame clock and the views.
  */
 public final class Spring {
     /** Fixed integration step, so a slow frame cannot make the spring explode. */
     private static final float STEP = 1f / 240f;
-
-    private final View view;
-    private final int kind;
-    private final Choreographer.FrameCallback frame;
 
     private float value;
     private float velocity;
@@ -30,14 +26,27 @@ public final class Spring {
     private float damping = 20f;
     private float travel;
     private float accumulator;
-    private long lastNanos;
-    private boolean running;
-    private Runnable onSettled;
 
-    Spring(View view, int kind) {
-        this.view = view;
-        this.kind = kind;
-        this.frame = this::onFrame;
+    /**
+     * @param value where the spring starts, in the same units it will animate
+     *              - the value that is on screen right now, never zero
+     */
+    public Spring(float value) {
+        this.value = value;
+        // A spring that has not been aimed at anything yet has arrived.
+        this.target = value;
+    }
+
+    public float value() {
+        return value;
+    }
+
+    public float velocity() {
+        return velocity;
+    }
+
+    public float target() {
+        return target;
     }
 
     /**
@@ -46,7 +55,7 @@ public final class Spring {
      * @param dampingRatio 1.0 settles without overshoot, below 1.0 lets it
      * @param response     how fast it gets there, in seconds; not a duration
      */
-    void setTarget(float target, float dampingRatio, float response) {
+    public void setTarget(float target, float dampingRatio, float response) {
         float omega = (float) (2 * Math.PI / Math.max(0.05f, response));
         stiffness = omega * omega;
         damping = 2f * dampingRatio * omega;
@@ -54,90 +63,40 @@ public final class Spring {
         this.target = target;
     }
 
-    float value() {
-        return value;
+    /**
+     * Jumps to a value without losing the speed the spring already has, so a
+     * new gesture can take over an animation that is still moving.
+     */
+    public void jumpTo(float value) {
+        this.value = value;
     }
 
-    /** Called once, when the spring comes to rest. */
-    void setOnSettled(Runnable runnable) {
-        onSettled = runnable;
-    }
-
-    void start() {
-        if (running) {
-            return;
-        }
-        running = true;
-        accumulator = 0f;
-        lastNanos = 0L;
-        Choreographer.getInstance().postFrameCallback(frame);
-    }
-
-    void cancel() {
-        if (!running) {
-            return;
-        }
-        running = false;
-        Choreographer.getInstance().removeFrameCallback(frame);
-    }
-
-    private void onFrame(long frameTimeNanos) {
-        if (!running) {
-            return;
-        }
-        if (lastNanos == 0L) {
-            lastNanos = frameTimeNanos;
-        }
-        float dt = (frameTimeNanos - lastNanos) / 1_000_000_000f;
-        lastNanos = frameTimeNanos;
+    /** Advances the simulation by {@code dt} seconds. */
+    public void step(float dt) {
         if (dt > 0.1f) {
             // A long stall must not turn into a huge step.
             dt = 0.1f;
         }
         accumulator += dt;
-
-        float velocityTolerance = Math.max(0.02f, travel * 0.02f);
-        boolean settled = true;
         while (accumulator >= STEP) {
             accumulator -= STEP;
             float acceleration = -stiffness * (value - target) - damping * velocity;
             velocity += acceleration * STEP;
             value += velocity * STEP;
-            if (Math.abs(value - target) > 0.0015f || Math.abs(velocity) > velocityTolerance) {
-                settled = false;
-            }
         }
-        apply(value);
-        if (settled) {
-            apply(target);
-            running = false;
-            if (onSettled != null) {
-                Runnable callback = onSettled;
-                onSettled = null;
-                callback.run();
-            }
-            return;
-        }
-        Choreographer.getInstance().postFrameCallback(frame);
     }
 
-    private void apply(float v) {
-        switch (kind) {
-            case Motion.SCALE:
-                view.setScaleX(v);
-                view.setScaleY(v);
-                break;
-            case Motion.TRANSLATION_X:
-                view.setTranslationX(v);
-                break;
-            case Motion.TRANSLATION_Y:
-                view.setTranslationY(v);
-                break;
-            case Motion.ALPHA:
-                view.setAlpha(v);
-                break;
-            default:
-                break;
-        }
+    /**
+     * True once the spring has arrived and stopped moving.
+     *
+     * The tolerances are relative to how far the spring was asked to travel,
+     * so a slide across the screen and a scale of one percent settle at the
+     * same rate.
+     */
+    public boolean atRest() {
+        float positionTolerance = Math.max(0.0005f, travel * 0.001f);
+        float velocityTolerance = Math.max(0.005f, travel * 0.02f);
+        return Math.abs(value - target) <= positionTolerance
+                && Math.abs(velocity) <= velocityTolerance;
     }
 }

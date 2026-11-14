@@ -146,49 +146,241 @@ com.mitun.sonora
 - [x] Rename to Sonora
 - [x] Grid: pure, tested, runtime-sized
 - [x] Columns preference: Auto by default
-- [ ] Launcher polish + edge cases
-- [ ] Everything else
+- [x] Launcher polish + edge cases (verified on the TV)
+- [x] Key dispatch, focus and BACK semantics (verified on the TV)
+- [x] Tools host: one `ToolActivity` + one `ScreenStack` for every panel
+- [x] Settings rebuilt on `SettingRow` + `ScreenStack`
+- [x] App manager, debug panel, guided setup guide
+- [x] File manager, LAN share, optional browser with a local ad blocker
+- [x] Design foundations: `Motion` (hand-written spring), `Type` (type scale)
+- [x] Design pass: springs in the launcher, materials, reduced motion
+- [x] First-run setup wizard, in two modes
+- [x] Settings rebuilt as an index of short screens
+- [x] Tooling: the lists, the picker, the LAN server, the app manager
+- [ ] Verify the tools end to end on the TV
 
-## 5. Session plan (this session)
+## 5. What this session did
 
-Ordered by value, one commit each, build green at every commit.
+### A. Launcher (P1) - the product
+- A1. **Key dispatch.** `dispatchKeyEvent` returned `true` for every key while
+  an overlay was up, so the focused row never saw the event: no focus movement,
+  no OK, no click. Settings, the app menu and every picker were dead. Only
+  BACK may be consumed.
+- A2. **BACK is breadcrumb-only.** Overlay -> screensaver -> scroll the grid
+  to the top and focus the first tile. Never a dialog, never a toggle. It
+  leaves the app only when Sonora is *not* the default launcher, so the user
+  can always reach the TV home screen. The rule is `BackPolicy`, unit-tested.
+- A3. **Cache the app list and its artwork.** `AppRepository` caches the list;
+  the grid rebuilds from the cache instead of re-querying `PackageManager`.
+- A4. **Artwork sized to the real tile.** The banner is stored at the size the
+  tile draws at, the icon bitmap is dropped when the app has a banner the card
+  never uses, and everything is halved on a low-RAM stick.
+- A5. **Wallpaper decoded once and cached**, not re-decoded on every resume.
+- A6. **`onTrimMemory` releases the wallpaper.**
+- A7. **Edge cases.** No apps -> a real empty state; `PackageManager` throws ->
+  the partial list still renders; a config change rebuilds the grid; a refused
+  wallpaper permission falls back to a bundled scene.
 
-**A. Launcher (P1) — the product**
-- A1. Key dispatch: overlays must not swallow D-pad. Today `dispatchKeyEvent`
-  returns `true` for every key while an overlay is up, so the focused row never
-  sees the event: no focus movement, no OK, no click. Settings, the app menu
-  and every picker are dead. Only BACK may be consumed.
-- A2. BACK is breadcrumb-only: close overlay -> pop screen -> scroll grid to top
-  and focus the first tile. Never a dialog, never a toggle. Top level only
-  leaves the app when Sonora is *not* the default launcher, so the user can
-  always reach the TV home screen.
-- A3. Cache the app list and its artwork. `AppRepository` caches the list; the
-  grid rebuilds from the cache instead of re-querying `PackageManager`.
-- A4. Artwork sized to the real tile, not to a guess. Keep the banner only
-  when the app has one (the icon bitmap is then unused), and halve everything
-  on a low-RAM stick. Target: well under 10 MB of artwork for 25 apps.
-- A5. Wallpaper decoded once and cached; not re-decoded on every resume.
-- A6. `onTrimMemory` releases the wallpaper and screen-saver bitmaps.
-- A7. Edge cases: no apps -> real empty state; `PackageManager` throws ->
-  partial list still renders; config change -> grid rebuilt; wallpaper
-  permission denied -> bundled scene.
+### B. Controls, found on the physical TV
+- B1. `bringToFront()` on the focused tile **reordered the row**, so the D-pad
+  links pointed at the wrong neighbours. The tile now raises itself with `setZ()`.
+- B2. The framework's spatial focus search overrode the grid's links. The D-pad
+  is now driven by the activity: along the row, then between the rows, with
+  the clock above the first row.
+- B3. The first tile did not get the focus at startup (the grid is not laid
+  out when it is built).
+- B4. `Ui.moveListFocus` asked `findFocus()` whether the list had focus, which
+  it never does, so DOWN always jumped back to the first row. It uses
+  `getFocusedChild()` now.
+- B5. `ScreenStack.focusTop()` focused a heading, which cannot take focus.
+- B6. A label in "focused only" mode stayed visible until the tile had been
+  focused once.
+- B7. Screens in the stack were transparent, so the screen being replaced
+  showed through the one sliding in.
+- B8. The app menu was drawn over the app title, with the grid showing through.
 
-**B. Tools (P2)**
-- B1. One `ToolActivity` hosting a `ScreenStack`; every panel is a screen.
-- B2. Settings rebuilt on `SettingRow` + `ScreenStack` (delete `SettingsOverlay`).
-- B3. App manager: all packages, sort/filter, lazy icons, per-app actions.
-- B4. Debug panel over `SystemInfo`.
-- B5. Guided live debugging guide: reads live state, opens the exact Settings
-  screen, copies adb commands, shows the TV's IP.
+### C. Tools (P2)
+- C1. One `ToolActivity` hosting a `ScreenStack`; every panel is a screen.
+- C2. Settings rebuilt on `SettingRow` + `ScreenStack` (`SettingsOverlay` deleted).
+- C3. App manager: all packages, filters, lazy icons, per-app actions.
+- C4. Debug panel over `SystemInfo`, plus processes, battery, network, the
+  logcat tail and a self check.
+- C5. Guided setup guide: reads live state, opens the exact Settings screen,
+  copies adb commands, shows the TV's IP.
 
-**C. Optional extras (P3)** - off by default, one APK
-- C1. First-run wizard.
-- C2. File manager: browse, copy, move, rename, delete, properties.
-- C3. LAN share: HTTP server on a thread inside the visible Share activity.
-- C4. Browser: WebView + local hosts-style ad blocker, hidden until enabled.
+### D. Optional extras (P3) - off by default, one APK
+- D1. File manager: browse, sort, search, copy, move, rename, delete, properties.
+- D2. LAN share: an HTTP server on a thread inside the visible Share activity.
+- D3. Browser: WebView + a local hosts-style ad blocker, hidden until enabled.
+- D4. `SonoraProvider`, so a file can be handed to another app as a content URI.
 
-**D. Ship (P4)**
-- D1. Keep `proguard-rules.pro` in sync; re-verify with `dexdump`.
-- D2. Release size under 6 MB.
-- D3. Unit tests for the new pure logic.
-- D4. `PLAN.md` and `HANDOFF.md` updated.
+### E. Design foundations (apple-design skill)
+- E1. `ui/Spring.java` solves the spring itself, because AndroidX's
+  `SpringAnimation` is not in the platform SDK. It keeps the value and the
+  velocity when re-targeted, so an animation can be interrupted.
+- E2. `ui/Motion.java` is the spring API, and it reads the system's
+  `ANIMATOR_DURATION_SCALE` so reduced motion is honoured.
+- E3. `ui/Type.java` is the type scale: tracking and leading follow the size.
+- E4. The screen stack slides in from the right and leaves to the right.
+
+## 6. Next session
+
+**P1 - Finish the design pass.** *(done - see section 7)*
+- Springs for the launcher's focus scale and parallax sway.
+- The type scale across the remaining screens.
+- Materials: a bright top edge, weight encoding hierarchy.
+- A settings row for "reduce motion"; check every animation degrades gently.
+- Confirm the transitions are mirrored and interruptible.
+
+**P2 - Verify on the TV.** The app manager's detail screen, the debug panel,
+the file manager, the LAN share and the browser have not been checked on the
+device yet.
+
+**P3 - Ship.** ProGuard keep rules in sync, release size under 6 MB (now
+3.27 MB), unit tests for new pure logic.
+
+**P4 - The first-run wizard.** "Once a person opens this APK on any Android
+TV, it's going to set it up": wallpaper -> grid -> clock -> screen saver ->
+offer to become the default launcher. Runs once, skippable, never blocks.
+`Prefs.welcomeSeen()` is already there for it.
+
+*(done - see section 8)*
+
+## 7. Session: launcher only (no TV connected)
+
+Scope: the launcher and the shared `ui` package. The tools, the wizard and
+the APK/REA study are deliberately untouched this session.
+
+### F1. The spring foundation was broken
+`Spring` started every animation at `value = 0` and wrote that value to the
+view on the first frame. Every spring therefore snapped to its target
+instantly instead of animating: the panel slide-in never slid, and the
+focus scale never sprang. The spring also never read the view's current
+value, so a re-targeted animation could not continue from what was on
+screen.
+
+Fix: `Spring` becomes pure physics (no Android types) and `Motion` drives it
+from a `Choreographer`, reading the presentation value off the view before
+it starts and keeping value + velocity when it is re-targeted. Unit-tested.
+
+### F2. The lean and the parallax never ran
+`HomeActivity` asked the *previous* tile to sway, but `AppTileView.sway()`
+returns early when the tile is not focused - and the previous tile has
+already lost focus. So the 3D lean and the artwork parallax were dead code.
+The artwork offset was also never returned to rest.
+
+Fix: the newly focused tile leans, the lean springs back to zero, and the
+artwork inside the card shifts with the lean and springs back to rest with
+it.
+
+### F3. Tween -> spring in the launcher
+Focus scale, label fade and the lean were fixed-duration tweens with an
+overshoot interpolator. All three are springs now, so an interrupted focus
+change continues instead of restarting.
+
+### F4. The type scale on the launcher screens
+The shelf, the clock pill, the tile labels, the app menu and the screen
+saver overlay still used ad-hoc text sizes. They use `Type` now, including
+a paint variant for the canvas-drawn screen saver text.
+
+### F5. Materials
+`GlassDrawable` gets a bright top edge (light catching the material) and the
+weight hierarchy is corrected: the big app bar is the heavier material, the
+small clock pill the lighter one. It was the other way round.
+
+### F6. Reduced motion
+`Prefs.reduceMotion()` had no settings row and nothing consumed it beyond
+the first read. There is a row now, and it is honoured by the focus scale,
+the lean, the sheen, the screen saver drift and the panel transitions -
+each degrading to a gentler equivalent, never to nothing.
+
+### F7. Launcher edge cases
+- The wallpaper was decoded on the main thread on every resume: now off it.
+- The idle watcher woke the CPU every second for nothing: now it sleeps
+  until the screen saver is actually due. It also stopped for good after the
+  first screen saver - it starts again when the saver is dismissed and it
+  stops entirely while the launcher is in the background.
+- Changing "apps per row", "app names", the order or the hidden apps in
+  Settings did nothing until the app was restarted: the grid now rebuilds
+  on resume.
+- A rebuilt grid lost the focus: the focused app is now kept.
+- "Reload apps" promised a reload that never happened: it does now.
+- BACK left to whatever app was open before, not to the TV home screen.
+- A configuration change reused artwork rendered for the old screen size.
+- The app artwork was cached at the width of the tile it was first drawn at,
+  so changing the column count left every banner the wrong size. The cache
+  is now keyed by the tile width.
+- `Motion` keeps its runners in a `WeakHashMap` keyed by the view, so a
+  runner that held its own view would have pinned its own key and never been
+  collected. The view properties hold the view weakly.
+- Dead code removed: the unused banner blur, the per-frame scrim
+  allocation, the unused fields, the dead helpers in `Ui`.
+
+### F8. The D-pad never reached the overlays
+The activity intercepts the D-pad to drive the grid, but it did so before
+`super.dispatchKeyEvent`, so the app menu and the screen saver never saw the
+arrow keys: the menu could not be walked and the saver could not change
+scene. The grid now only takes the D-pad when the grid has the focus;
+anything else gets the key.
+
+### F9. The spring physics is unit-tested
+`Spring` is pure maths, so it is tested without a device: a critical spring
+never overshoots, a springy one does, a re-aimed spring keeps its speed and
+still arrives, and a long stall cannot make it explode.
+
+
+## 8. Session: the wizard, the settings, the tooling
+
+### G1. The first-run setup
+`tools/SetupWizard.java` walks the user through the setup once: the mode,
+the wallpaper, the clock, the screen saver, the home screen role. It runs
+once, BACK walks back through it, and it never blocks the launcher. Each
+screen says where it is ("Step 2 of 5"), because a setup that does not say
+where you are is a setup the user has to guess their way through.
+
+### G2. Two modes
+`Prefs.mode()` is `Default` or `Technical`. Default shows the settings that
+matter to anybody, in plain words. Technical shows all of them: apps per row,
+seconds, reduce motion, the app order, the setup guide. The mode is picked in
+the setup and can be changed in Settings.
+
+### G3. The settings are an index now
+One long list of twenty rows was too much to read, so Settings is an index:
+Home Screen, Clock, Screen Saver, Apps, Tools, System. Every screen holds a
+handful of rows. The technical rows only exist in technical mode.
+
+### G4. The focus works
+A screen that was built while the activity was starting could not take the
+focus, so the D-pad went nowhere and OK did nothing. The stack asks again
+when the window gets the focus, and a rebuilt screen keeps the row the user
+was on and where it was scrolled to.
+
+### G5. The lists work
+The rows of the app manager and the file manager were focusable, which stops
+a `ListView` from ever reporting a click: OK did nothing in both panels. The
+list holds the focus now, the selection is drawn for it, and the filters sit
+above the list instead of inside it.
+
+### G6. The picker opens on the value it shows
+`ChoiceOverlay` never took the selected index, so every picker opened on the
+first option: OK silently changed the setting.
+
+### G7. The LAN server
+It kept listening after the user left the share screen, which broke the "no
+background processes" rule. It stops in `onStop` now. The path check was a
+prefix test with no separator, so a folder that merely started with the same
+name could be served; the separator is there now. Names are URL-decoded and
+the listing is URL-encoded, and a picture is served as a picture.
+
+### G8. The app manager
+The row said "Enabled" but showed the hidden state, and never updated. It
+says "Hidden from home screen" now and the screen is rebuilt after the tap.
+`CHANGE_COMPONENT_ENABLED_STATE` was never declared, so hiding an app was
+refused by the system: it is declared now, and so is
+`KILL_BACKGROUND_PROCESSES` for force stop.
+
+### G9. The device panel
+`getRunningAppProcesses()` can return null and took the panel down with it.
+The process list is read off the UI thread now, because it is a binder call
+per app. "Refresh" refreshes the screen instead of throwing the stack away,
+and the numbers are read again instead of coming from the cache.

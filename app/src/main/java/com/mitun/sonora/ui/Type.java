@@ -1,5 +1,7 @@
 package com.mitun.sonora.ui;
 
+import android.content.Context;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.widget.TextView;
 
@@ -27,49 +29,35 @@ public final class Type {
     /** Small upper-case section headers. */
     public static final int MICRO = 5;
 
+    /** The size of each style, in SP. */
+    private static final float[] SIZES = {34f, 30f, 19f, 17f, 13f, 12f};
+    /** The tracking of each style: tighter the larger the type. */
+    private static final float[] TRACKING = {-0.02f, -0.015f, 0f, 0f, 0.01f, 0.12f};
+    /** The leading of each style: tighter the larger the type. */
+    private static final float[] LEADING = {1.05f, 1.10f, 1.22f, 1.34f, 1.38f, 1.20f};
+    /** The weight of each style. */
+    private static final String[] FACES = {
+            "sans-serif-medium", "sans-serif-light", "sans-serif-medium",
+            "sans-serif", "sans-serif", "sans-serif-medium"};
+
     private Type() {
     }
 
+    /** Applies a style to a text view. */
     public static void apply(TextView view, int style) {
-        switch (style) {
-            case DISPLAY:
-                view.setTextSize(34);
-                view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                view.setLetterSpacing(-0.02f);
-                view.setLineSpacing(0f, 1.05f);
-                break;
-            case TITLE:
-                view.setTextSize(30);
-                view.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-                view.setLetterSpacing(-0.015f);
-                view.setLineSpacing(0f, 1.10f);
-                break;
-            case HEADING:
-                view.setTextSize(19);
-                view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                view.setLetterSpacing(0f);
-                view.setLineSpacing(0f, 1.22f);
-                break;
-            case BODY:
-                view.setTextSize(17);
-                view.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                view.setLetterSpacing(0f);
-                view.setLineSpacing(0f, 1.34f);
-                break;
-            case CAPTION:
-                view.setTextSize(13);
-                view.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-                view.setLetterSpacing(0.01f);
-                view.setLineSpacing(0f, 1.38f);
-                break;
-            case MICRO:
-                view.setTextSize(12);
-                view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                view.setLetterSpacing(0.12f);
-                view.setLineSpacing(0f, 1.20f);
-                break;
-            default:
-                break;
-        }
+        view.setTextSize(SIZES[style]);
+        view.setTypeface(Typeface.create(FACES[style], Typeface.NORMAL));
+        view.setLetterSpacing(TRACKING[style]);
+        view.setLineSpacing(0f, LEADING[style]);
+    }
+
+    /**
+     * Applies a style to text drawn straight onto a canvas, where the size is
+     * in pixels rather than scaled units.
+     */
+    public static void apply(Paint paint, int style, Context context) {
+        paint.setTextSize(Ui.spf(context, SIZES[style]));
+        paint.setTypeface(Typeface.create(FACES[style], Typeface.NORMAL));
+        paint.setLetterSpacing(TRACKING[style]);
     }
 }
