@@ -1516,3 +1516,36 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+## 36. Session: untangle the codebase — deep modules, one-decision-one-place
+
+A full structural pass on branch `devin/1794655952-untangle`, from the
+untangle skill's three questions (do these change together?) plus the
+comments and tests additions. New modules, all in `app/`:
+
+- `ui/Bitmaps` — the decode/draw helpers out of `Ui`, which is now only
+  dp/sp math, colours and small view helpers.
+- `Platform` — immersive mode, settings intents, dream-state reads.
+- `ImmersiveActivity` — the shared full-screen shell the three activities extend.
+- `Clock`, `Workers` — shared clock text/tick timing and named worker pools.
+- `ui/WallpaperGlass` — HomeActivity's whole wallpaper pipeline (decode,
+  shared blur, half-size lens source, per-pane glass bake) behind a
+  3-callback listener; the activity lost ~200 lines of bitmap plumbing.
+- `ScreenStack` now tags screens by `Object` identity, not title strings —
+  a rename can no longer break the async refresh guards.
+- `Motion.FocusValue`, `Ui.focusSearchContained`, `Ui.regionIn`,
+  `Clock.tickDelay` — the copied idioms got one home each.
+- `Prefs.listen` holds its listeners strongly (SharedPreferences keeps
+  them weak — a GC would have silently stopped cache invalidation) and
+  cached modules drop themselves; the FOCUS_* bit-flag escape bug found
+  by the sweep is fixed.
+- Tests pass: FileServer/FileOps/Grid/AppSearch/GlassLens tests now assert
+  observable behaviour over sockets and transfers instead of internals;
+  tests that recomputed the implementation or could not fail were cut.
+- 20 comments that only restated the code removed; decision log at
+  `.scratch/untangle/DECISIONS.md` (F1–F16).
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest` and
+both debug compiles green. `assemblePerf` compiles and shrinks clean
+(Maven Central 429s blocked only the lint-annotation fetch; the R8 step
+ran). Not verified: on-device behaviour — grid, glass, focus escapes on
+the MiTV, and the perf numbers from `scripts/perf.sh`.
