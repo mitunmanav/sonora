@@ -429,16 +429,6 @@ public final class ScreenStack extends FrameLayout {
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         }
 
-        TextView hint = new TextView(context);
-        hint.setText(settingsIndex
-                ? "OK to open · ↑/↓ to browse · BACK to go back"
-                : "OK to select · BACK to go back");
-        hint.setTextColor(0x80FFFFFF);
-        Type.apply(hint, Type.CAPTION);
-        hint.setPadding(0, Ui.dp(context, 16), 0, 0);
-        column.addView(hint, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         if (screen.custom == null) {
             for (SettingRow row : screen.rows) {
                 View view = row.view(context);
