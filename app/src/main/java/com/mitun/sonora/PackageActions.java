@@ -224,24 +224,6 @@ public final class PackageActions {
         return new Result(true, "Use “Clear storage” on the app info page");
     }
 
-    /** Clears our own cached files. Always allowed, and the one thing we can do silently. */
-    public static Result clearOwnCache(Context context) {
-        try {
-            File dir = context.getCacheDir();
-            long freed = 0;
-            File[] files = dir == null ? null : dir.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    freed += file.length();
-                    delete(file);
-                }
-            }
-            return new Result(true, "Cleared " + SystemInfo.bytes(freed));
-        } catch (RuntimeException e) {
-            return new Result(false, "Could not clear the cache");
-        }
-    }
-
     private static boolean delete(File file) {
         if (file.isDirectory()) {
             File[] children = file.listFiles();

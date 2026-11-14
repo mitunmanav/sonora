@@ -1,6 +1,6 @@
 package com.mitun.sonora.tools;
 
-import android.app.Activity;
+import com.mitun.sonora.ImmersiveActivity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -17,6 +17,7 @@ import android.widget.TextView;
 import com.mitun.sonora.ui.Ui;
 
 import java.io.File;
+import com.mitun.sonora.Platform;
 
 /**
  * The share screen.
@@ -25,7 +26,7 @@ import java.io.File;
  * there is no listening socket when the app is closed. It shows the address
  * big enough to read off the screen and type into a phone or a laptop.
  */
-public final class ShareActivity extends Activity {
+public final class ShareActivity extends ImmersiveActivity {
     static final String EXTRA_PATH = "path";
     static final String EXTRA_NAME = "name";
 
@@ -46,7 +47,6 @@ public final class ShareActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Ui.immersive(this);
         String path = getIntent().getStringExtra(EXTRA_PATH);
         shared = path == null ? FileServer.appFolder(this) : new File(path);
         if (path != null && !shared.exists()) {

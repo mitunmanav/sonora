@@ -426,9 +426,7 @@ public final class SearchOverlay extends FrameLayout {
         @Override
         public void setPressed(boolean pressed) {
             super.setPressed(pressed);
-            float base = isFocused() ? FOCUS_SCALE : 1f;
-            Motion.scale(icon, pressed ? base * PRESS_SCALE : base,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+            Motion.press(icon, pressed, isFocused() ? FOCUS_SCALE : 1f, PRESS_SCALE);
         }
 
         void bind(AppEntry entry) {

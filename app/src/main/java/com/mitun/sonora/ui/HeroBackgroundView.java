@@ -68,9 +68,9 @@ public final class HeroBackgroundView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         if (wallpaper != null && !wallpaper.isRecycled()) {
-            Ui.drawCenterCrop(canvas, wallpaper, rect, ZOOM, 0, 0);
+            Bitmaps.drawCenterCrop(canvas, wallpaper, rect, ZOOM, 0, 0);
         } else if (placeholder != null && !placeholder.isRecycled()) {
-            Ui.drawCenterCrop(canvas, placeholder, rect, ZOOM, 0, 0);
+            Bitmaps.drawCenterCrop(canvas, placeholder, rect, ZOOM, 0, 0);
         } else {
             canvas.drawRect(rect, fallbackPaint);
         }

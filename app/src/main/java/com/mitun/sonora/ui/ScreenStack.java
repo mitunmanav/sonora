@@ -40,10 +40,12 @@ public final class ScreenStack extends FrameLayout {
         void onPushed();
 
         /** A different screen is now on top, so what stands beside it can follow. */
-        void onTopChanged(String title);
+        void onTopChanged(Object tag);
     }
 
     private static final class Screen {
+        /** What the screen is, set by whoever pushed it; the title is for reading. */
+        final Object tag;
         final String title;
         final String subtitle;
         final List<SettingRow> rows = new ArrayList<>();
@@ -58,7 +60,8 @@ public final class ScreenStack extends FrameLayout {
         /** The row that opened the screen above this one, so BACK returns to it. */
         View returnFocus;
 
-        Screen(String title, String subtitle) {
+        Screen(Object tag, String title, String subtitle) {
+            this.tag = tag;
             this.title = title;
             this.subtitle = subtitle;
         }
@@ -93,8 +96,8 @@ public final class ScreenStack extends FrameLayout {
     }
 
     /** Replaces the whole stack with a screen whose content has its own layout. */
-    public void showContent(String title, String subtitle, View content) {
-        showContent(title, subtitle, content, false);
+    public void showContent(Object tag, String title, String subtitle, View content) {
+        showContent(tag, title, subtitle, content, false);
     }
 
     /**
@@ -103,37 +106,39 @@ public final class ScreenStack extends FrameLayout {
      * @param fullBleed true when the content draws the whole screen itself and
      *                  needs neither the standard padding nor a title
      */
-    public void showContent(String title, String subtitle, View content, boolean fullBleed) {
+    public void showContent(Object tag, String title, String subtitle, View content,
+                           boolean fullBleed) {
         stack.clear();
         removeAllViews();
-        Screen screen = new Screen(title, subtitle);
+        Screen screen = new Screen(tag, title, subtitle);
         screen.custom = content;
         screen.fullBleed = fullBleed;
         add(screen);
     }
 
-    private void push(String title, String subtitle, List<SettingRow> rows, boolean split) {
-        Screen screen = new Screen(title, subtitle);
+    private void push(Object tag, String title, String subtitle, List<SettingRow> rows,
+                      boolean split) {
+        Screen screen = new Screen(tag, title, subtitle);
         screen.split = split;
         screen.rows.addAll(rows);
         add(screen);
     }
 
     /** A tvOS settings page: the same list, in the split layout. */
-    public void pushSettings(String title, List<SettingRow> rows) {
-        push(title, null, rows, true);
+    public void pushSettings(Object tag, String title, List<SettingRow> rows) {
+        push(tag, title, null, rows, true);
     }
 
     /** Adds a screen whose content is a view of its own, such as a list. */
-    public void pushContent(String title, String subtitle, View content) {
-        Screen screen = new Screen(title, subtitle);
+    public void pushContent(Object tag, String title, String subtitle, View content) {
+        Screen screen = new Screen(tag, title, subtitle);
         screen.custom = content;
         add(screen);
     }
 
     /** Adds a screen that lays out the whole page itself, title included. */
-    public void pushFullBleed(String title, View content) {
-        Screen screen = new Screen(title, null);
+    public void pushFullBleed(Object tag, String title, View content) {
+        Screen screen = new Screen(tag, title, null);
         screen.custom = content;
         screen.fullBleed = true;
         add(screen);
@@ -143,14 +148,15 @@ public final class ScreenStack extends FrameLayout {
      * Rebuilds a tvOS settings page with the values it now shows, keeping its
      * place in the stack. The focus stays on the row the user was on.
      */
-    public void refreshSettings(String title, List<SettingRow> rows) {
-        refresh(title, null, rows, true);
+    public void refreshSettings(Object tag, String title, List<SettingRow> rows) {
+        refresh(tag, title, null, rows, true);
     }
 
     // The rebuild must keep the same kind of screen — list for list, custom
     // for custom. Whether the screen beneath shows or hides was decided for
     // the old pairing, and nothing here recomputes it.
-    private void refresh(String title, String subtitle, List<SettingRow> rows, boolean split) {
+    private void refresh(Object tag, String title, String subtitle, List<SettingRow> rows,
+                         boolean split) {
         if (stack.isEmpty()) {
             return;
         }
@@ -168,7 +174,7 @@ public final class ScreenStack extends FrameLayout {
             scrollY = old.scroller.getScrollY();
         }
         removeView(old.view);
-        Screen screen = new Screen(title, subtitle);
+        Screen screen = new Screen(tag, title, subtitle);
         screen.split = split;
         screen.rows.addAll(rows);
         screen.view = buildScreen(screen);
@@ -188,19 +194,20 @@ public final class ScreenStack extends FrameLayout {
     }
 
     /** Rebuilds the top custom screen while leaving the screens beneath it intact. */
-    public void refreshContent(String title, String subtitle, View content) {
-        refreshContent(title, subtitle, content, false);
+    public void refreshContent(Object tag, String title, String subtitle, View content) {
+        refreshContent(tag, title, subtitle, content, false);
     }
 
     /** As above, for custom content that draws the whole screen itself. */
-    public void refreshContent(String title, String subtitle, View content, boolean fullBleed) {
+    public void refreshContent(Object tag, String title, String subtitle, View content,
+                               boolean fullBleed) {
         if (stack.isEmpty()) {
             return;
         }
         int index = stack.size() - 1;
         Screen old = stack.remove(index);
         removeView(old.view);
-        Screen screen = new Screen(title, subtitle);
+        Screen screen = new Screen(tag, title, subtitle);
         screen.custom = content;
         screen.fullBleed = fullBleed;
         screen.view = buildScreen(screen);
@@ -214,12 +221,12 @@ public final class ScreenStack extends FrameLayout {
      * its focus alone. Used to keep the settings index current while a page
      * opened from it changes the values it shows.
      */
-    public boolean refreshContentBelow(String title, String subtitle, View content) {
-        return refreshContentBelow(title, subtitle, content, false);
+    public boolean refreshContentBelow(Object tag, String title, String subtitle, View content) {
+        return refreshContentBelow(tag, title, subtitle, content, false);
     }
 
     /** As above, for custom content that draws the whole screen itself. */
-    public boolean refreshContentBelow(String title, String subtitle, View content,
+    public boolean refreshContentBelow(Object tag, String title, String subtitle, View content,
                                        boolean fullBleed) {
         if (stack.size() < 2) {
             return false;
@@ -227,7 +234,7 @@ public final class ScreenStack extends FrameLayout {
         int index = stack.size() - 2;
         Screen old = stack.get(index);
         removeView(old.view);
-        Screen screen = new Screen(title, subtitle);
+        Screen screen = new Screen(tag, title, subtitle);
         screen.custom = content;
         screen.fullBleed = fullBleed;
         screen.view = buildScreen(screen);
@@ -247,12 +254,12 @@ public final class ScreenStack extends FrameLayout {
         return true;
     }
 
-    /** The title of the screen on top, or an empty string when there is none. */
-    public String topTitle() {
+    /** The tag the top screen was pushed with, or null when there is none. */
+    public Object topTag() {
         if (stack.isEmpty()) {
-            return "";
+            return null;
         }
-        return stack.get(stack.size() - 1).title;
+        return stack.get(stack.size() - 1).tag;
     }
 
     /** The custom content of the screen on top, or null when it is a list. */
@@ -288,7 +295,7 @@ public final class ScreenStack extends FrameLayout {
         } else {
             final Screen under = stack.get(stack.size() - 1);
             if (listener != null) {
-                listener.onTopChanged(under.title);
+                listener.onTopChanged(under.tag);
             }
             Motion.translateX(under.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
             if (bothSettings(screen, under)) {
@@ -463,7 +470,7 @@ public final class ScreenStack extends FrameLayout {
         }
         if (listener != null) {
             listener.onPushed();
-            listener.onTopChanged(screen.title);
+            listener.onTopChanged(screen.tag);
         }
     }
 

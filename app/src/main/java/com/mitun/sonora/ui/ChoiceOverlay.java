@@ -153,23 +153,13 @@ public final class ChoiceOverlay extends FrameLayout {
         line.addView(check, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        final float[] focus = {0f};
         // One property per row, so a focus change allocates nothing.
-        final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return focus[0];
-            }
-
-            @Override
-            public void set(float value) {
-                focus[0] = value;
-                bg.setFocus(value);
-                int ink = Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value);
-                label.setTextColor(ink);
-                check.setTextColor(ink);
-            }
-        };
+        final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+            bg.setFocus(value);
+            int ink = Bitmaps.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value);
+            label.setTextColor(ink);
+            check.setTextColor(ink);
+        });
         line.setOnFocusChangeListener((v, focused) -> {
             Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
                     Motion.RESPONSE_FOCUS, focusValue);

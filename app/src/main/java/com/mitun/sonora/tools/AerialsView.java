@@ -24,6 +24,7 @@ import android.widget.TextView;
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.SceneChoice;
 import com.mitun.sonora.Scenes;
+import com.mitun.sonora.Workers;
 import com.mitun.sonora.ui.BackdropView;
 import com.mitun.sonora.ui.Glyph;
 import com.mitun.sonora.ui.Motion;
@@ -36,7 +37,7 @@ import com.mitun.sonora.ui.Ui;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import com.mitun.sonora.ui.Bitmaps;
 
 /**
  * Choose Aerials, measured from tvOS 26: categories down the left, three columns
@@ -72,11 +73,7 @@ final class AerialsView extends FrameLayout {
     private final List<Tile> tiles = new ArrayList<>();
     private final LinearLayout grid;
     private final TextView hideAll;
-    private final ExecutorService decoder = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "sonora-aerial-thumbs");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService decoder = Workers.single("sonora-aerial-thumbs");
     private SideRow selected;
 
     AerialsView(Context context, Prefs prefs) {
@@ -89,7 +86,7 @@ final class AerialsView extends FrameLayout {
         BackdropView backdrop = new BackdropView(context);
         addView(backdrop, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        loadBackdrop(backdrop);
+        backdrop.setWallpaper(context, prefs);
 
         TextView title = new TextView(context);
         title.setText("Choose Aerials");
@@ -220,50 +217,6 @@ final class AerialsView extends FrameLayout {
         }
     }
 
-    /**
-     * Hands the backdrop its blur. The view only takes the shared one the
-     * launcher already made; a miss is decoded on the thumbnail worker.
-     */
-    private void loadBackdrop(final BackdropView backdrop) {
-        final int index = prefs.wallpaper();
-        final String uri = prefs.wallpaperUri();
-        final String key = BackdropView.key(index, uri);
-        Bitmap ready = BackdropView.remembered(key);
-        if (ready != null) {
-            backdrop.setSoftened(ready);
-            return;
-        }
-        decoder.execute(() -> {
-            Bitmap soft = null;
-            try {
-                Bitmap decoded = null;
-                if (index < 0 && uri != null) {
-                    decoded = Ui.decodeUri(getResources(),
-                            getContext().getContentResolver(), Uri.parse(uri), 96);
-                }
-                if (decoded == null) {
-                    decoded = Ui.decodeScene(getResources(),
-                            Scenes.ALL.get(Scenes.safeIndex(index)).res, 96, 54);
-                }
-                soft = BackdropView.soften(decoded);
-                if (decoded != null) {
-                    decoded.recycle();
-                }
-            } catch (RuntimeException | OutOfMemoryError ignored) {
-            }
-            if (soft == null) {
-                return;
-            }
-            BackdropView.remember(key, soft);
-            final Bitmap blur = soft;
-            post(() -> {
-                if (!decoder.isShutdown()) {
-                    backdrop.setSoftened(blur);
-                }
-            });
-        });
-    }
-
     private void loadThumbs() {
         final int width = Math.round(dp(THUMB_WIDTH_DP) * THUMB_FOCUS_SCALE);
         final int height = Math.round(dp(THUMB_HEIGHT_DP) * THUMB_FOCUS_SCALE);
@@ -289,7 +242,7 @@ final class AerialsView extends FrameLayout {
 
     private Bitmap decodeThumb(int index, int width, int height) {
         try {
-            Bitmap full = Ui.decodeScene(getResources(), Scenes.ALL.get(index).res, width, height);
+            Bitmap full = Bitmaps.decodeScene(getResources(), Scenes.ALL.get(index).res, width, height);
             if (full == null) {
                 return null;
             }

@@ -5,7 +5,6 @@ import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.FocusFinder;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -13,13 +12,11 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.mitun.sonora.Clock;
 import com.mitun.sonora.Prefs;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Control Center, laid out from tvOS 26: one large tile, four pills and a row of
@@ -73,7 +70,7 @@ public final class ControlCenter extends FrameLayout {
     };
     private boolean glassBaked;
 
-    public ControlCenter(Context context, String clock, String wifiName, Bitmap frost,
+    public ControlCenter(Context context, String wifiName, Bitmap frost,
                          Listener listener) {
         super(context);
         this.listener = listener;
@@ -94,7 +91,7 @@ public final class ControlCenter extends FrameLayout {
         addView(panel, panelParams);
 
         time = new TextView(context);
-        time.setText(clock);
+        time.setText(clockText());
         time.setTextColor(Theme.inkSecondary());
         Type.apply(time, Type.CAPTION);
         time.setIncludeFontPadding(false);
@@ -160,30 +157,8 @@ public final class ControlCenter extends FrameLayout {
         }
     }
 
-    /** Where a tile is laid out in this screen-sized view, ignoring its scale. */
-    private Rect regionOf(View view) {
-        int x = 0;
-        int y = 0;
-        View walk = view;
-        while (walk != null && walk != this) {
-            x += walk.getLeft();
-            y += walk.getTop();
-            walk = walk.getParent() instanceof View ? (View) walk.getParent() : null;
-        }
-        return new Rect(x, y, x + view.getWidth(), y + view.getHeight());
-    }
-
-    /** What the clock row says; the same shape the home screen's pill shows. */
     private String clockText() {
-        boolean seconds = prefs.showSeconds();
-        String pattern = prefs.clock24()
-                ? (seconds ? "HH:mm:ss" : "HH:mm")
-                : (seconds ? "h:mm:ss a" : "h:mm a");
-        Date now = new Date();
-        String text = new SimpleDateFormat(pattern, Locale.getDefault()).format(now);
-        return prefs.showDate()
-                ? new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(now) + "  " + text
-                : text;
+        return Clock.line(prefs);
     }
 
     /** Brings the panel in and puts the focus on the large tile. */
@@ -205,20 +180,11 @@ public final class ControlCenter extends FrameLayout {
                 onGone);
     }
 
-    /**
-     * Keeps the focus in the panel: the home screen is still underneath, and
-     * the D-pad must not walk out onto it. DOWN from the last row leaves.
-     */
+    /** DOWN from the last row leaves the panel. */
     @Override
     public View focusSearch(View focused, int direction) {
-        View next = FocusFinder.getInstance().findNextFocus(this, focused, direction);
-        if (next != null) {
-            return next;
-        }
-        if (direction == View.FOCUS_DOWN) {
-            listener.onDismiss();
-        }
-        return focused;
+        return Ui.focusSearchContained(this, focused, direction, View.FOCUS_DOWN,
+                listener::onDismiss);
     }
 
     @Override
@@ -258,21 +224,11 @@ public final class ControlCenter extends FrameLayout {
         private final TextView detail;
         private final int restInk;
         private final float focusScale;
-        private float focus;
         /** One property per tile, so a focus change allocates nothing. */
-        private final Motion.FloatProperty focusValue = new Motion.FloatProperty() {
-            @Override
-            public float get() {
-                return focus;
-            }
-
-            @Override
-            public void set(float value) {
-                focus = value;
-                material.setFocus(value);
-                setInk(value);
-            }
-        };
+        private final Motion.FocusValue focusValue = new Motion.FocusValue(value -> {
+            Tile.this.material.setFocus(value);
+            setInk(value);
+        });
 
         Tile(Context context, int action, int mark, String title, String subtitle, int shape) {
             super(context);
@@ -345,7 +301,7 @@ public final class ControlCenter extends FrameLayout {
         /** Frost is one shared texture, so opening this panel makes no bitmaps. */
         void bakeGlass() {
             material.setFrost(frost, ControlCenter.this.getWidth(),
-                    ControlCenter.this.getHeight(), HeroBackgroundView.ZOOM, regionOf(this),
+                    ControlCenter.this.getHeight(), HeroBackgroundView.ZOOM, Ui.regionIn(ControlCenter.this, this),
                     Theme.glassVeil());
         }
 
@@ -373,9 +329,7 @@ public final class ControlCenter extends FrameLayout {
         @Override
         public void setPressed(boolean pressed) {
             super.setPressed(pressed);
-            float base = isFocused() ? focusScale : 1f;
-            Motion.scale(this, pressed ? base * PRESS_SCALE : base,
-                    Motion.DAMPING_CRITICAL, Motion.RESPONSE_PRESS);
+            Motion.press(this, pressed, isFocused() ? focusScale : 1f, PRESS_SCALE);
         }
     }
 }

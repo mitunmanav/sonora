@@ -151,7 +151,7 @@ public final class Pickers {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!SettingsPanel.topIsPage(host, "Apps")) {
+                if (!SettingsPanel.topIsPage(host, SettingsPanel.APPS)) {
                     // The user left the Apps screen while the list was read.
                     return;
                 }

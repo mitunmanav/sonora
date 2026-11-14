@@ -16,6 +16,7 @@ import android.widget.TextView;
 import com.mitun.sonora.AppManager;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.PackageActions;
+import com.mitun.sonora.Workers;
 import com.mitun.sonora.ui.Motion;
 import com.mitun.sonora.ui.RowDrawable;
 import com.mitun.sonora.ui.ScreenStack;
@@ -29,8 +30,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import com.mitun.sonora.ui.Bitmaps;
 
 /**
  * The app manager: every package on the device, not just the launchable ones.
@@ -40,6 +41,9 @@ import java.util.concurrent.RejectedExecutionException;
  * makes an app manager slow.
  */
 public final class AppPanel {
+    /** The tag the app manager screen carries on the stack. */
+    static final Object TAG = new Object();
+
     private static final int FILTER_ALL = 0;
     private static final int FILTER_USER = 1;
     private static final int FILTER_SYSTEM = 2;
@@ -84,7 +88,7 @@ public final class AppPanel {
                 adapter.shutdown();
             }
         });
-        host.stack().pushContent("Apps", "Everything installed on this TV", content);
+        host.stack().pushContent(TAG, "Apps", "Everything installed on this TV", content);
         adapter.load();
     }
 
@@ -105,7 +109,7 @@ public final class AppPanel {
             } else {
                 View below = stack.topContentBelow();
                 if (below != null && below.getTag() instanceof AppAdapter) {
-                    stack.refreshSettings(item.label,
+                    stack.refreshSettings(item.packageName, item.label,
                             detailRows(host, (AppAdapter) below.getTag(), item));
                     tagDetail(host, item);
                 }
@@ -135,7 +139,7 @@ public final class AppPanel {
     }
 
     private static void showDetail(ToolActivity host, AppAdapter adapter, AppManager.Item item) {
-        host.stack().pushSettings(item.label, detailRows(host, adapter, item));
+        host.stack().pushSettings(item.packageName, item.label, detailRows(host, adapter, item));
         tagDetail(host, item);
     }
 
@@ -221,7 +225,7 @@ public final class AppPanel {
                 }
                 // The screen is rebuilt, or the row would keep showing the
                 // value it had before the tap.
-                host.stack().refreshSettings(item.label,
+                host.stack().refreshSettings(item.packageName, item.label,
                         detailRows(host, adapter, item));
                 tagDetail(host, item);
             }));
@@ -261,11 +265,10 @@ public final class AppPanel {
     /**
      * Tells the home screen that the list of apps has changed.
      *
-     * The cache is dropped and the epoch is moved, so the launcher rebuilds
-     * its grid the next time it comes back.
+     * The epoch is moved, so the launcher rebuilds its grid the next time it
+     * comes back.
      */
     private static void appsChanged(ToolActivity host) {
-        AppRepository.invalidate();
         host.prefs().bumpAppsEpoch();
     }
 
@@ -314,12 +317,7 @@ public final class AppPanel {
         private int filter = FILTER_ALL;
         private final List<TextView> tabs = new ArrayList<>();
         /** One decoder for every icon, like the thumbnails in the file manager. */
-        private final ExecutorService icons = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "sonora-icons");
-            thread.setDaemon(true);
-            thread.setPriority(Thread.MIN_PRIORITY);
-            return thread;
-        });
+        private final ExecutorService icons = Workers.background("sonora-icons");
         /** Icons already being decoded, so a rebind does not queue them again. */
         private final Set<AppManager.Item> decoding = new HashSet<>();
         /** A reload that is still running; a second ask is already covered. */
@@ -356,7 +354,7 @@ public final class AppPanel {
                                 public void set(float value) {
                                     tabFocus[0] = value;
                                     tabBg.setFocus(value);
-                                    tab.setTextColor(Ui.lerpColor(Theme.inkSoft(),
+                                    tab.setTextColor(Bitmaps.lerpColor(Theme.inkSoft(),
                                             Theme.ink(), value));
                                 }
                             });
@@ -487,7 +485,7 @@ public final class AppPanel {
                     Bitmap bitmap = null;
                     try {
                         PackageManager pm = host.getPackageManager();
-                        bitmap = Ui.drawableToBitmap(pm.getApplicationIcon(item.packageName),
+                        bitmap = Bitmaps.drawableToBitmap(pm.getApplicationIcon(item.packageName),
                                 96, 96, true);
                     } catch (Exception | OutOfMemoryError ignored) {
                     }

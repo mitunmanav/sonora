@@ -5,9 +5,8 @@ import android.view.KeyEvent;
 import android.view.View;
 
 import com.mitun.sonora.Scenes;
-import com.mitun.sonora.Prefs;
 import com.mitun.sonora.ui.ScreensaverView;
-import com.mitun.sonora.ui.Ui;
+import com.mitun.sonora.Platform;
 
 /**
  * The system screen saver. When the TV goes idle the dream service takes over
@@ -23,23 +22,18 @@ public class SonoraDreamService extends DreamService {
         setInteractive(true);
         setFullscreen(true);
         setScreenBright(false);
-        Ui.immersive(getWindow());
+        Platform.immersive(getWindow());
     }
 
     @Override
     public void onDreamingStarted() {
         super.onDreamingStarted();
-        Prefs prefs = new Prefs(this);
         if (view != null) {
             // The dream was started again without being stopped, so the old
             // view would keep its bitmaps alive.
             view.stop();
         }
         view = new ScreensaverView(this);
-        view.setSceneDurationSec(prefs.screensaverSceneSec());
-        // "Always" shows the place from the first frame. "On input" waits for
-        // the user to press OK, and "never" never shows it.
-        view.setShowOverlay(prefs.screensaverClock() == 1);
         setContentView(view);
         view.setFocusable(true);
         view.requestFocus();

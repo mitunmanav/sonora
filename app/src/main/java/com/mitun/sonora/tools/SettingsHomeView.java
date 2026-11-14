@@ -21,6 +21,7 @@ import com.mitun.sonora.ui.Ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.mitun.sonora.ui.Bitmaps;
 
 /**
  * The settings index, laid out the way tvOS Settings is: the page name above,
@@ -53,10 +54,6 @@ final class SettingsHomeView extends FrameLayout {
             this(title, summary, new Detail[]{first, second}, action);
         }
 
-        Category(String title, String summary, Detail first, Detail second, Detail third,
-                 Runnable action) {
-            this(title, summary, new Detail[]{first, second, third}, action);
-        }
 
         Category(String title, String summary, Detail[] details, Runnable action) {
             this.title = title;
@@ -208,8 +205,8 @@ final class SettingsHomeView extends FrameLayout {
                         public void set(float value) {
                             focus[0] = value;
                             bg.setFocus(value);
-                            label.setTextColor(Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value));
-                            chevron.setTextColor(Ui.lerpColor(Theme.inkTertiary(), 0x99101C26, value));
+                            label.setTextColor(Bitmaps.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value));
+                            chevron.setTextColor(Bitmaps.lerpColor(Theme.inkTertiary(), 0x99101C26, value));
                         }
                     });
             view.setElevation(focused ? Ui.dpf(context, 8f) : 0f);

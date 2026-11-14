@@ -136,10 +136,10 @@ public final class AppIconView extends View {
                     Math.round((w + size) / 2f), Math.round((h + size) / 2f));
             return;
         }
-        int base = Ui.tileColor(entry.accent);
+        int base = Bitmaps.tileColor(entry.accent);
         fillPaint.setShader(new LinearGradient(0, 0, w, h,
-                new int[]{Ui.lerpColor(base, Color.WHITE, 0.16f), base,
-                        Ui.lerpColor(base, Color.BLACK, 0.32f)},
+                new int[]{Bitmaps.lerpColor(base, Color.WHITE, 0.16f), base,
+                        Bitmaps.lerpColor(base, Color.BLACK, 0.32f)},
                 new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
         // A quiet pool of the icon's own colour, so a generated card is not flat.
         glowPaint.setShader(new RadialGradient(w * 0.76f, h * 0.08f, h * 0.46f,

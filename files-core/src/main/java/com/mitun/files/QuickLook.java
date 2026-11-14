@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Quick Look: a picture or a text file on the whole screen, without leaving the
@@ -36,12 +35,7 @@ final class QuickLook extends FrameLayout {
     private final int maxSide;
     private final boolean low;
     /** One decoder, so a held-down direction key cannot start a decode storm. */
-    private final ExecutorService decoder = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "files-quicklook");
-        thread.setDaemon(true);
-        thread.setPriority(Thread.MIN_PRIORITY);
-        return thread;
-    });
+    private final ExecutorService decoder = Workers.background("files-quicklook");
     private int index;
     /** Written on the screen's thread, read on the decoder's. */
     private volatile int generation;

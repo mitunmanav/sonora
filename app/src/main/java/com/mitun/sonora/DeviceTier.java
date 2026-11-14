@@ -63,6 +63,7 @@ public final class DeviceTier {
     }
 
     public static int get(Context context) {
+        watch(context);
         if (degraded) {
             return LOW;
         }
@@ -75,7 +76,21 @@ public final class DeviceTier {
         return tier;
     }
 
-    /** Forgets the tier after the choice in Settings changed. */
+    private static volatile boolean watching;
+
+    /** The Settings choice drops the cache itself; callers need no refresh call. */
+    private static void watch(Context context) {
+        if (!watching) {
+            synchronized (DeviceTier.class) {
+                if (!watching) {
+                    watching = true;
+                    Prefs.listen(context, (prefs, key) -> cached = Integer.MIN_VALUE);
+                }
+            }
+        }
+    }
+
+    /** Forgets the tier and the memory-pressure drop, at app start. */
     public static void refresh() {
         cached = Integer.MIN_VALUE;
         degraded = false;

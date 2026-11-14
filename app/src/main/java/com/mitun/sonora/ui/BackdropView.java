@@ -6,10 +6,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.net.Uri;
 import android.view.View;
 
 import com.mitun.sonora.Prefs;
 import com.mitun.sonora.Scenes;
+import com.mitun.sonora.Workers;
 
 /**
  * The wallpaper behind the tools, blurred and darkened the way tvOS Settings
@@ -27,6 +29,9 @@ public final class BackdropView extends View {
      */
     private static String softKey;
     private static Bitmap softBitmap;
+    /** The decode and blur run here, so no screen ever does it on the main thread. */
+    private static final java.util.concurrent.ExecutorService WORKER =
+            Workers.single("sonora-backdrop");
 
     private Bitmap bitmap;
     private final Paint scrim = new Paint();
@@ -47,6 +52,47 @@ public final class BackdropView extends View {
     /** What identifies a wallpaper in the shared blur. */
     public static String key(int wallpaper, String uri) {
         return wallpaper < 0 && uri != null ? "u:" + uri : "s:" + Scenes.safeIndex(wallpaper);
+    }
+
+    /**
+     * The wallpaper this view was built for, delivered to the view's thread.
+     * The shared blur answers first; a miss decodes and blurs the thumbnail on
+     * the backdrop worker, remembers it for the next screen, then lands here.
+     */
+    public void setWallpaper(Context context, Prefs prefs) {
+        final int index = prefs.wallpaper();
+        final String uri = prefs.wallpaperUri();
+        final String key = key(index, uri);
+        Bitmap ready = remembered(key);
+        if (ready != null) {
+            setSoftened(ready);
+            return;
+        }
+        WORKER.execute(() -> {
+            Bitmap soft = null;
+            try {
+                Bitmap decoded = null;
+                if (index < 0 && uri != null) {
+                    decoded = Bitmaps.decodeUri(getResources(),
+                            context.getContentResolver(), Uri.parse(uri), WIDTH);
+                }
+                if (decoded == null) {
+                    decoded = Bitmaps.decodeScene(getResources(),
+                            Scenes.ALL.get(Scenes.safeIndex(index)).res, WIDTH, HEIGHT);
+                }
+                soft = soften(decoded);
+                if (decoded != null) {
+                    decoded.recycle();
+                }
+            } catch (RuntimeException | OutOfMemoryError ignored) {
+            }
+            if (soft == null) {
+                return;
+            }
+            remember(key, soft);
+            final Bitmap blur = soft;
+            post(() -> setSoftened(blur));
+        });
     }
 
     public static synchronized Bitmap remembered(String key) {
@@ -98,7 +144,7 @@ public final class BackdropView extends View {
         int w = WIDTH;
         int h = HEIGHT;
         Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        Ui.drawCenterCrop(new Canvas(bitmap), decoded, new RectF(0f, 0f, w, h), 1f, 0f, 0f);
+        Bitmaps.drawCenterCrop(new Canvas(bitmap), decoded, new RectF(0f, 0f, w, h), 1f, 0f, 0f);
         int[] in = new int[w * h];
         int[] out = new int[w * h];
         bitmap.getPixels(in, 0, w, 0, 0, w, h);
@@ -134,7 +180,7 @@ public final class BackdropView extends View {
         int height = getHeight();
         if (bitmap != null && !bitmap.isRecycled()) {
             destination.set(0f, 0f, width, height);
-            Ui.drawCenterCrop(canvas, bitmap, destination, 1f, 0f, 0f);
+            Bitmaps.drawCenterCrop(canvas, bitmap, destination, 1f, 0f, 0f);
         } else {
             canvas.drawColor(Color.BLACK);
         }
