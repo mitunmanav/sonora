@@ -60,7 +60,7 @@ public final class AppManager {
     /** The cached list, loading it on a background thread if it is stale. */
     public static List<Item> get(Context context) {
         List<Item> local = cached;
-        if (local != null && System.currentTimeMillis() - cachedAt < 30_000L) {
+        if (local != null && android.os.SystemClock.elapsedRealtime() - cachedAt < 30_000L) {
             return local;
         }
         return load(context);
@@ -119,7 +119,7 @@ public final class AppManager {
         }
         Collections.sort(out, (a, b) -> a.label.compareToIgnoreCase(b.label));
         cached = out;
-        cachedAt = System.currentTimeMillis();
+        cachedAt = android.os.SystemClock.elapsedRealtime();
         return out;
     }
 

@@ -43,7 +43,11 @@ final class Places {
     }
 
     private static void add(List<Place> out, String label, int mark, String directory) {
-        out.add(new Place(label, mark, Environment.getExternalStoragePublicDirectory(directory), true));
+        File folder = Environment.getExternalStoragePublicDirectory(directory);
+        // A public folder that does not exist yet is a dead row, not a place.
+        if (folder.isDirectory()) {
+            out.add(new Place(label, mark, folder, true));
+        }
     }
 
     /**
@@ -53,7 +57,13 @@ final class Places {
     static List<Place> locations(Context context) {
         List<Place> out = new ArrayList<>();
         File internal = Environment.getExternalStorageDirectory();
-        out.add(new Place("TV Storage", Marks.DRIVE, internal, true));
+        // Only a mounted drive belongs in the sidebar; a read-only one can be
+        // browsed even if it cannot be written.
+        String state = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(state)
+                || Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
+            out.add(new Place("TV Storage", Marks.DRIVE, internal, true));
+        }
         File[] dirs = context.getExternalFilesDirs(null);
         if (dirs == null) {
             return out;
@@ -64,7 +74,9 @@ final class Places {
                 continue;
             }
             String path = dir.getAbsolutePath();
-            int cut = path.indexOf("/Android/");
+            // The last match, not the first: a mount whose own name says
+            // Android must not be cut off above it.
+            int cut = path.lastIndexOf("/Android/");
             // The drive's top is normally cut off above Android/. The rare path
             // without it asks the volume for its mount instead of dropping the
             // drive, and as a last resort lists the folder it was handed.
@@ -72,7 +84,9 @@ final class Places {
             if (top == null) {
                 top = dir;
             }
-            if (samePlace(top, internal) || inside(internal, top)) {
+            // Only the drive's own twin is dropped: a mount that sits inside
+            // the internal tree is still a drive of its own.
+            if (samePlace(top, internal)) {
                 continue;
             }
             out.add(new Place(volumeName(context, dir), Marks.DRIVE, top, true));
@@ -90,15 +104,6 @@ final class Places {
         StorageManager manager = (StorageManager) context.getSystemService(Context.STORAGE_SERVICE);
         StorageVolume volume = manager == null ? null : manager.getStorageVolume(dir);
         return volume == null ? null : volume.getDirectory();
-    }
-
-    /** Whether child sits inside parent, after links are resolved. */
-    private static boolean inside(File parent, File child) {
-        try {
-            return FileLogic.isInside(parent.getCanonicalPath(), child.getCanonicalPath());
-        } catch (java.io.IOException e) {
-            return false;
-        }
     }
 
     /** Same drive even when it answers to two paths, like /sdcard and its real one. */

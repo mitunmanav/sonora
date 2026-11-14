@@ -143,6 +143,29 @@ public class FileLogicTest {
     }
 
     @Test
+    public void namesOldWindowsDevicesKeepAreRefused() {
+        for (String bad : new String[]{"CON", "con.txt", "NUL", "AUX", "PRN",
+                "COM1", "com9.log", "LPT1", "lpt4", "CONIN$", "conout$.bat",
+                "con .txt", "aux .log", "com1 .x", "nul..x"}) {
+            assertNotNull(bad, FileLogic.nameProblem(bad));
+        }
+        assertNull(FileLogic.nameProblem("COM0.txt"));
+        assertNull(FileLogic.nameProblem("COM10"));
+        assertNull(FileLogic.nameProblem("console.txt"));
+    }
+
+    @Test
+    public void aDanglingLinkStillHoldsItsName() throws IOException {
+        File dir = temp.newFolder();
+        java.nio.file.Files.createSymbolicLink(new File(dir, "a.txt").toPath(),
+                new File(dir, "missing").toPath());
+        // exists() says false for a broken link, yet the name is taken.
+        assertFalse(new File(dir, "a.txt").exists());
+        assertEquals("a copy.txt", FileLogic.freeName("a.txt", dir, true));
+        assertEquals("a copy.txt", FileLogic.freeName("a.txt", dir, false));
+    }
+
+    @Test
     public void insideMeansInsideNotJustAPrefix() {
         assertTrue(FileLogic.isInside("/a/b", "/a/b"));
         assertTrue(FileLogic.isInside("/a/b", "/a/b/c"));

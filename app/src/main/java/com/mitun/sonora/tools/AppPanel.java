@@ -174,6 +174,10 @@ public final class AppPanel {
                             PackageActions.openAppInfo(host, item.packageName);
                     if (!result.ok) {
                         Ui.toast(host, result.message);
+                    } else {
+                        // That screen can uninstall or disable the app; the
+                        // list and the home grid may be stale on the way back.
+                        appsChanged(host);
                     }
                 }));
         // Sonora itself gets no switch that could strand the remote: hiding
@@ -189,20 +193,31 @@ public final class AppPanel {
                 boolean target = !hidden;
                 PackageActions.Result result =
                         PackageActions.setHidden(host, item.packageName, target);
-                Ui.toast(host, result.message);
-                if (result.ok) {
+                if (!result.ok && target) {
+                    // The device refuses to hide it from every launcher, but
+                    // Sonora's own list still keeps it off the one home screen
+                    // the row names.
                     Set<String> homeHidden = host.prefs().hidden();
-                    if (target) {
-                        homeHidden.add(item.packageName);
-                    } else {
-                        homeHidden.remove(item.packageName);
-                    }
+                    homeHidden.add(item.packageName);
                     host.prefs().setHidden(homeHidden);
-                    item.hidden = target;
-                    adapter.reload();
-                    // The home screen has to forget the app list, or the app
-                    // stays on it until the app is restarted.
                     appsChanged(host);
+                    Ui.toast(host, "Hidden from Sonora's home screen only");
+                } else {
+                    Ui.toast(host, result.message);
+                    if (result.ok) {
+                        Set<String> homeHidden = host.prefs().hidden();
+                        if (target) {
+                            homeHidden.add(item.packageName);
+                        } else {
+                            homeHidden.remove(item.packageName);
+                        }
+                        host.prefs().setHidden(homeHidden);
+                        item.hidden = target;
+                        adapter.reload();
+                        // The home screen has to forget the app list, or the app
+                        // stays on it until the app is restarted.
+                        appsChanged(host);
+                    }
                 }
                 // The screen is rebuilt, or the row would keep showing the
                 // value it had before the tap.

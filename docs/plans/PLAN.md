@@ -979,3 +979,506 @@ Verified: docs only, no code changed.
 
 Verified: `:app:testDebugUnitTest`, `:app:assemblePerf`, three bench pairs
 on-device, screencap look check.
+
+## 25. Session: exhaustive edge-case pass
+
+Five parallel audits walked every file in `app/`, `files-core/` and `files/`
+against the standing rules (1 GB target, D-pad, honest UI, no background
+work, minSdk 23). ~220 findings, consolidated in `.scratch/edge-cases/plan.md`;
+every P0/P1 and every cheap P2 was fixed by five parallel fix batches on
+disjoint file sets. A few highlights per area:
+
+- **Browser** (`browser/`): `shouldOverrideUrlLoading` now keeps http/https/
+  about in place and toasts for schemes that need another app (a crafted
+  `intent:` link could crash or hijack). Blocked main frames show an honest
+  page instead of a blank. The browser can be turned *off* again from Tools.
+  BACK dismisses the IME before history. `singleTask` stops WebView stacking
+  on 1 GB. Cookies/storage join "Clear history". `AdBlock` is hardened
+  (empty-fragment `|` no longer blocks everything, hosts-style lines parse,
+  IPv6/trailing-dot match, `volatile`) and unit-tested. `http://` now only
+  reaches LAN hosts — `BrowserActivity.localOrHttps` upgrades anything public
+  to https — so `usesCleartextTraffic` left the manifest and cleartext lives
+  only in the network-security config comment.
+- **Files** (`files-core/`): paste and rename no longer race an overwrite
+  (`createNewFile` O_EXCL since `Files.newOutputStream` is API 26+); FIFOs/
+  sockets in a copied tree are skipped instead of hanging the job forever;
+  a copy stops at the first failure instead of writing the rest onto a full
+  disk; `FilesProvider` whitelists canonical paths (a symlink into another
+  app's data no longer serves); rename/new-folder I/O moved off the UI
+  thread; sheets restore focus on cancel; post-op focus lands on the deleted
+  row's neighbour; Get Info runs on its own cancellable thread; `runJob`
+  always posts completion even on Error.
+- **UI toolkit** (`ui/`): the stale `onSettled`-hides-label bug fixed in both
+  `AppTileView` and `ScreenStack` (the top screen could end INVISIBLE while
+  still eating keys); `FocusGlassView` springs the real TRANSLATION tracks so
+  scroll no longer fights an in-flight spring; `BackdropView` never decodes
+  in its constructor (callers decode off-thread, `setSoftened` hands it in);
+  `ScreensaverView` retries a failed first decode instead of idling black,
+  preloads scenes off the main thread, clamps corrupt durations; `Motion`
+  rejects NaN targets and survives settled-callbacks that start new springs;
+  `ScreenStack` page-scrolls when a screen has no focusable row instead of
+  eating every key; a generation counter stops stale pop callbacks finishing
+  repopulated stacks.
+- **Launcher core**: `Prefs` getters survive wrong stored types; the app
+  switcher builds off the main thread; overlays dismiss each other before a
+  new one opens (OK can no longer launch an invisible app); focus restores
+  inside close callbacks; editing consumes every D-pad key; RTL D-pad
+  directions invert at the call site; system apps get a real "Hide" instead
+  of a fake "Uninstall"; `PhotoLoader` can't recurse through symlink loops;
+  the wallpaper decode no longer spawns while pausing.
+- **Tools**: `Cleanup` reads enabled state correctly (DEFAULT ≠ absent) and
+  won't kill the stock launcher unless Sonora is the default home;
+  `FileServer.stop()` closes tracked client sockets, joins the accept thread
+  and resets the port — the server truly dies with its screen; `copyFolder`
+  can't follow symlink loops; `+` in filenames no longer 404s; HEAD/405
+  honest; daemon pool workers; panels guard `isDestroyed`, catch
+  `RuntimeException`, and name unnamed processes honestly.
+- Manifest: duplicate `READ_EXTERNAL_STORAGE` merged; `BrowserActivity`
+  `singleTask`; `usesCleartextTraffic` removed (config file supersedes it on
+  24+, and on 23 it was blocking the LAN-http use case outright).
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest` —
+142 tests, 0 failures, incl. new `AdBlockTest` (12), FileOps/FileLogic
+extensions, `SpringTest` clamps, RTL/locale/surrogate cases, FileServer
+symlink + `+`-decode tests. `:app:assembleDebug` + `:files:assembleDebug`
+green. `codegraph sync` clean. Not verified on the TV — every focus and
+overlay fix needs a D-pad walk before this session is called done on-device.
+
+Deliberately left: latent contract-only NPEs, per-screen RTL cosmetics, and
+the "noted, not fixed" tail of `.scratch/edge-cases/plan.md` — each with a
+reason recorded there. `ShareActivity.EXTRA_NAME` stays (intent contract).
+
+## 26. Session: edge cases, third pass
+
+Two parallel audits swept the launcher end to end again — launcher core +
+manifest on one side, tools/browser/dream on the other — with `ui/` walked
+by hand. Both prior plans were re-checked first: every pass-2 fix was found
+in place except one unfinished `ChoiceOverlay` guard that left the tree not
+compiling; the fix moved into the overlay itself, where it covers both call
+sites (rows go dead the moment `dismiss()` starts).
+
+New findings fixed this pass, worst first:
+
+- **Unhide could never come back.** `PackageActions.setHidden(pkg, false)`
+  found no launch intent while the launcher component was disabled, took
+  the whole-app branch, and read back an app state that was never off —
+  "Restored" was a lie and the tile stayed hidden forever. `setHidden` now
+  disables *every* launcher component on hide (a dual LEANBACK+LAUNCHER
+  package no longer half-hides) and re-enables every DISABLED component on
+  restore, verified with a real intent read-back. Debloat's DISABLED_USER
+  is left alone.
+- **Two hidden stores now agree.** The tile menu wrote `prefs.hidden()`;
+  the app panel switched the component, so toasts lied both ways and a
+  component-hidden app could never appear in the Unhide picker. The panel
+  toggle reads and writes both, and the picker lists the pref against
+  installed packages — then switches the component back on too.
+- **Photo source asked for nothing.** "Device photos"/"Both" set the pref
+  with no storage access while the saver quietly played bundled scenes.
+  Choosing them without access now says so and opens Sonora's app-info
+  page instead of silently claiming photos.
+- Arrange mode no longer starts during the picker's dismiss fade (the
+  arrows would have moved a tile nobody could see); `dismissChoice` takes
+  an after-runnable.
+- Wall-clock timing went monotonic (`elapsedRealtime`) for double-HOME,
+  the idle watcher and the uninstall report — a clock change can no
+  longer fake a double-press or stall the saver.
+- Raw thread starts guard `RuntimeException|OutOfMemoryError`: the app
+  loader leaves an honest empty grid, the recents loader re-arms the
+  saver instead of stranding `suppressIdle`, the wallpaper request clears
+  instead of blocking every retry.
+- `forceStop` answers "Not running" when nothing was there.
+- `ToolActivity` and `ShareActivity` are `singleTask` with `onNewIntent`
+  recreates — no more stacked settings copies.
+- The Share screen's hint is a field recomputed on restart, and
+  `FileServer.stop()` runs on a daemon thread instead of joining on the
+  UI thread.
+- `FileServer` drains request headers (an unread >8 KB of them could RST
+  the answer away on `Connection: close`) and checks the *decoded* path
+  for its trailing slash — `GET /dir%2F` is served, not redirected into a
+  double slash. A socket test pins it.
+- IPv6 scope ids (`%wlan0`) are stripped from the share URL.
+- The browser matches schemes case-insensitively and denies geolocation
+  and hardware-permission prompts out loud instead of leaving them
+  pending forever.
+- `ScreensaverView` catches the `RejectedExecutionException` between its
+  shutdown check and `execute`.
+- Favourites rebuilds off the main thread on toggle and on resume
+  (`resumedFavourites`) — a cold package scan can no longer ANR a
+  check-row tap, and stale ticks refresh after package changes.
+- `PhotoLoader.photoPaths` precomputes mtimes once per file instead of
+  statting twice per sort comparison; `AppManager.Item.icon` is volatile;
+  the dead `Scenes.hiddenFlags(Prefs, Context)` overload is removed.
+
+Verified: `:app:testDebugUnitTest` — 118 tests, 0 failures, incl. the new
+`aFolderWithAnEncodedSlashIsServed`. `:app:assembleDebug` green,
+`codegraph sync` clean. Not verified on the TV — overlay, arrange-mode
+and focus fixes still need a D-pad walk on hardware.
+
+Deliberately left: two suspected misspellings in `Cleanup.PACKAGES`
+(correcting blind could disable a real package — needs a device check),
+`screenRect` translation gaps and the `glassKey` identityHashCode edge —
+each with a reason in `.scratch/edge-cases-3/plan.md`.
+
+## 27. Session: edge cases, fourth pass — the file manager
+
+Two parallel audits went at `files-core/` — one on the copy/move/delete and
+name logic, one on the Activity, sheets and thumbnails — with the same code
+walked by hand and the manifests checked. Pass-4 fixes that would have eaten
+files or stranded keys:
+
+- **A move could delete what it never copied.** `deleteTree` re-listed the
+  source after the copy, so a file created inside it mid-move was removed
+  without a destination copy. `deleteCopied` deletes only children whose
+  counterparts provably landed.
+- **`renameTo` could take a dead link's name.** `exists()` is false for a
+  dangling link, so the fast move and `freeName` both treated the name as
+  free and POSIX rename silently replaced the link. `FileLogic.isLink` now
+  asks `Os.lstat` first — the canonical-path trick cannot see a dead link —
+  and `taken` gates every name pick. Fail-safe: an uninspectable path is
+  treated as a link, so delete/copy never walks through it.
+- **A folder could copy into itself.** A bind-mount alias slipped past the
+  lexical `isInside` guard; each copied child is now inode-compared to the
+  destination and skipped.
+- **Space checks charged every source the batch total** — two 8 GB files
+  refused onto 10 GB free. Per-source `sizeOf` now.
+- **A wedged job's completion stole focus from QuickLook** — the first
+  fullscreen pane stayed attached, keys dead, decoder thread leaked.
+  QuickLook opens on top of a closed one; job completion only refocuses
+  when nothing modal is up. Second jobs are refused out loud, and the
+  deferred New Folder sheet can no longer cancel a running job's progress.
+- **`Sheets.input` answered a queued IME action after Cancel** — closed
+  sheets no longer run their text callback.
+- **`onResume` skipped the whole refresh under a sheet**, leaving stale
+  sidebar/list until the next pause; refresh runs under sheets now, only
+  the focus restore stays gated.
+- Dead sidebar rows are gated (unmounted storage, gone favourites), a real
+  drive mounted under the internal tree is no longer hidden, FAT device
+  names (CON, COM1–9, LPT1–9) are refused, `FilesProvider.query` honors
+  its projection, and lister/thumbnail threads are daemon so a dead mount
+  cannot hold the process.
+
+Verified: `:files-core:testDebugUnitTest` — 41 tests, 0 failures, incl.
+`aMoveLeavesWhatArrivedAfterTheCopy`, `aMoveCannotTakeADanglingLinksName`
+and the reserved-name/dangling-link `FileLogic` cases. `:files` and `:app`
+assemble green, `codegraph sync` clean. Not verified on the TV — the
+cancel-window focus races need a slow USB stick on hardware.
+
+Full table, incl. the checked-and-not-bugs list, is in
+`.scratch/edge-cases-4/plan.md`.
+
+## 28. Session: edge cases, fifth pass — the file manager again
+
+The same two-agent sweep ran over `files-core/` with the pass-4 fixes as the
+prime suspects — fresh code is where fresh bugs live. It held up well; the
+new findings are mostly at the boundaries of what pass 4 added:
+
+- **The self-copy guard only looked one level deep.** Children were compared
+  to the level's `into`, so a destination nested deeper inside the source
+  through a bind-mount spelling still recursed. The copy's root is now the
+  guard, at any depth; `sameInode` uses `lstat` so a link never counts as
+  the file it points at — links keep their "skipped" abort answer.
+- **A moved copy could delete against the wrong tree.** When the dir-name
+  retry landed the copy under a different name, `deleteCopied` still got
+  the stale destination — comparing source children to a foreign dir and,
+  in the worst case, deleting files the copy never wrote. `copyTo` now
+  returns the `File` it landed as.
+- **`freeName` could spin forever** on a folder that answers "taken" to
+  every name — an unstat-able drive, no cancel path. Capped at 999;
+  creation sites re-verify, so a taken answer fails honestly.
+- **`Files.isSymbolicLink` swallows errors as "not a link"** — the one
+  answer `isLink` exists to prevent. `readAttributes(NOFOLLOW_LINKS)`
+  throws on error and falls through to the fail-safe tail.
+- **UI race leftovers of the same class as pass 4:** a long-press on a
+  stale position crashed (`entries.get` unguarded); a refused paste forgot
+  the clipboard; `complain` could stack a hidden modal over a fresh sheet;
+  a Quick Look open at recreate leaked its decoder thread; a delete job's
+  bar sat frozen at zero — `delete` now reports item counts.
+- **Small honest-UI fixes:** `con .txt`-style stems refused as device
+  names, `/Android/` cut at `lastIndexOf` for mounts literally named
+  Android, read-only-mounted storage browsable again, empty sidebar
+  sections stop printing bare headings, monotonic progress clock, focus
+  lands on "Allow Access".
+
+Verified: `:files-core:testDebugUnitTest` — 44 tests, 0 failures, incl.
+`sameInodeKnowsAFileFromALink` and the space/dot-stem reserved names.
+`:files` and `:app` assemble green, `codegraph sync` clean. Not verified
+on the TV — job/cancel windows and a mount-alias self-copy need a slow
+USB stick on hardware.
+
+Full table incl. checked-and-not-bugs is in `.scratch/edge-cases-5/plan.md`.
+
+## 29. Session: edge cases, sixth pass — the file manager once more
+
+The same two-agent sweep, with pass 5's own code as the prime suspect.
+One real data-loss path surfaced in the new retry loop; the rest are the
+modal/focus edges that keep giving.
+
+- **The dir-copy retry could merge into — then clean up — a foreign
+  folder.** The loop's fifth candidate was never `mkdirs`'d, and the
+  post-check `isDirectory()` passed on a dir that already belonged to
+  someone: children landed in it, and an abort's `deleteTree` would have
+  emptied it. Only a folder the call itself created may be filled now;
+  exhausting the retries fails honestly. Pinned by
+  `aCopyRefusesAFolderItDidNotCreate`.
+- **Every boot and recreate listed the folder twice** — `listed` only
+  existed after a show, so the first resume always queued a second
+  `listFiles` behind the first. A `requested` marker set at submit now
+  covers the in-flight window; failure still clears it so a transient
+  failure retries on resume.
+- **Files screens stacked.** `FilesActivity` and the standalone
+  `MainActivity` were `standard` — each relaunch kept another 6 MB thumb
+  cache and executor pair alive. Both are `singleTask`; extras are read
+  lazily, so `onNewIntent` just keeps the newest intent.
+- **Focus under modals, again:** the access screen's new `focusContent`
+  could fire from a resume underneath a sheet (keys to a hidden window —
+  gated now), and `complain` captured its refocus target before the
+  cancel that killed it.
+- **RTL inverted the D-pad edges** — the layout mirrors but the handlers
+  moved by logical direction. Grid edges, toolbar edge, sidebar rows and
+  the access button now follow `getLayoutDirection()`.
+- **Smaller honest-UI fixes:** a menu "Open" on a listed-away row toasts
+  instead of doing nothing; DPAD_DOWN on an incomplete last row stays
+  put; a delete's in-tree progress no longer resets the bar; Sort with
+  zero places can't NPE the lister; a zero-column provider query returns
+  an empty cursor.
+
+Verified: `:files-core:testDebugUnitTest` — 45 tests, 0 failures.
+`:files` and `:app` assemble green, `codegraph sync` clean. Not verified
+on the TV: the singleTask relaunch, RTL edges and the resume-under-sheet
+gate want a real remote.
+
+Full table incl. checked-and-not-bugs is in `.scratch/edge-cases-6/plan.md`.
+
+## 30. Session: the browser pass — two agents over browser/
+
+The pass `.scratch/browser-pass/spec.md` asked for, run as two agents with
+disjoint files: one on `BrowserActivity` and its new test, one on
+`AdBlock`, the bookmark prefs and the list parser. Most findings were
+D-pad and URL-parsing edges; two were security-adjacent.
+
+- **The WebView was a D-pad trap.** It eats every UP/DOWN it can scroll
+  with, so on any page taller than the screen the Back/Forward/Menu bar
+  was unreachable and the address bar needed a full scroll to the top.
+  At a scroll edge the key now escapes: DOWN at the bottom lands on the
+  bar, UP at the top lands on the address field.
+- **BACK from the address bar could close the browser.** `go()` leaves
+  the EditText focused, and the old `typing()` test (IME isActive) read
+  false once the keyboard hid — one BACK pressed `finish()` under a
+  focused address bar. BACK there now hides the keyboard and hands the
+  page the focus; it never exits.
+- **A blocked main frame cost two BACKs.** The blocked page was posted in
+  as `loadDataWithBaseURL`, a second entry on top of the intercepted nav.
+  It is now served as the `WebResourceResponse` for the blocked request
+  itself: one history entry, one BACK, and the address bar keeps the
+  real blocked URL.
+- **`localOrHttps` trusted lookalikes.** An `@` in the query could fake
+  userinfo (`http://evil.com?@127.0.0.1`), `localhost.` was upgraded to
+  https, and a bare integer IP literal passed as a "LAN name". The
+  authority is now cut at `?`/`#` before `@`, one trailing dot is
+  stripped, and a bare all-digit host is not trusted. `normalise` also
+  canonicalises `HTTP://` casing and the `localhost.`/`localhost/` forms.
+- **`AdBlock` silently corrupt-parsed.** A hosts line ending in a
+  comment registered the comment word as a host; `||` rules became the
+  never-matching fragment `"|domain"`; `!` comment lines became hosts.
+  `;`/`#` inline comments are stripped, `!` lines skipped, `||x` now
+  anchors on host `x` the way a hosts entry does.
+- **`isBlocked` ran on non-web URLs** — fragment rules could match inside
+  `data:`/`file:`/`about:` URLs, including the blocker's own blocked
+  page. Only `http://`/`https://` is checked now, and `hostOf` picks the
+  earliest `?`/`#` and the last `@` (a query `@` no longer leaks in).
+- **Honest-UI fixes:** "Clear history" wiped cookies and DOM storage too,
+  so it now reads "Clear history and site data"; bookmarks could never
+  be removed — choosing one offers Open/Delete; `setAllowContentAccess`
+  is off (matching the file-access rule above it); a `restoreState`
+  throw no longer claims the TV has no web engine, and the address bar
+  is synced after a restore that fires no `onPageFinished`; `onNewIntent`
+  no longer focuses a detached address view in the no-WebView state.
+- **Turning the browser off left it running.** The flag was only read at
+  launch, so a switched-off browser stayed alive behind the panels.
+  "Turn off" now starts it once — its `onNewIntent` reads the off pref
+  and finishes.
+
+Verified: `:app:testDebugUnitTest` — all green, incl. 25 `AdBlockTest`
+and 11 new `BrowserActivityTest` cases. `codegraph sync` clean. Not
+verified on the TV: `canScrollVertically` semantics vary across WebView
+builds, so the D-pad escape and the singleTask relaunch want a real
+remote.
+
+## 31. Session: browser pass, second sweep — the new code as suspect
+
+Same two-agent split over `browser/`, this time auditing pass 1's own
+diff first. Pass 1's hardening had real holes; so did the platform's
+assumptions around it.
+
+- **`localOrHttps` still trusted lookalike literals.** `0x8080808`
+  (hex for 8.8.8.8) slipped through the all-digits check, `192.168.1.256`
+  matched the dotted-quad regex before its octets were read, and
+  `http://user@` left an empty "host" that counted as a LAN name. All
+  three now fail to remote — octets are parsed, `0x` and the empty host
+  are rejected.
+- **A killed renderer killed the app.** `onRenderProcessGone` defaulting
+  to false means the whole process dies with the web engine — a likely
+  event on the 1 GB target. The browser now releases the WebView, says
+  so, and closes instead of crashing.
+- **The on-screen keyboard opened at launch** — the first-focusable
+  EditText grabbed the initial focus and Gboard covered the page. The
+  WebView now holds the focus until the user moves to the bar.
+- **System bars stayed visible after a dialog or the keyboard** — the
+  home screen's `onWindowFocusChanged`/`onResume` immersive re-apply was
+  missing here. Added, matching HomeActivity.
+- **Dead buttons lied.** Back and Forward silently did nothing at the
+  ends of history; they now say "Nothing to go back/forward to". "Clear
+  history and site data" now also clears the HTTP disk cache, which the
+  renamed label had promised.
+- **A restored start page wrote `about:blank` into the address bar** —
+  pass 1's manual sync missed the `about:`/`data:` guard `onPageFinished`
+  has.
+- **`AdBlock` dropped and dead entries.** `||ads.com:8080` stored the
+  port in the name and could never match; `||` rules now drop ports,
+  brackets, queries and trailing dots the way `hostOf` reads a request.
+  A hosts line naming several hosts (`0.0.0.0 a.com b.com`) kept only the
+  last; every name after the address is added now. A `|` fragment ending
+  in whitespace stored a dead fragment.
+- **`onNewIntent`'s data branch was dead code** — the activity is not
+  exported and `start()` never attaches a Uri. Removed.
+
+Checked and refuted: the bookmarks list is not stale after a delete
+(non-choice dialogs dismiss on click); the inline `WebResourceResponse`
+blocked page fires a normal finished load with the real URL and no error
+race; no path leaves a switched-off browser alive.
+
+Verified: `:app:testDebugUnitTest` — all green (33 `AdBlockTest`,
+13 `BrowserActivityTest`, 10 `EdgeCasesTest`). `codegraph sync` clean.
+Still TV-only: the UP/DOWN escape inside page text fields, the blocked
+page on the real WebView build, the renderer-kill toast, and BACK counts.
+
+## 32. Session: edge cases, seventh pass — two agents over the launcher itself
+
+Two parallel audits walked `HomeActivity`, the `ui/` toolkit and `tools/`
+against the standing rules, with the dream service and the manifest in
+scope. ~18 findings, consolidated; every reachable one was fixed, each a
+few lines:
+
+- **"On tap" screensaver clock was dead in-app.** `showInfoOverlay()` was
+  wired in the dream service but the launcher's own saver mapped OK to
+  "hide", so the mode could never show its clock there. OK now shows the
+  overlay in "On tap" mode and wakes on the second press; "Always"/"Never"
+  are untouched.
+- **A ghost tile after a system-side uninstall.** The "App info" handoff
+  (tile menu and the app manager's detail page) is the one package event
+  the app starts itself; it now bumps the apps epoch, so the grid rebuilds
+  on the way back instead of toasting "Could not open" on a dead tile.
+- **Unhide no longer re-enables what an app ships off.** `setHidden`
+  restore re-enabled every DISABLED activity in the package, including
+  entry points the app declares `android:enabled="false"` — an extra icon
+  in every launcher. It restores only launcher components now, and
+  DEFAULT over a manifest-disabled component changes nothing.
+- **HOME did not count as interaction.** `onHomeSignal` never touched
+  `lastInteraction`, so the saver could fire a second after a HOME press
+  on an idle screen. It defers like any other key.
+- **A BACK could not cancel a pending app switcher.** `switcherGeneration`
+  was only bumped on open; a double-HOME that was still loading its
+  recents now gets dropped when BACK lands first.
+- **`suppressIdle` ordering.** `showAppMenu` armed it before
+  `showOverlay`'s own dismisses recomputed the flag — the only opener in
+  that order — and every opener set it before the overlay constructor
+  could throw. It is set after the overlay exists in all four.
+- **The app manager's "Hide" toggle was dead on retail.** It needed a
+  privileged permission the tile menu does not; a refused hide now falls
+  back to Sonora's own hidden list with an honest toast, so the row keeps
+  meaning what it says.
+- **A pin could OOM the launcher.** `applyOrder()` ran `AppOrdering` and
+  `buildGrid` on the UI thread unguarded while `loadApps` wraps the same
+  work; same catch now, and a failed pin leaves the grid it had.
+- **Monotonic clocks where the work was already converted.** The saver's
+  scene/fade/retry timing moved to `elapsedRealtime` (an NTP sync while
+  the dream runs fast-forwarded through scenes), the app manager's 30 s
+  cache TTL with it; the minute the overlay clock displays still comes
+  from the wall clock it shows.
+- **Smaller fixes.** `layoutRows` reads the focused row before reparenting
+  clears it (a one-frame close→open on every rebuild is gone); `moveFocus`
+  ignores D-pad while an overlay or the saver covers the grid; deferred
+  "Move" no longer arms arrange mode under an overlay that opened during
+  the picker fade; `SceneChoice.next` tolerates a null/out-of-range index;
+  `SearchKeys.move` answers -1 for an empty keyboard; `Ui.decodeScene`
+  gained the bounds guard both `decodeUri` branches carry; HEIC photos are
+  skipped below API 28 where `BitmapFactory` cannot read them; `ToolActivity`
+  and `ShareActivity` got the `onConfigurationChanged` → `recreate()` their
+  manifest entries always promised.
+
+Checked and left, with reasons: no `PACKAGE_*` receiver (the "no receivers"
+rule stands; external staleness stays a "Reload apps" away); a stored
+column count below the readability floor stays honored (the user picked
+it); `SearchOverlay.onClosed` and `AppManager.get()` are dead code that
+predates this pass, left alone per the same rule.
+
+Verified: `:app:testDebugUnitTest` — 13 classes, all green, incl. new
+`SceneChoice`/`SearchKeys` bounds cases. `:app:assembleDebug` green.
+`codegraph sync` clean. Not verified on the TV: the OK-shows-overlay
+saver path, the ghost-tile rebuild and the fade-window guards want a real
+remote and a D-pad.
+## 33. Session: browser UI pass — the optional browser joins the house look
+
+`browser/BrowserActivity` had its own colours, its own buttons and platform
+AlertDialogs; it now draws the same way as every other screen.
+
+- `Theme.load(this)` runs in `onCreate`, and every hardcoded colour is a
+  `Theme` value: `Theme.panel()[1]` behind everything (root, WebView,
+  no-engine screen), `ink()`/`inkSoft()`/`inkTertiary()` for text. The
+  light appearance works.
+- The bar buttons are the house pattern from `ChoiceOverlay.addOption`: a
+  `PressRow` (1.05 focus scale) with a `RowDrawable`, a HEADING label whose
+  ink springs `inkSoft()` → `INK_ON_FOCUS`, 8dp elevation on focus only.
+  Buttons sit 12dp apart; Go gets a 12dp start margin.
+- The address bar is a `RowDrawable` too: focused it lights instantly (no
+  spring) and swaps ink and hint colours for the on-focus pair. BODY text,
+  CAPTION status line in `inkTertiary()`.
+- Every AlertDialog is a `ChoiceOverlay` now (menu, bookmarks, the
+  open/delete follow-up). `choose`/`dismissChoice` host it over the root;
+  picking runs the action after the dismiss slide, BACK cancels to the
+  Menu button. An empty bookmark list is a toast, not a dialog; "About"
+  is a long toast.
+- Bars pad 48dp in and 27dp at the screen edges so controls clear the
+  overscan-safe area; the WebView stays edge-to-edge.
+- `START_PAGE`/`BLOCKED_PAGE` became `page(title, bodyHtml, light)`: themed
+  start/blocked HTML with pill links that turn white on `:focus` for the
+  D-pad, 8vh 48px padding, 38px/500 titles. Titles are HTML-escaped.
+
+Verified: `BrowserActivityTest` — 15 tests, all green, incl. two new
+`page()` cases (dark vs light background, title escaping, `a:focus`).
+`:app:assembleDebug` green. `codegraph sync` clean.
+Not verified on screen: no usable emulator — TCG boots of both the API-36
+and API-33 TV images stall in early framework init (no KVM on this box),
+so the layout, focus visuals and overlay behaviour want eyes on a real
+TV.
+## 34. Session: the browser is cut — the product is the launcher and the file manager
+
+The owner decided the optional browser does not ship. `browser/` is gone
+from `app/` entirely; what remains is the launcher plus the bundled Files
+app.
+
+- Deleted: `app/.../browser/` (`BrowserActivity`, `AdBlock`), its test
+  package (`BrowserActivityTest`, `AdBlockTest`, `adlist.txt`),
+  `res/raw/adlist.txt`, `res/xml/network_security_config.xml` (cleartext
+  existed for typed http:// LAN pages in the browser; nothing else needs
+  it), and the stale `browser/` + `browser-core/` build dirs at the root
+  left over from an old module layout.
+- Manifest: the `BrowserActivity` entry and the `networkSecurityConfig`
+  attribute removed. INTERNET stays — the LAN share cannot open a socket
+  without it — and the comment now says that.
+- `Prefs` lost `browserEnabled`, `browserAdBlock` and the bookmark
+  accessors. Stored `browser*` values on existing installs are ignored,
+  not migrated.
+- Tools: the Browser row and its Settings-index detail are gone; the
+  category reads "Files and info about this TV."
+- `about_text`, `proguard-rules.pro`, README, AGENTS, ARCHITECTURE and
+  SETUP-GUIDE updated to match. `.scratch/browser-pass/spec.md` marked
+  `wontfix`, kept as the record of the passes done. `scripts/tv.sh`'s
+  SONORA_TV default moved to 192.168.68.107 — .104 stopped answering.
+- Dead code removed by this change: `EdgeCasesTest`'s five browser cases.
+
+Verified: `:app:testDebugUnitTest` and `:app:assemblePerf` green;
+`codegraph sync` clean; `scripts/deploy.sh all` installed launcher and
+Files on the MiTV (192.168.68.107) and left it on the home screen.
+Not verified on the TV: the Tools screen and the Settings index want
+eyes — the Browser row should simply be absent.

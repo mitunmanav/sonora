@@ -6,6 +6,7 @@
         <activity
             android:name="com.mitun.files.FilesActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|density"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:exported="false"
             android:screenOrientation="landscape"

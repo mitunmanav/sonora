@@ -241,7 +241,9 @@ public final class PhotoLoader {
         String name = file.getName().toLowerCase(Locale.ROOT);
         for (String ext : SUPPORTED) {
             if (name.endsWith(ext)) {
-                return true;
+                // BitmapFactory cannot read HEIF before API 28; a photo that
+                // never decodes only buys the saver a beat of black.
+                return Build.VERSION.SDK_INT >= 28 || !(".heic".equals(ext) || ".heif".equals(ext));
             }
         }
         return false;

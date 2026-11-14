@@ -32,7 +32,7 @@ CodeGraph does not return: string literals, resources, files with no symbols.
 - **Zero dependencies.** Platform APIs only, which is why `ui/Spring.java` solves the spring by hand.
 - **No background work.** No Service except the DreamService, no receivers, no alarms. Timers
   stop when their window is hidden. The LAN server dies with its screen.
-- **No network** unless the browser or the transfer client is switched on. No analytics, ever.
+- **No network** unless the transfer client is switched on. No analytics, ever.
 - **`minSdk 23`.** Check the API level of anything new.
 - **Pure logic lives outside the Activity** and is unit-tested.
 - **Say what a device cannot do** in the UI. Never ship a fake feature.

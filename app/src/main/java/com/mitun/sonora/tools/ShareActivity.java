@@ -166,6 +166,15 @@ public final class ShareActivity extends Activity {
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // The screen baked its metrics when it was built; a resize or a
+        // density change starts it over, which restarts the server on a new
+        // port and shows the new address.
+        recreate();
+    }
+
+    @Override
     protected void onStart() {
         super.onStart();
         stopStarted = false;
