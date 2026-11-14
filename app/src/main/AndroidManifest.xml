@@ -19,6 +19,10 @@
     <!-- Reads the state of the network so the quick settings can say whether
          the TV is online. It cannot send anything anywhere. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Load photos from device storage for the screensaver. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- Only ever used by the optional browser, and only once it is switched on. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

@@ -14,6 +14,7 @@ import android.widget.FrameLayout;
 
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.Prefs;
+import com.mitun.sonora.PhotoLoader;
 import com.mitun.sonora.SceneChoice;
 import com.mitun.sonora.Scenes;
 
@@ -168,10 +169,13 @@ public final class ScreensaverView extends FrameLayout {
             if (!show || sceneIndex < 0) {
                 return;
             }
-            Scenes.Scene scene = Scenes.ALL.get(Math.max(0, sceneIndex));
+            java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+            Scenes.Scene scene = all.get(Math.max(0, Math.min(all.size() - 1, sceneIndex)));
             float density = getResources().getDisplayMetrics().density;
             canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
-            canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
+            if (scene.credit != null) {
+                canvas.drawText(scene.credit, 48 * density, h - 26 * density, creditPaint);
+            }
         }
     }
 
@@ -210,7 +214,7 @@ public final class ScreensaverView extends FrameLayout {
         // meant to stop, so the stills hold still and only cross-fade.
         reduced = Motion.isReduced(context);
         tier = DeviceTier.get(context);
-        hidden = Scenes.hiddenFlags(new Prefs(context));
+        hidden = Scenes.hiddenFlags(new Prefs(context), context);
         sceneA = new SceneView(context);
         sceneB = new SceneView(context);
         overlay = new OverlayView(context);
@@ -343,18 +347,27 @@ public final class ScreensaverView extends FrameLayout {
     }
 
     private Bitmap load(int index) {
-        Scenes.Scene scene = Scenes.ALL.get(index);
+        java.util.List<Scenes.Scene> all = Scenes.all(getContext());
+        if (index < 0 || index >= all.size()) {
+            return null;
+        }
+        Scenes.Scene scene = all.get(index);
         int divisor = DeviceTier.wallpaperDivisor(tier);
         int width = getResources().getDisplayMetrics().widthPixels / divisor;
         int height = getResources().getDisplayMetrics().heightPixels / divisor;
         try {
-            return Ui.decodeScene(getResources(), scene.res, width, height,
-                    tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
+            if (scene.res != null) {
+                return Ui.decodeScene(getResources(), scene.res, width, height,
+                        tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
+            } else if (scene.path != null) {
+                return PhotoLoader.decode(scene.path, width, height);
+            }
         } catch (RuntimeException | OutOfMemoryError e) {
             // A TV with little memory can refuse the decode. The saver says so
             // rather than taking the whole app down with it.
             return null;
         }
+        return null;
     }
 
     private final Runnable tick = new Runnable() {
