@@ -93,6 +93,24 @@ public final class Prefs {
         sp.edit().putBoolean("reduce_motion", value).apply();
     }
 
+    /** The light appearance for Settings, Search and Control Center. Dark by default. */
+    public boolean lightAppearance() {
+        return sp.getBoolean("light", false);
+    }
+
+    public void setLightAppearance(boolean value) {
+        sp.edit().putBoolean("light", value).apply();
+    }
+
+    /** The tier chosen in Settings, or {@link DeviceTier#AUTO} to decide from the RAM. */
+    public int performance() {
+        return sp.getInt("performance", DeviceTier.AUTO);
+    }
+
+    public void setPerformance(int tier) {
+        sp.edit().putInt("performance", tier).apply();
+    }
+
     /**
      * The remote's search key opens Sonora's own search.
      *
@@ -186,6 +204,15 @@ public final class Prefs {
 
     public void setScreensaverClock(int value) {
         sp.edit().putInt("ss_clock", Math.max(0, Math.min(2, value))).apply();
+    }
+
+    /** The aerials left out of the screen saver, by name. */
+    public List<String> hiddenScenes() {
+        return lines(sp.getString("ss_hidden", ""));
+    }
+
+    public void setHiddenScenes(List<String> names) {
+        sp.edit().putString("ss_hidden", join(names)).apply();
     }
 
     /** The apps the user pinned, in the order they pinned them. */

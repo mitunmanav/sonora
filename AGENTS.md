@@ -1,70 +1,70 @@
-# Sonora — working rules
+# Sonora: working rules
 
-## Always explore with CodeGraph first
+`CLAUDE.md` is a symlink to this file. Edit this one.
 
-Before you read, grep or edit anything in this project, **explore it with the
-CodeGraph MCP**. One call returns the verbatim source of the symbols you name,
-the call paths between them, and a blast-radius list of everything that depends
-on them — the three things grep cannot give you.
+## Layout
 
-```
-codegraph_explore({
-  projectPath: "/home/mitun/aerial",
-  query: "HomeActivity buildGrid moveFocus AppOrdering order"
-})
-```
+- `app/`: the launcher. Pure logic at the package root, views in `ui/`, screens in `tools/`.
+- `files/`: the standalone Files app. A thin shell around `files-core/`.
+- `files-core/`: the file manager itself, bundled into both apps.
+- `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only.
+- `docs/`: `research/`, `handoffs/` (latest state), `plans/`, `perf/`, `agents/`.
+- `reference/`: vendor APKs for study. Git-ignored.
 
-Shell fallback (same output):
+## Explore with CodeGraph first
+
+Before you read, grep or edit in this project, run CodeGraph. It returns the source of the
+symbols you name, the call paths between them, and the blast radius.
 
 ```bash
 codegraph explore "HomeActivity buildGrid moveFocus"
+codegraph sync /home/mitun/aerial   # after each batch of edits, before you read again
 ```
 
-Rules:
+The `codegraph_explore` MCP tool gives the same output. Check the blast radius before
+changing a shared symbol such as `Prefs`, `Motion`, `ScreenStack` or `Theme`. Use grep for what
+CodeGraph does not return: string literals, resources, files with no symbols.
 
-- **Ask CodeGraph before you touch a file.** Do not guess how a file connects
-  to the rest of the app; ask, and read the source it returns.
-- **Check the blast radius** it prints before you change a shared symbol.
-  `Prefs` has 32 callers, `Motion` has 13, `ScreenStack` has 4 — a change to
-  any of them is a change to every one of those call sites.
-- **Use grep only for what CodeGraph did not return** (string literals in
-  resources, files with no symbols).
-- **Re-index after every major change, before you read again.** A graph that
-  is behind the code will happily show you the old shape of the app, and you
-  will then "fix" something that was already changed:
+## Rules the code keeps
 
-  ```bash
-  codegraph sync /home/mitun/aerial   # after each change
-  codegraph index /home/mitun/aerial  # full rebuild, when sync is not enough
-  ```
-
-  Run it right after a batch of edits, then explore again. Never read a file
-  from memory of an earlier call: read it again from the fresh graph.
-
-## The rules the code has to keep
-
-- **Zero dependencies.** No AndroidX, no Compose, no third-party libraries.
-  Platform APIs only. That is why `ui/Spring.java` solves the spring by hand.
-- **No background work.** No Service except the DreamService, no receivers, no
-  alarms, no WorkManager. The LAN server runs on a thread inside a visible
-  screen and dies with it.
-- **No network** unless the browser or the transfer client is switched on.
-  No analytics, no ads, no trackers, ever.
-- **`minSdk 23`.** Never raise it.
-- **Pure logic lives outside the Activity** and is unit-tested: `Grid`,
-  `AppOrdering`, `AppSearch`, `BackPolicy`, `ui/Spring`.
+- **Zero dependencies.** Platform APIs only, which is why `ui/Spring.java` solves the spring by hand.
+- **No background work.** No Service except the DreamService, no receivers, no alarms. Timers
+  stop when their window is hidden. The LAN server dies with its screen.
+- **No network** unless the browser or the transfer client is switched on. No analytics, ever.
+- **`minSdk 23`.** Check the API level of anything new.
+- **Pure logic lives outside the Activity** and is unit-tested.
 - **Say what a device cannot do** in the UI. Never ship a fake feature.
+- **No Apple assets.** Measure and imitate behaviour; draw every mark ourselves.
+
+## Performance: 1 GB first
+
+The design target is a 1 GB TV. `DeviceTier` picks LOW, MID or HIGH from the RAM, and each
+costly effect asks it. A new effect has a LOW answer before it ships.
+
+- Animate RenderNode properties (scale, alpha, translation): they skip the redraw.
+- A focus change redraws at most the two cards involved.
+- `clipPath`, a `saveLayer` from alpha on overlapping content, and elevation at rest are the
+  costs that have hurt here. Round with a `BitmapShader` on `drawRoundRect`.
+- Decode and bake on a background thread. Nothing screen-sized on the main thread.
+- Hidden means released: see `HomeActivity.onTrimMemory`.
+
+Measure the `perf` build with `scripts/perf.sh`. A debug build runs uncompiled and misleads.
+Record results in `docs/perf/`.
+
+## Working with the TV
+
+The owner is often using the TV, and OK on the wrong tile opens their app. `scripts/tv.sh` provides
+`tv`, `keys` and `lit`. `keys` sends only while the app named by `APP` has the focus. Reach screens
+through Control Center, where a miscount cannot open an app, and check `lit` before any OK: the grid
+order changes whenever an app is installed. Leave the TV on Sonora's home screen when you finish.
+
+## Theme
+
+Colours come from `ui/Theme`, in both dark and light. A focused surface is white with dark ink
+in both. The home screen wallpaper stays as it is in both.
 
 ## Agent skills
 
-### Issue tracker
-
-Issues and specs are local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five canonical roles use their default strings, recorded as `Status:` lines. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+- **Issues and specs**: markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+- **Triage labels**: the default strings, as `Status:` lines. See `docs/agents/triage-labels.md`.
+- **Domain docs**: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.

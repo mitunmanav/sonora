@@ -11,6 +11,9 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.view.View;
 
+import com.mitun.sonora.DeviceTier;
+import com.mitun.sonora.Prefs;
+import com.mitun.sonora.SceneChoice;
 import com.mitun.sonora.Scenes;
 
 import java.util.concurrent.ExecutorService;
@@ -23,6 +26,8 @@ import java.util.concurrent.Executors;
  */
 public final class ScreensaverView extends View {
     private static final long FRAME_MS = 33; // ~30fps is plenty for a slow drift.
+    /** The lightest tier draws a little less often, since the drift hardly shows it. */
+    private static final long FRAME_MS_LOW = 50;
 
     public interface Listener {
         void onSceneChanged(int index);
@@ -57,12 +62,17 @@ public final class ScreensaverView extends View {
     private float panDirection = 1f;
     private Listener listener;
     private final boolean reduced;
+    private final int tier;
+    /** The aerials the user left out in Choose Aerials. */
+    private final boolean[] hidden;
 
     public ScreensaverView(Context context) {
         super(context);
         // A full-screen drifting background is exactly what reduced motion is
         // meant to stop, so the stills hold still and only cross-fade.
         reduced = Motion.isReduced(context);
+        tier = DeviceTier.get(context);
+        hidden = Scenes.hiddenFlags(new Prefs(context));
         Type.apply(titlePaint, Type.DISPLAY, context);
         Type.apply(creditPaint, Type.BODY, context);
         setFocusable(true);
@@ -117,11 +127,13 @@ public final class ScreensaverView extends View {
      * @param step 1 for the next scene, -1 for the one before this one.
      */
     private void showNextScene(int step) {
-        int count = Scenes.ALL.size();
-        if (count == 0 || loadingNext) {
+        if (loadingNext) {
             return;
         }
-        final int targetIndex = wrap(currentIndex + step, count);
+        final int targetIndex = SceneChoice.next(currentIndex, step, hidden);
+        if (targetIndex < 0) {
+            return;
+        }
         final float direction = step < 0 ? -1f : 1f;
         loadingNext = true;
         decodeExecutor.execute(() -> {
@@ -164,10 +176,12 @@ public final class ScreensaverView extends View {
 
     private Bitmap load(int index) {
         Scenes.Scene scene = Scenes.ALL.get(index);
-        int width = Math.max(1280, getResources().getDisplayMetrics().widthPixels);
-        int height = Math.max(720, getResources().getDisplayMetrics().heightPixels);
+        int divisor = DeviceTier.wallpaperDivisor(tier);
+        int width = getResources().getDisplayMetrics().widthPixels / divisor;
+        int height = getResources().getDisplayMetrics().heightPixels / divisor;
         try {
-            return Ui.decodeScene(getResources(), scene.res, width, height);
+            return Ui.decodeScene(getResources(), scene.res, width, height,
+                    tier == DeviceTier.LOW ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888);
         } catch (RuntimeException | OutOfMemoryError e) {
             // A TV with little memory can refuse the decode. The saver says so
             // rather than taking the whole app down with it.
@@ -212,14 +226,17 @@ public final class ScreensaverView extends View {
             if (elapsed > sceneDurationMs && next == null && !loadingNext) {
                 showNextScene(1);
             }
-            postInvalidateDelayed(FRAME_MS);
+            postInvalidateDelayed(tier == DeviceTier.LOW ? FRAME_MS_LOW : FRAME_MS);
         }
     }
 
     private void drawScene(Canvas canvas, Bitmap bitmap, float t) {
-        float scale = reduced ? 1.04f : 1.04f + 0.06f * t;
-        float dx = (bitmap.getWidth() - getWidth() * scale) * (0.5f + 0.5f * panDirection * t);
-        float dy = (bitmap.getHeight() - getHeight() * scale) * 0.5f;
+        // Fills the screen whatever size the scene was decoded at.
+        float fit = Math.max(getWidth() / (float) bitmap.getWidth(),
+                getHeight() / (float) bitmap.getHeight());
+        float scale = fit * (reduced ? 1.04f : 1.04f + 0.06f * t);
+        float dx = (getWidth() - bitmap.getWidth() * scale) * (0.5f + 0.5f * panDirection * t);
+        float dy = (getHeight() - bitmap.getHeight() * scale) * 0.5f;
         matrix.reset();
         matrix.postScale(scale, scale);
         matrix.postTranslate(dx, dy);

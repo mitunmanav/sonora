@@ -3,6 +3,7 @@ package com.mitun.sonora.ui;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -10,6 +11,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.mitun.sonora.R;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +36,9 @@ public final class ScreenStack extends FrameLayout {
 
         /** A screen was pushed. */
         void onPushed();
+
+        /** A different screen is now on top, so what stands beside it can follow. */
+        void onTopChanged(String title);
     }
 
     private static final class Screen {
@@ -43,6 +49,10 @@ public final class ScreenStack extends FrameLayout {
         View view;
         LinearLayout list;
         ScrollView scroller;
+        /** Drawn without the standard list chrome, e.g. the settings index. */
+        boolean fullBleed;
+        /** The tvOS settings layout: title above, list on the right. */
+        boolean split;
         /** The row that opened the screen above this one, so BACK returns to it. */
         View returnFocus;
 
@@ -52,13 +62,22 @@ public final class ScreenStack extends FrameLayout {
         }
     }
 
+    /** Measured from tvOS 26 Settings. */
+    public static final float PAGE_TITLE_SP = 31f;
+    public static final int PAGE_TITLE_TOP_DP = 24;
+    public static final float PAGE_LIST_TOP = 0.175f;
+    private static final float PAGE_NOTE_TOP = 0.76f;
+
     private final List<Screen> stack = new ArrayList<>();
     private final Listener listener;
 
     public ScreenStack(Context context, Listener listener) {
         super(context);
         this.listener = listener;
-        setBackgroundColor(0xF0000000);
+        // The activity draws the blurred wallpaper and the settings mark
+        // behind this stack; only the screens that want a plain surface
+        // paint over them.
+        setBackgroundColor(Color.TRANSPARENT);
     }
 
     public boolean isEmpty() {
@@ -78,10 +97,21 @@ public final class ScreenStack extends FrameLayout {
 
     /** Replaces the stack with a screen whose content has its own layout. */
     public void showContent(String title, String subtitle, View content) {
+        showContent(title, subtitle, content, false);
+    }
+
+    /**
+     * Replaces the stack with a screen whose content has its own layout.
+     *
+     * @param fullBleed true when the content draws the whole screen itself and
+     *                  needs neither the standard padding nor a title
+     */
+    public void showContent(String title, String subtitle, View content, boolean fullBleed) {
         stack.clear();
         removeAllViews();
         Screen screen = new Screen(title, subtitle);
         screen.custom = content;
+        screen.fullBleed = fullBleed;
         add(screen);
     }
 
@@ -100,15 +130,33 @@ public final class ScreenStack extends FrameLayout {
 
     /** Adds a screen on top of the current one. */
     public void push(String title, String subtitle, List<SettingRow> rows) {
+        push(title, subtitle, rows, false);
+    }
+
+    private void push(String title, String subtitle, List<SettingRow> rows, boolean split) {
         Screen screen = new Screen(title, subtitle);
+        screen.split = split;
         screen.rows.addAll(rows);
         add(screen);
+    }
+
+    /** A tvOS settings page: the same list, in the split layout. */
+    public void pushSettings(String title, List<SettingRow> rows) {
+        push(title, null, rows, true);
     }
 
     /** Adds a screen whose content is a view of its own, such as a list. */
     public void pushContent(String title, String subtitle, View content) {
         Screen screen = new Screen(title, subtitle);
         screen.custom = content;
+        add(screen);
+    }
+
+    /** Adds a screen that lays out the whole page itself, title included. */
+    public void pushFullBleed(String title, View content) {
+        Screen screen = new Screen(title, null);
+        screen.custom = content;
+        screen.fullBleed = true;
         add(screen);
     }
 
@@ -121,6 +169,15 @@ public final class ScreenStack extends FrameLayout {
      * feel like it is fighting the user.
      */
     public void refresh(String title, String subtitle, List<SettingRow> rows) {
+        refresh(title, subtitle, rows, false);
+    }
+
+    /** Rebuilds a tvOS settings page with the values it now shows. */
+    public void refreshSettings(String title, List<SettingRow> rows) {
+        refresh(title, null, rows, true);
+    }
+
+    private void refresh(String title, String subtitle, List<SettingRow> rows, boolean split) {
         if (stack.isEmpty()) {
             return;
         }
@@ -139,6 +196,7 @@ public final class ScreenStack extends FrameLayout {
         }
         removeView(old.view);
         Screen screen = new Screen(title, subtitle);
+        screen.split = split;
         screen.rows.addAll(rows);
         screen.view = buildScreen(screen);
         addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -158,6 +216,11 @@ public final class ScreenStack extends FrameLayout {
 
     /** Rebuilds the top custom screen while leaving the screens beneath it intact. */
     public void refreshContent(String title, String subtitle, View content) {
+        refreshContent(title, subtitle, content, false);
+    }
+
+    /** As above, for custom content that draws the whole screen itself. */
+    public void refreshContent(String title, String subtitle, View content, boolean fullBleed) {
         if (stack.isEmpty()) {
             return;
         }
@@ -166,6 +229,7 @@ public final class ScreenStack extends FrameLayout {
         removeView(old.view);
         Screen screen = new Screen(title, subtitle);
         screen.custom = content;
+        screen.fullBleed = fullBleed;
         screen.view = buildScreen(screen);
         addView(screen.view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         stack.add(index, screen);
@@ -178,6 +242,12 @@ public final class ScreenStack extends FrameLayout {
      * opened from it changes the values it shows.
      */
     public boolean refreshContentBelow(String title, String subtitle, View content) {
+        return refreshContentBelow(title, subtitle, content, false);
+    }
+
+    /** As above, for custom content that draws the whole screen itself. */
+    public boolean refreshContentBelow(String title, String subtitle, View content,
+                                       boolean fullBleed) {
         if (stack.size() < 2) {
             return false;
         }
@@ -186,9 +256,18 @@ public final class ScreenStack extends FrameLayout {
         removeView(old.view);
         Screen screen = new Screen(title, subtitle);
         screen.custom = content;
+        screen.fullBleed = fullBleed;
         screen.view = buildScreen(screen);
-        // The screen it replaces had stepped back for the page above it.
-        screen.view.setTranslationX(-getWidth() * 0.22f);
+        Screen top = stack.get(stack.size() - 1);
+        if (isSettings(screen) && isSettings(top)) {
+            // The page above is transparent; the page under it has already
+            // stepped out of sight and comes back on the way down.
+            screen.view.setAlpha(0f);
+            screen.view.setVisibility(View.INVISIBLE);
+        } else {
+            // The screen it replaces had stepped back for the page above it.
+            screen.view.setTranslationX(-getWidth() * 0.22f);
+        }
         addView(screen.view, index, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         stack.set(index, screen);
@@ -232,7 +311,20 @@ public final class ScreenStack extends FrameLayout {
             });
         } else {
             final Screen under = stack.get(stack.size() - 1);
+            if (listener != null) {
+                listener.onTopChanged(under.title);
+            }
             Motion.translateX(under.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_MOVE);
+            if (bothSettings(screen, under)) {
+                // The settings pages share the wallpaper and the mark behind
+                // them, so one has to give up its place on the way back in.
+                under.view.setVisibility(View.VISIBLE);
+                under.view.setAlpha(0f);
+                Motion.spring(under.view, Motion.ALPHA, 1f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_MOVE);
+                Motion.spring(screen.view, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_MOVE);
+            }
             // The focus went with the screen that was popped, so the screen
             // underneath is left with nothing focused and the D-pad goes
             // nowhere. It gets the focus back as it comes in.
@@ -335,6 +427,7 @@ public final class ScreenStack extends FrameLayout {
         }
         if (listener != null) {
             listener.onPushed();
+            listener.onTopChanged(screen.title);
         }
     }
 
@@ -353,15 +446,37 @@ public final class ScreenStack extends FrameLayout {
     private void slideIn(Screen incoming, Screen outgoing) {
         int width = getWidth();
         if (width <= 0) {
+            // Built before the first layout, so there is nothing to animate. The page
+            // underneath still has to step aside, or the two would show together.
             incoming.view.setTranslationX(0f);
+            if (outgoing != null && bothSettings(incoming, outgoing)) {
+                outgoing.view.setAlpha(0f);
+                outgoing.view.setVisibility(View.INVISIBLE);
+            }
             return;
         }
         incoming.view.setTranslationX(width);
         Motion.translateX(incoming.view, 0f, Motion.DAMPING_CRITICAL, Motion.RESPONSE_PANEL);
         if (outgoing != null) {
-            Motion.translateX(outgoing.view, -width * 0.22f, Motion.DAMPING_CRITICAL,
-                    Motion.RESPONSE_MOVE);
+            if (bothSettings(incoming, outgoing)) {
+                // Both pages are transparent so the wallpaper and the mark
+                // can show through. The one underneath steps out of the way
+                // instead of sitting there beside the new list.
+                Motion.spring(outgoing.view, Motion.ALPHA, 0f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_MOVE, () -> outgoing.view.setVisibility(View.INVISIBLE));
+            } else {
+                Motion.translateX(outgoing.view, -width * 0.22f, Motion.DAMPING_CRITICAL,
+                        Motion.RESPONSE_MOVE);
+            }
         }
+    }
+
+    private static boolean bothSettings(Screen first, Screen second) {
+        return isSettings(first) && isSettings(second);
+    }
+
+    private static boolean isSettings(Screen screen) {
+        return screen != null && (screen.split || screen.fullBleed);
     }
 
     /** A screen leaves by the path it came in on. */
@@ -376,41 +491,48 @@ public final class ScreenStack extends FrameLayout {
 
     private View buildScreen(Screen screen) {
         Context context = getContext();
-        boolean settingsIndex = "Settings".equals(screen.title) && screen.custom != null;
+        if (screen.fullBleed && screen.custom != null) {
+            FrameLayout page = new FrameLayout(context);
+            page.setClipChildren(false);
+            page.addView(screen.custom, new FrameLayout.LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            return page;
+        }
+        if (screen.split) {
+            return buildSplitScreen(screen);
+        }
+
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(Ui.dp(context, settingsIndex ? 80 : 64),
-                Ui.dp(context, settingsIndex ? 56 : 36),
-                Ui.dp(context, settingsIndex ? 80 : 64), Ui.dp(context, 36));
-        // Each screen covers the one below it, so a screen sliding in does
-        // not show the screen it is replacing through it.
+        column.setPadding(Ui.dp(context, 64), Ui.dp(context, 36),
+                Ui.dp(context, 64), Ui.dp(context, 36));
+        // These panels are their own surface: they cover the wallpaper and
+        // the settings mark behind the stack.
         column.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF08131D, 0xFF050A10}));
+                Theme.panel()));
 
-        if (!settingsIndex) {
-            LinearLayout heading = new LinearLayout(context);
-            heading.setOrientation(LinearLayout.HORIZONTAL);
-            heading.setGravity(android.view.Gravity.CENTER_VERTICAL);
-            TextView title = new TextView(context);
-            title.setText(screen.title);
-            title.setTextColor(Color.WHITE);
-            Type.apply(title, Type.DISPLAY);
-            heading.addView(title, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            column.addView(heading, new LinearLayout.LayoutParams(
+        LinearLayout heading = new LinearLayout(context);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(context);
+        title.setText(screen.title);
+        title.setTextColor(Theme.ink());
+        Type.apply(title, Type.DISPLAY);
+        heading.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        column.addView(heading, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        if (screen.subtitle != null && screen.subtitle.length() > 0) {
+            TextView subtitle = new TextView(context);
+            subtitle.setText(screen.subtitle);
+            subtitle.setTextColor(Theme.inkSecondary());
+            Type.apply(subtitle, Type.CAPTION);
+            subtitle.setPadding(0, Ui.dp(context, 4), 0, Ui.dp(context, 22));
+            column.addView(subtitle, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            if (screen.subtitle != null && screen.subtitle.length() > 0) {
-                TextView subtitle = new TextView(context);
-                subtitle.setText(screen.subtitle);
-                subtitle.setTextColor(0xB3FFFFFF);
-                Type.apply(subtitle, Type.CAPTION);
-                subtitle.setPadding(0, Ui.dp(context, 4), 0, Ui.dp(context, 22));
-                column.addView(subtitle, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            } else {
-                title.setPadding(0, 0, 0, Ui.dp(context, 22));
-            }
+        } else {
+            title.setPadding(0, 0, 0, Ui.dp(context, 22));
         }
 
         if (screen.custom != null) {
@@ -437,5 +559,84 @@ public final class ScreenStack extends FrameLayout {
             }
         }
         return column;
+    }
+
+    /**
+     * The tvOS settings page: the title over the whole screen, the list on
+     * the right. The wallpaper and the app mark behind the stack stay still
+     * while this page slides in.
+     */
+    private View buildSplitScreen(Screen screen) {
+        Context context = getContext();
+        FrameLayout page = new FrameLayout(context);
+        page.setClipChildren(false);
+        page.setClipToPadding(false);
+
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int listStart = Math.round(width * 0.552f);
+        int listEnd = Math.round(width * 0.043f);
+
+        TextView title = new TextView(context);
+        title.setText(screen.title);
+        title.setTextColor(Theme.ink());
+        Type.apply(title, Type.DISPLAY);
+        title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, PAGE_TITLE_SP);
+        title.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        titleParams.topMargin = Ui.dp(context, PAGE_TITLE_TOP_DP);
+        page.addView(title, titleParams);
+
+        ScrollView scroller = new ScrollView(context);
+        scroller.setFocusable(false);
+        scroller.setVerticalScrollBarEnabled(false);
+        scroller.setClipChildren(false);
+        scroller.setClipToPadding(false);
+        screen.scroller = scroller;
+        screen.list = new LinearLayout(context);
+        screen.list.setOrientation(LinearLayout.VERTICAL);
+        screen.list.setClipChildren(false);
+        screen.list.setClipToPadding(false);
+        scroller.addView(screen.list, new ScrollView.LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        FrameLayout.LayoutParams listParams = new FrameLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT,
+                Gravity.TOP | Gravity.START);
+        listParams.setMarginStart(listStart);
+        listParams.setMarginEnd(listEnd);
+        listParams.topMargin = Math.round(
+                context.getResources().getDisplayMetrics().heightPixels * PAGE_LIST_TOP);
+        listParams.bottomMargin = Ui.dp(context, 20);
+        page.addView(scroller, listParams);
+
+        // tvOS explains a page under the picture on the left, not in the list.
+        StringBuilder notes = new StringBuilder();
+        for (SettingRow row : screen.rows) {
+            if (row.type() == SettingRow.NOTE) {
+                notes.append(notes.length() > 0 ? "\n\n" : "").append(row.title());
+                continue;
+            }
+            View view = row.view(context);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            params.bottomMargin = Ui.dp(context, 7);
+            screen.list.addView(view, params);
+        }
+        if (notes.length() > 0) {
+            TextView note = new TextView(context);
+            note.setText(notes);
+            note.setTextColor(Theme.inkSecondary());
+            Type.apply(note, Type.CAPTION);
+            note.setGravity(Gravity.CENTER_HORIZONTAL);
+            FrameLayout.LayoutParams noteParams = new FrameLayout.LayoutParams(
+                    Math.round(width * 0.427f), LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START);
+            noteParams.setMarginStart(Math.round(width * 0.06f));
+            noteParams.topMargin = Math.round(
+                    context.getResources().getDisplayMetrics().heightPixels * PAGE_NOTE_TOP);
+            page.addView(note, noteParams);
+        }
+        return page;
     }
 }

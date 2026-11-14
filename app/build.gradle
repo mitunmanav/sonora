@@ -1,5 +1,5 @@
 plugins {
-    id 'com.android.application' version '8.13.0'
+    id 'com.android.application'
 }
 
 android {
@@ -20,6 +20,13 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        // The release build with the debug key, so it installs over a debug build.
+        // This is the build to measure: a debug build runs uncompiled.
+        perf {
+            initWith release
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+        }
     }
 
     compileOptions {
@@ -33,5 +40,6 @@ android {
 }
 
 dependencies {
+    implementation project(':files-core')
     testImplementation 'junit:junit:4.13.2'
 }

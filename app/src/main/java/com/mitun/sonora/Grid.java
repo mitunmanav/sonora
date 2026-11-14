@@ -6,8 +6,8 @@ package com.mitun.sonora;
  *
  * tvOS keeps the app icons a fixed fraction of the screen width and lets the
  * column count follow, so we do the same. The proportions below were measured
- * off Apple's own tvOS 26 press renders: a 5:3 icon is 14.7% of the screen
- * width, the screen margin is 2.8% each side and the gutter 1.2%.
+ * off Apple's own tvOS 26 press render (1960x1102): a 5:3 icon is 13.0% of the
+ * screen width, the screen margin is 4.7% each side and the gutter 2.55%.
  *
  * Nothing here is hard-coded to a resolution. A 720p@240dpi box reports
  * 1280x720dp while a 1080p@320dpi box reports 960x540dp, and both must land on
@@ -18,16 +18,18 @@ public final class Grid {
     public static final float ASPECT = 0.6f;
 
     /** Icon width as a fraction of the screen width, measured from tvOS 26. */
-    public static final float ICON_WIDTH_RATIO = 0.147f;
+    public static final float ICON_WIDTH_RATIO = 0.130f;
     /** Screen margin on each side, as a fraction of the screen width. */
-    public static final float MARGIN_RATIO = 0.028f;
+    public static final float MARGIN_RATIO = 0.047f;
+    /** The inset of the glass dock from the screen edge. */
+    public static final float DOCK_MARGIN_RATIO = 0.0204f;
     /** Gutter between icons, as a fraction of the screen width. */
-    public static final float GAP_RATIO = 0.012f;
+    public static final float GAP_RATIO = 0.0255f;
 
     public static final int MIN_COLUMNS = 4;
     public static final int MAX_COLUMNS = 8;
     /** Below this icon width the labels stop being readable, so drop a column. */
-    public static final int MIN_TILE_WIDTH_DP = 92;
+    public static final int MIN_TILE_WIDTH_DP = 80;
 
     private Grid() {
     }
@@ -112,6 +114,34 @@ public final class Grid {
             default:
                 return -1;
         }
+    }
+
+    /** How many rows fit under the dock once the grid is open, before it scrolls. */
+    private static final int OPEN_ROWS = 3;
+
+    /**
+     * Pure: how far the dock and the rows slide for the focus to be on a row.
+     *
+     * The first row sits in the dock, over the wallpaper. Any other row opens
+     * the grid: the dock rides up to the top of the screen, and the list only
+     * scrolls further once the focus has passed what fits under it.
+     *
+     * @param dockTravel how far the dock moves up to reach the top of the screen
+     * @param openPitch  the distance between two rows in the open grid
+     */
+    public static float scrollFor(int row, float dockTravel, float openPitch) {
+        if (row <= 0) {
+            return 0f;
+        }
+        return -(dockTravel + Math.max(0, row - OPEN_ROWS) * openPitch);
+    }
+
+    /** Pure: how open the grid is at a scroll position, from 0 to 1. */
+    public static float openProgress(float scroll, float dockTravel) {
+        if (dockTravel <= 0f) {
+            return scroll < 0f ? 1f : 0f;
+        }
+        return Math.max(0f, Math.min(1f, -scroll / dockTravel));
     }
 
     /**

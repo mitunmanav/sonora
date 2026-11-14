@@ -139,16 +139,13 @@ public final class AppRepository {
 
                 // Artwork is stored at the size the tile actually draws at, so
                 // a 1080p stick does not carry 4K pictures around in memory.
-                boolean lowRam = SystemInfo.get(context).lowRam;
-                int bannerW = Math.max(160, Math.min(BANNER_MAX_W, tileWidthPx));
-                if (lowRam) {
-                    bannerW = Math.max(120, bannerW / 2);
-                }
+                boolean low = DeviceTier.get(context) == DeviceTier.LOW;
+                int bannerW = Math.max(120, Math.min(BANNER_MAX_W, tileWidthPx));
                 int bannerH = Math.max(1, Math.round(bannerW * 0.6f));
-                int iconMax = lowRam ? ICON_MAX / 2 : ICON_MAX;
+                int iconMax = low ? ICON_MAX / 2 : ICON_MAX;
 
                 if (validBannerRatio(bannerDrawable)) {
-                    banner = drawWide(bannerDrawable, bannerW, bannerH);
+                    banner = drawWide(bannerDrawable, bannerW, bannerH, low);
                 }
                 if (banner == null) {
                     Drawable iconDrawable = null;
@@ -196,7 +193,7 @@ public final class AppRepository {
         return ratio >= 1.25f && ratio <= 2.6f;
     }
 
-    private static Bitmap drawWide(Drawable drawable, int maxW, int maxH) {
+    private static Bitmap drawWide(Drawable drawable, int maxW, int maxH, boolean low) {
         int w = drawable.getIntrinsicWidth();
         int h = drawable.getIntrinsicHeight();
         if (w <= 0 || h <= 0) {
@@ -215,9 +212,31 @@ public final class AppRepository {
             Canvas canvas = new Canvas(bitmap);
             drawable.setBounds(0, 0, tw, th);
             drawable.draw(canvas);
+            // Most banners say they may be transparent and then are not. On the
+            // lightest tier that is worth checking, for half the memory.
+            if (low && config == Bitmap.Config.ARGB_8888 && fullyOpaque(bitmap)) {
+                Bitmap small = bitmap.copy(Bitmap.Config.RGB_565, false);
+                if (small != null) {
+                    bitmap.recycle();
+                    return small;
+                }
+            }
             return bitmap;
         } catch (RuntimeException | OutOfMemoryError ignored) {
             return null;
         }
+    }
+
+    private static boolean fullyOpaque(Bitmap bitmap) {
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+        int[] pixels = new int[w * h];
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h);
+        for (int pixel : pixels) {
+            if (pixel >>> 24 != 0xFF) {
+                return false;
+            }
+        }
+        return true;
     }
 }

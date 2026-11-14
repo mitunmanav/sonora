@@ -1,8 +1,6 @@
 package com.mitun.sonora.ui;
 
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
@@ -35,29 +33,52 @@ public final class ChoiceOverlay extends FrameLayout {
         this.selected = (selectedIndex >= 0 && selectedIndex < options.length)
                 ? selectedIndex : -1;
         // Heavy dim: a modal task pushes the screen behind it back.
-        setBackgroundColor(0xF7000000);
+        setBackgroundColor(Theme.modal());
 
-        column = new LinearLayout(context);
+        column = new LinearLayout(context) {
+            // Its fade would otherwise take a screen-sized offscreen buffer.
+            @Override
+            public boolean hasOverlappingRendering() {
+                return false;
+            }
+        };
         column.setOrientation(LinearLayout.VERTICAL);
-        // Clear of the app title along the top, so the two never overlap.
-        column.setPadding(Ui.dp(context, 60), Ui.dp(context, 120), Ui.dp(context, 60), Ui.dp(context, 40));
+        column.setClipChildren(false);
+        column.setClipToPadding(false);
+        column.setPadding(0, Ui.dp(context, ScreenStack.PAGE_TITLE_TOP_DP), 0, 0);
 
+        // Laid out as a settings page, so a choice looks like the screen it came from.
         TextView heading = new TextView(context);
         heading.setText(title);
-        heading.setTextColor(Color.WHITE);
+        heading.setTextColor(Theme.ink());
         Type.apply(heading, Type.DISPLAY);
-        heading.setPadding(0, 0, 0, Ui.dp(context, 18));
+        heading.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, ScreenStack.PAGE_TITLE_SP);
+        heading.setGravity(Gravity.CENTER);
+        heading.setSingleLine(true);
+        heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
         column.addView(heading, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        android.util.DisplayMetrics screen = context.getResources().getDisplayMetrics();
         ScrollView scroller = new ScrollView(context);
         scroller.setVerticalScrollBarEnabled(false);
+        scroller.setClipChildren(false);
+        scroller.setClipToPadding(false);
         list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
+        list.setClipChildren(false);
+        list.setClipToPadding(false);
         scroller.addView(list, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        column.addView(scroller, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // The middle of the screen, a third of its width: a choice, not a page of its own.
+        int side = Math.round(screen.widthPixels * 0.29f);
+        LinearLayout.LayoutParams scrollerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        scrollerParams.setMarginStart(side);
+        scrollerParams.setMarginEnd(side);
+        scrollerParams.topMargin = Ui.dp(context, 24);
+        scrollerParams.bottomMargin = Ui.dp(context, 20);
+        column.addView(scroller, scrollerParams);
 
         addView(column, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
@@ -95,37 +116,30 @@ public final class ChoiceOverlay extends FrameLayout {
     }
 
     private void addOption(Context context, String text, boolean checked) {
-        LinearLayout line = new LinearLayout(context);
+        PressRow line = new PressRow(context, 1.02f);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
-        line.setPadding(Ui.dp(context, 22), Ui.dp(context, 12), Ui.dp(context, 22), Ui.dp(context, 12));
-        // The same material as the rows behind it, so the picker belongs to
-        // the screen it came from.
-        GlassDrawable material = new GlassDrawable(context, 12f, 1f);
-        material.setAlpha(0);
-        line.setBackground(material);
+        line.setPadding(Ui.dp(context, 16), 0, Ui.dp(context, 16), 0);
+        line.setMinimumHeight(Ui.dp(context, 33));
+        final RowDrawable bg = new RowDrawable(context);
+        line.setBackground(bg);
         line.setFocusable(true);
 
         TextView label = new TextView(context);
         label.setText(text);
-        label.setTextColor(Color.WHITE);
+        label.setTextColor(Theme.inkSoft());
         Type.apply(label, Type.HEADING);
         line.addView(label, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView check = new TextView(context);
-        check.setText("✓");
-        check.setTextColor(Color.WHITE);
+        check.setText("\u2713");
+        check.setTextColor(Theme.inkSoft());
         Type.apply(check, Type.HEADING);
         check.setVisibility(checked ? VISIBLE : INVISIBLE);
         line.addView(check, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        final TextView labelText = label;
-        final TextView checkText = check;
-        final GlassDrawable bg = (GlassDrawable) line.getBackground();
-        // The glass and the ink materialize together: alpha, rim light and ink
-        // color spring into focus, so a fast D-pad move never snaps the row.
         final float[] focus = {0f};
         line.setOnFocusChangeListener((v, focused) -> {
             Motion.springCustom(v, 0, focused ? 1f : 0f, Motion.DAMPING_CRITICAL,
@@ -138,11 +152,10 @@ public final class ChoiceOverlay extends FrameLayout {
                         @Override
                         public void set(float value) {
                             focus[0] = value;
-                            bg.setAlpha(Math.round(255f * value));
                             bg.setFocus(value);
-                            int ink = Ui.lerpColor(Color.WHITE, 0xFF101C26, value);
-                            labelText.setTextColor(ink);
-                            checkText.setTextColor(ink);
+                            int ink = Ui.lerpColor(Theme.inkSoft(), Theme.INK_ON_FOCUS, value);
+                            label.setTextColor(ink);
+                            check.setTextColor(ink);
                         }
                     });
             v.setElevation(focused ? Ui.dpf(getContext(), 8f) : 0f);
@@ -158,8 +171,10 @@ public final class ChoiceOverlay extends FrameLayout {
                 callback.onPicked(selected);
             }
         });
-        list.addView(line, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams lineParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lineParams.bottomMargin = Ui.dp(context, 7);
+        list.addView(line, lineParams);
     }
 
     public void focusSelected() {
