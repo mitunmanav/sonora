@@ -1516,3 +1516,16 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: README in the phone-backup style, docs index
+
+- `README.md` restyled after the `phone-backup` repo: centred header with
+  links and badges, screenshot, four-point table, "What it does", the
+  same-stick comparison table, Get started, Privacy, Build from source,
+  Roadmap, Help and contributing, Credits, License. Same facts and
+  numbers as before; nothing new claimed.
+- `docs/README.md` added as an index of `docs/`.
+- `CONTRIBUTING.md`'s `README.md#build-from-source` link resolves again
+  (the heading now exists).
+
+Docs only; no code changed, no build run.
