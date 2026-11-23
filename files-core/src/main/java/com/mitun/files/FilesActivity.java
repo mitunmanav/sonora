@@ -502,7 +502,7 @@ public class FilesActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         view.setAdapter(adapter);
         itemsView = view;
-        columnHeader.setVisibility(gridMode ? View.GONE : View.VISIBLE);
+        columnHeader.setVisibility(gridMode || entries.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private int columnCount() {
@@ -790,6 +790,9 @@ public class FilesActivity extends Activity {
         }
         countView.setText(FileLogic.itemCount(list.size()));
         actionButton.setVisibility(View.GONE);
+        // No rows means no header row either.
+        columnHeader.setVisibility(gridMode || failed || list.isEmpty()
+                ? View.GONE : View.VISIBLE);
         if (failed) {
             showMessage(gone ? "This location is no longer available."
                     : "This folder cannot be opened.");
@@ -828,6 +831,7 @@ public class FilesActivity extends Activity {
         adapter.notifyDataSetChanged();
         countView.setText("");
         itemsView.setVisibility(View.GONE);
+        columnHeader.setVisibility(View.GONE);
         message.setVisibility(View.VISIBLE);
         boolean settingsExist = Build.VERSION.SDK_INT < 30 || accessScreen() != null;
         if (settingsExist) {
@@ -929,6 +933,11 @@ public class FilesActivity extends Activity {
         });
         root.addView(quickLook, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // The sheets' 120 ms entrance, kept off low memory like the thumbnails.
+        if (!low) {
+            quickLook.setAlpha(0f);
+            quickLook.animate().alpha(1f).setDuration(120).start();
+        }
         quickLook.requestFocus();
     }
 

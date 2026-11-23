@@ -1516,3 +1516,29 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+## 36. Session: files-core audit — e2e on emulator, two small fixes
+
+The Files app was reviewed end to end on an Android TV emulator (API 30,
+1920x1080, D-pad) over a folder of worst-case names: hidden, emoji,
+Japanese, a 100-char Polish name, no extension, 0 bytes, a 60-file folder,
+nested folders and real PNGs. Every feature was driven: places, grid and
+list, sort, hidden toggle, item menu, Get Info, copy/paste with a free
+name, new folder, rename, delete confirm, Quick Look (text and image),
+thumbnails, light theme and the no-app dialog. Logcat stayed clean.
+
+Two changes landed:
+
+- List view hid its column header over "This folder is empty." and on
+  failed or blocked folders; the header returns with real rows
+  (`FilesActivity.show`, `showAccessNeeded`).
+- Quick Look got the sheets' 120 ms fade-in, gated off on low-memory
+  devices like the thumbnails (`FilesActivity.showQuickLook`).
+
+Findings left open (reported, not changed): extensionless files dead-end
+at "No App Can Open This"; FilesActivity is 1,569 lines of cohesive
+screen code; `freeName` stops at 1,000 tries; Move shares Copy's
+transfer path and is covered by unit tests, not a drive.
+
+Verified: `:files-core:testDebugUnitTest` + `:files:assembleDebug` green;
+both fixes re-tested on the emulator (headers hidden on empty, shown on
+full). Not verified: real hardware, RTL, folders beyond 60 items.
