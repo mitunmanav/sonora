@@ -1516,3 +1516,26 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: competitive review and repository structure
+
+- Added a sourced comparison of Android TV launchers and file managers at
+  `docs/research/COMPETITIVE-ANALYSIS-2026-11-24.md`. It distinguishes
+  direct launcher alternatives from file-manager alternatives and does not
+  present Sonora's Google TV benchmark as a third-party launcher benchmark.
+- Moved the Android applications to `apps/launcher/` and `apps/files/`,
+  and the shared library to `libraries/files-core/`. Gradle project names
+  remain `:app`, `:files`, and `:files-core` so existing task names stay
+  stable. Updated the deployment script, website install path, and current
+  setup, architecture, security, glossary, and agent documentation paths.
+- Rewrote the README as the project overview and updated the setup guide
+  with current install and build paths. Added future placement rules to
+  `docs/ARCHITECTURE.md`.
+- Checked shell syntax, diff whitespace, and current documentation for old
+  module paths and em dashes. CodeGraph was unavailable, so module references
+  were checked directly.
+
+Build verification is blocked in this environment. Java 17 is installed,
+but Gradle cannot resolve Android Gradle Plugin 8.13.0 because
+`dl.google.com` does not resolve here, and the plugin is not cached locally.
+No unit tests, release build, or TV verification completed in this session.

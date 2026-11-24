@@ -18,7 +18,11 @@ tasks=()
 
 ./gradlew --offline -q "${tasks[@]}" 2>&1 | grep -E "error:|FAILED|BUILD |tests completed|warning: \[" | head -30 || true
 
-install() { tv install -r -t "$1/build/outputs/apk/$build/$1-$build.apk" 2>&1 | tail -1; }
+install() {
+  local module=$1 dir
+  [[ $module == app ]] && dir=apps/launcher || dir=apps/files
+  tv install -r -t "$dir/build/outputs/apk/$build/$module-$build.apk" 2>&1 | tail -1
+}
 [[ $target == files || $target == all ]] && install files
 if [[ $target == app || $target == all ]]; then
   install app

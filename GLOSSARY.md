@@ -64,8 +64,9 @@ synonyms.
 
 ## Files
 
-- **files-core** — the library module holding the whole Files file
-  manager (`com.mitun.files`); bundled into `app` and shipped standalone
-  as `files/` (`com.mitun.files.app`).
+- **files-core** — the library module at `libraries/files-core/` holding
+  the Files file manager (`com.mitun.files`); bundled into
+  `apps/launcher/` and shipped standalone as `apps/files/`
+  (`com.mitun.files.app`).
 - **Share screen** — `ShareActivity` + `FileServer`: a visible screen
   that serves files over LAN on a thread and dies with the screen.

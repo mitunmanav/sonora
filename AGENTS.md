@@ -4,9 +4,9 @@
 
 ## Layout
 
-- `app/`: the launcher. Pure logic at the package root, views in `ui/`, screens in `tools/`.
-- `files/`: the standalone Files app. A thin shell around `files-core/`.
-- `files-core/`: the file manager itself, bundled into both apps.
+- `apps/launcher/`: the launcher. Pure logic at the package root, views in `ui/`, screens in `tools/`.
+- `apps/files/`: the standalone Files app. A thin shell around `libraries/files-core/`.
+- `libraries/files-core/`: the file manager itself, bundled into both apps.
 - `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`, `bench.py`, `perf-ab.md`. Linux and WSL only.
 - `docs/`: `ARCHITECTURE.md` (what exists + the rules), `research/` (design and performance notes), `plans/` (running log
   and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
@@ -22,7 +22,7 @@ symbols you name, the call paths between them, and the blast radius.
 
 ```bash
 codegraph explore "HomeActivity buildGrid moveFocus"
-codegraph sync /home/mitun/aerial   # after each batch of edits, before you read again
+codegraph sync <repo-root>   # after each batch of edits, before you read again
 ```
 
 The `codegraph_explore` MCP tool gives the same output. Check the blast radius before

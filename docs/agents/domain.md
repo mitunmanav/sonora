@@ -19,7 +19,11 @@ Single-context repo:
 ├── docs/adr/
 │   ├── 0001-<decision>.md
 │   └── 0002-<decision>.md
-└── app/
+├── apps/
+│   ├── launcher/
+│   └── files/
+└── libraries/
+    └── files-core/
 ```
 
 ## Use the glossary's vocabulary

@@ -16,3 +16,7 @@ rootProject.name = "Sonora"
 include ':app'
 include ':files-core'
 include ':files'
+
+project(':app').projectDir = file('apps/launcher')
+project(':files').projectDir = file('apps/files')
+project(':files-core').projectDir = file('libraries/files-core')
