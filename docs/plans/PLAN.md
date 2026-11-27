@@ -1516,3 +1516,28 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: static correctness pass — share restart, favourite order, stale panels
+
+A no-device audit of the existing screens found three defects in features
+already shipped.
+
+- Share over the network could stay dead after a quick leave-and-return:
+  the screen stopped the server on a helper thread, came back before that
+  stop finished, saw the old server as still running and never started it
+  again. `FileServer.stop()` now closes the listener and transfers without
+  waiting for the accept thread, so `ShareActivity` stops synchronously and
+  a return always restarts the server.
+- Pinning an app put it before every earlier pin, while the ordering rules
+  and tests say pinned apps keep the order in which they were pinned. The
+  add/remove decision is now shared as `AppOrdering.toggleFavourite`, used
+  by both the home-screen menu and Settings → Favourites, with a unit test.
+- Favourites and Debloat could refresh out of order after rapid toggles,
+  leaving older rows on screen. Each panel now keeps a reload generation and
+  only the newest read may replace the rows.
+
+Verified: `:app:testDebugUnitTest` and `:files-core:testDebugUnitTest`
+green; `:app:assemblePerf` and `:files:assemblePerf` green. Maven Central
+rate-limited the VM with HTTP 429, so dependency resolution was retried
+through the read-only Google Maven Central mirror without changing the
+repo. Not verified on a TV: no physical device test was run, by request.

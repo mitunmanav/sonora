@@ -34,7 +34,6 @@ public final class ShareActivity extends Activity {
     private File root;
     private TextView address;
     private TextView hint;
-    private boolean stopStarted;
 
     public static void start(Context context, File file) {
         Intent intent = new Intent(context, ShareActivity.class);
@@ -59,12 +58,14 @@ public final class ShareActivity extends Activity {
         if (root == null) {
             root = FileServer.appFolder(this);
         }
-        server = new FileServer();
         setContentView(build(startServer()));
     }
 
-    /** Starts the server and returns the port it listens on. */
+    /** Starts a fresh server and returns the port it listens on. */
     private int startServer() {
+        // A fresh object cannot have an old accept thread revived by the new
+        // running flag when the user leaves and returns very quickly.
+        server = new FileServer();
         try {
             return server.start(root);
         } catch (Exception e) {
@@ -177,7 +178,6 @@ public final class ShareActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        stopStarted = false;
         // The screen came back: the server was stopped when it went away.
         if (server != null && !server.isRunning()) {
             int port = startServer();
@@ -192,23 +192,10 @@ public final class ShareActivity extends Activity {
         }
     }
 
-    /**
-     * Stops the server off the main thread: stop() joins the accept thread,
-     * which is up to half a second the UI is not allowed to spend.
-     */
+    /** Stops the server before the screen is hidden; the close itself is quick. */
     private void stopServer() {
-        final FileServer stopping = server;
-        if (stopping == null || stopStarted || !stopping.isRunning()) {
-            return;
-        }
-        stopStarted = true;
-        Thread stopper = new Thread(stopping::stop, "sonora-share-stop");
-        stopper.setDaemon(true);
-        try {
-            stopper.start();
-        } catch (RuntimeException | OutOfMemoryError e) {
-            // A thread that cannot start must not leave the port listening.
-            stopping.stop();
+        if (server != null) {
+            server.stop();
         }
     }
 

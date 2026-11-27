@@ -61,6 +61,15 @@ public class AppOrderingTest {
     }
 
     @Test
+    public void pinningAddsToTheEndAndUnpinningRemoves() {
+        List<String> pinned = AppOrdering.toggleFavourite(
+                Arrays.asList("com.alpha", "com.beta"), "com.gamma");
+        assertEquals(Arrays.asList("com.alpha", "com.beta", "com.gamma"), pinned);
+        assertEquals(Arrays.asList("com.alpha", "com.gamma"),
+                AppOrdering.toggleFavourite(pinned, "com.beta"));
+    }
+
+    @Test
     public void aPinnedAppIsNotRepeatedInTheRest() {
         List<AppEntry> apps = Arrays.asList(app("com.alpha", "Alpha"), app("com.beta", "Beta"));
         List<AppEntry> ordered = AppOrdering.order(apps, "", Collections.emptySet(),

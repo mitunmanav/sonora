@@ -86,15 +86,10 @@ public final class FileServer {
             pool.shutdownNow();
             pool = null;
         }
-        Thread accept = thread;
+        // Closing the listener wakes accept() promptly. Waiting for that
+        // thread here only creates a stop/start race in the Share screen;
+        // the port is already closed, which is the guarantee the caller needs.
         thread = null;
-        if (accept != null && accept != Thread.currentThread()) {
-            try {
-                accept.join(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
         port = 0;
     }
 

@@ -11,6 +11,7 @@ import com.mitun.sonora.ui.Ui;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Turns off apps the user does not want without uninstalling them.
@@ -21,6 +22,8 @@ import java.util.List;
  */
 public final class DebloatPanel {
     private static final String TITLE = "Debloat";
+    /** Reordered package reads must not land after the newer one. */
+    private static final AtomicLong RELOAD = new AtomicLong();
 
     private static final class BloatItem {
         final String packageName;
@@ -77,6 +80,7 @@ public final class DebloatPanel {
     }
 
     private static void reload(ToolActivity host) {
+        final long generation = RELOAD.incrementAndGet();
         new Thread(() -> {
             List<SettingRow> built;
             try {
@@ -90,8 +94,8 @@ public final class DebloatPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!TITLE.equals(host.stack().topTitle())) {
-                    // The user left the screen while the list was being read.
+                if (generation != RELOAD.get() || !TITLE.equals(host.stack().topTitle())) {
+                    // The user left the screen, or a newer read already owns it.
                     return;
                 }
                 host.stack().refreshSettings(TITLE, rows);

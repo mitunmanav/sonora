@@ -1322,13 +1322,7 @@ public class HomeActivity extends Activity {
     /** Pins an app to the top of the home screen, or unpins it. */
     private void toggleFavourite(AppEntry entry) {
         boolean was = isFavourite(entry);
-        List<String> list = new ArrayList<>(prefs.favourites());
-        if (was) {
-            list.remove(entry.packageName);
-        } else {
-            list.add(0, entry.packageName);
-        }
-        prefs.setFavourites(list);
+        prefs.setFavourites(AppOrdering.toggleFavourite(prefs.favourites(), entry.packageName));
         applyOrder();
         Ui.toast(this, was ? entry.label + " unpinned" : entry.label + " pinned to the top");
     }

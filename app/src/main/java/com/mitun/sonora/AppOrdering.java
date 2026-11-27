@@ -78,6 +78,20 @@ public final class AppOrdering {
         return result;
     }
 
+    /**
+     * The pinned packages after one is added or removed.
+     *
+     * A new pin goes at the end: the list is the order the apps were pinned
+     * in, not the reverse of it.
+     */
+    public static List<String> toggleFavourite(List<String> favourites, String packageName) {
+        List<String> out = new ArrayList<>(names(favourites));
+        if (!out.remove(packageName)) {
+            out.add(packageName);
+        }
+        return out;
+    }
+
     public static String saveOrder(List<AppEntry> apps) {
         StringBuilder sb = new StringBuilder();
         for (AppEntry entry : apps) {
