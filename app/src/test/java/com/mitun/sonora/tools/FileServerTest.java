@@ -167,6 +167,96 @@ public class FileServerTest {
         }
     }
 
+    @Test
+    public void aByteRangeIsParsed() {
+        long[] r = FileServer.range("bytes=10-19", 100);
+        assertEquals(10, r[0]);
+        assertEquals(19, r[1]);
+        r = FileServer.range("bytes=90-", 100);
+        assertEquals(90, r[0]);
+        assertEquals(99, r[1]);
+        r = FileServer.range("bytes=-5", 100);
+        assertEquals(95, r[0]);
+        assertEquals(99, r[1]);
+        // A last byte past the end is cut to the end.
+        assertEquals(99, FileServer.range("bytes=50-500", 100)[1]);
+    }
+
+    @Test
+    public void anOddRangeGetsTheWholeFile() {
+        assertNull(FileServer.range(null, 100));
+        assertNull(FileServer.range("items=0-1", 100));
+        assertNull(FileServer.range("bytes=0-1,5-6", 100));
+        assertNull(FileServer.range("bytes=x-y", 100));
+        assertNull(FileServer.range("bytes=9-3", 100));
+        assertSame(FileServer.UNSATISFIABLE, FileServer.range("bytes=100-", 100));
+        assertSame(FileServer.UNSATISFIABLE, FileServer.range("bytes=-0", 100));
+    }
+
+    @Test
+    public void aRangeRequestGetsThosePartsOnly() throws IOException {
+        File root = Files.createTempDirectory("sonora-share-test").toFile();
+        Files.write(new File(root, "a.txt").toPath(),
+                "0123456789".getBytes(StandardCharsets.UTF_8));
+        FileServer server = new FileServer();
+        try (Socket socket = askSocket(server.start(root),
+                "GET /a.txt HTTP/1.1\r\nRange: bytes=2-4\r\n\r\n")) {
+            java.io.InputStream in = socket.getInputStream();
+            assertEquals("HTTP/1.1 206 Partial Content", FileServer.readLine(in));
+            String line;
+            while ((line = FileServer.readLine(in)) != null) {
+                // Headers, up to the blank line.
+            }
+            byte[] body = new byte[3];
+            int got = 0;
+            while (got < 3) {
+                int n = in.read(body, got, 3 - got);
+                if (n < 0) {
+                    break;
+                }
+                got += n;
+            }
+            assertEquals("234", new String(body, 0, got, StandardCharsets.UTF_8));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    public void tooManyHeadersAnswer431() throws IOException {
+        File root = Files.createTempDirectory("sonora-share-test").toFile();
+        FileServer server = new FileServer();
+        StringBuilder sb = new StringBuilder("GET / HTTP/1.1\r\n");
+        for (int i = 0; i < 150; i++) {
+            sb.append("X-H").append(i).append(": 1\r\n");
+        }
+        try {
+            assertEquals("HTTP/1.1 431 Request Header Fields Too Large",
+                    ask(server.start(root), sb.toString() + "\r\n"));
+        } finally {
+            server.stop();
+        }
+    }
+
+    /**
+     * Leaving Share and coming straight back must leave a server that
+     * answers: each start is a fresh server, and a stop is done when it returns.
+     */
+    @Test
+    public void aQuickRestartStillAnswers() throws IOException {
+        File root = Files.createTempDirectory("sonora-share-test").toFile();
+        for (int i = 0; i < 5; i++) {
+            FileServer server = new FileServer();
+            try {
+                assertEquals("HTTP/1.1 200 OK",
+                        ask(server.start(root), "GET / HTTP/1.1\r\n\r\n"));
+            } finally {
+                server.stop();
+            }
+            assertFalse(server.isRunning());
+        }
+    }
+
     /** Sends a request and returns the first line of the answer. */
     private static String ask(int port, String request) throws IOException {
         try (Socket socket = askSocket(port, request)) {

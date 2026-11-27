@@ -30,6 +30,11 @@ public final class FileServer {
     private static final int BUFFER = 16384;
     /** A request line longer than this is not a request, it is an attack. */
     private static final int MAX_REQUEST_LINE = 8192;
+    /** More header lines than any browser sends: the rest is not read. */
+    private static final int MAX_HEADERS = 100;
+    /** Tried first, so the address the phone saved last time still works. */
+    private static final int FIRST_PORT = 8080;
+    private static final int PORTS_TRIED = 10;
 
     private ServerSocket socket;
     private Thread thread;
@@ -44,7 +49,7 @@ public final class FileServer {
     public int start(File rootDirectory) throws IOException {
         stop();
         root = rootDirectory;
-        socket = new ServerSocket(0);
+        socket = openListener();
         port = socket.getLocalPort();
         running = true;
         pool = new ThreadPoolExecutor(
@@ -86,16 +91,27 @@ public final class FileServer {
             pool.shutdownNow();
             pool = null;
         }
-        Thread accept = thread;
+        // Closing the listener wakes accept() promptly. Waiting for that
+        // thread here only creates a stop/start race in the Share screen;
+        // the port is already closed, which is the guarantee the caller needs.
         thread = null;
-        if (accept != null && accept != Thread.currentThread()) {
+        port = 0;
+    }
+
+    /** A port from the fixed few if one is free, any port otherwise. */
+    private static ServerSocket openListener() throws IOException {
+        for (int port = FIRST_PORT; port < FIRST_PORT + PORTS_TRIED; port++) {
+            ServerSocket listener = new ServerSocket();
             try {
-                accept.join(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                // A port closed a moment ago is still in TIME_WAIT; it is ours.
+                listener.setReuseAddress(true);
+                listener.bind(new java.net.InetSocketAddress(port));
+                return listener;
+            } catch (IOException e) {
+                listener.close();
             }
         }
-        port = 0;
+        return new ServerSocket(0);
     }
 
     public boolean isRunning() {
@@ -171,12 +187,23 @@ public final class FileServer {
             if (request == null) {
                 return;
             }
-            // The headers are not needed, but they must leave the wire: a
-            // close with them still incoming can RST the answer on its way.
-            while (readLine(in) != null) {
-                // Read and forgotten.
+            // The headers must leave the wire: a close with them still
+            // incoming can RST the answer on its way. Only Range is kept.
+            String rangeHeader = null;
+            int headers = 0;
+            String header;
+            while ((header = readLine(in)) != null && headers <= MAX_HEADERS) {
+                headers++;
+                if (header.regionMatches(true, 0, "Range:", 0, 6)) {
+                    rangeHeader = header.substring(6).trim();
+                }
             }
             OutputStream out = new BufferedOutputStream(client.getOutputStream());
+            if (headers > MAX_HEADERS) {
+                writeError(out, 431);
+                out.flush();
+                return;
+            }
             if (request == TOO_LONG) {
                 writeError(out, 414);
                 out.flush();
@@ -196,7 +223,7 @@ public final class FileServer {
             boolean get = "GET".equalsIgnoreCase(parts[0]);
             boolean head = "HEAD".equalsIgnoreCase(parts[0]);
             if (get || head) {
-                if (serve(path, out, head)) {
+                if (serve(path, out, head, rangeHeader)) {
                     return;
                 }
                 writeError(out, 404);
@@ -272,7 +299,8 @@ public final class FileServer {
     }
 
     /** Serves a path inside the shared directory. Returns false when not found. */
-    private boolean serve(String path, OutputStream out, boolean head) throws IOException {
+    private boolean serve(String path, OutputStream out, boolean head, String rangeHeader)
+            throws IOException {
         String relative = path.startsWith("/") ? path.substring(1) : path;
         // A name with a space arrives as %20, and the folder has to be found
         // under its real name before its index page can be checked.
@@ -326,13 +354,86 @@ public final class FileServer {
             return false;
         }
         long length = file.length();
-        writeHeaders(out, 200, mimeOf(file.getName()), length);
+        long[] range = range(rangeHeader, length);
+        if (range == UNSATISFIABLE) {
+            String answer = "HTTP/1.1 416 Range Not Satisfiable\r\n"
+                    + "Content-Range: bytes */" + length + "\r\n"
+                    + "Content-Length: 0\r\n"
+                    + "Connection: close\r\n\r\n";
+            out.write(answer.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.flush();
+            return true;
+        }
+        long start = range == null ? 0 : range[0];
+        long count = range == null ? length : range[1] - range[0] + 1;
+        if (range == null) {
+            writeHeaders(out, 200, mimeOf(file.getName()), length);
+        } else {
+            // A phone's video player seeks with a range; a whole-file answer
+            // would make it start from the beginning every time.
+            String answer = "HTTP/1.1 206 Partial Content\r\n"
+                    + "Content-Type: " + mimeOf(file.getName()) + "\r\n"
+                    + "Content-Length: " + count + "\r\n"
+                    + "Content-Range: bytes " + range[0] + "-" + range[1] + "/" + length + "\r\n"
+                    + "Accept-Ranges: bytes\r\n"
+                    + "Cache-Control: no-store\r\n"
+                    + "Connection: close\r\n\r\n";
+            out.write(answer.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
         out.flush();
         if (!head) {
-            copy(file, out, length);
+            copy(file, out, start, count);
             out.flush();
         }
         return true;
+    }
+
+    /** What {@link #range} answers for a range that starts past the end. */
+    static final long[] UNSATISFIABLE = new long[0];
+
+    /**
+     * The one byte range a request asks for, as {first, last}, inclusive.
+     *
+     * Null means the whole file: no header, a unit other than bytes, several
+     * ranges, or one that does not parse. The answer is then a plain 200,
+     * which every client understands.
+     */
+    static long[] range(String header, long length) {
+        if (header == null || !header.regionMatches(true, 0, "bytes=", 0, 6)) {
+            return null;
+        }
+        String spec = header.substring(6).trim();
+        int dash = spec.indexOf('-');
+        if (dash < 0 || spec.indexOf(',') >= 0) {
+            return null;
+        }
+        try {
+            String first = spec.substring(0, dash).trim();
+            String last = spec.substring(dash + 1).trim();
+            if (first.isEmpty()) {
+                // "-500" is the last 500 bytes.
+                if (last.isEmpty()) {
+                    return null;
+                }
+                long tail = Long.parseLong(last);
+                if (tail <= 0) {
+                    return UNSATISFIABLE;
+                }
+                return length == 0 ? UNSATISFIABLE
+                        : new long[]{Math.max(0, length - tail), length - 1};
+            }
+            long from = Long.parseLong(first);
+            if (from >= length) {
+                return UNSATISFIABLE;
+            }
+            long to = last.isEmpty() ? length - 1 : Long.parseLong(last);
+            if (from < 0 || to < from) {
+                return null;
+            }
+            return new long[]{from, Math.min(to, length - 1)};
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private void writeIndex(OutputStream out, File dir, boolean head) throws IOException {
@@ -378,10 +479,12 @@ public final class FileServer {
                 : code == 403 ? "403 Forbidden"
                 : code == 405 ? "405 Method Not Allowed"
                 : code == 414 ? "414 URI Too Long"
+                : code == 431 ? "431 Request Header Fields Too Large"
                 : "404 Not Found";
         String head = "HTTP/1.1 " + status + "\r\n"
                 + "Content-Type: " + type + "\r\n"
                 + "Content-Length: " + length + "\r\n"
+                + "Accept-Ranges: bytes\r\n"
                 + "Cache-Control: no-store\r\n"
                 + "Connection: close\r\n\r\n";
         out.write(head.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -406,8 +509,17 @@ public final class FileServer {
      * it was statted is cut at the advertised size instead of streaming on;
      * one that shrank ends early, which the closed connection reports.
      */
-    private static void copy(File file, OutputStream out, long length) throws IOException {
+    private static void copy(File file, OutputStream out, long start, long length)
+            throws IOException {
         try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
+            long skipped = 0;
+            while (skipped < start) {
+                long step = in.skip(start - skipped);
+                if (step <= 0) {
+                    return;
+                }
+                skipped += step;
+            }
             byte[] buffer = new byte[BUFFER];
             long left = length;
             while (left > 0) {

@@ -22,7 +22,7 @@ symbols you name, the call paths between them, and the blast radius.
 
 ```bash
 codegraph explore "HomeActivity buildGrid moveFocus"
-codegraph sync /home/mitun/aerial   # after each batch of edits, before you read again
+codegraph sync .   # from the repo root, after each batch of edits, before you read again
 ```
 
 The `codegraph_explore` MCP tool gives the same output. Check the blast radius before
@@ -73,7 +73,7 @@ in both. The home screen wallpaper stays as it is in both.
 - **Triage labels**: the default strings, as `Status:` lines. See `docs/agents/triage-labels.md`.
 - **Domain docs**: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 - **Documentation upkeep**: before finishing a session that changed code, docs or layout, follow
-  `.devin/skills/docs-sync/SKILL.md` — append the `PLAN.md` session entry, update the requirements
+  `.agents/skills/docs-sync/SKILL.md` — append the `PLAN.md` session entry, update the requirements
   status table, and record perf numbers when measured.
 
 ## Behavioural guidelines

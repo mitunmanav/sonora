@@ -1,6 +1,8 @@
 package com.mitun.sonora;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -61,6 +63,15 @@ public class AppOrderingTest {
     }
 
     @Test
+    public void pinningAddsToTheEndAndUnpinningRemoves() {
+        List<String> pinned = AppOrdering.toggleFavourite(
+                Arrays.asList("com.alpha", "com.beta"), "com.gamma");
+        assertEquals(Arrays.asList("com.alpha", "com.beta", "com.gamma"), pinned);
+        assertEquals(Arrays.asList("com.alpha", "com.gamma"),
+                AppOrdering.toggleFavourite(pinned, "com.beta"));
+    }
+
+    @Test
     public void aPinnedAppIsNotRepeatedInTheRest() {
         List<AppEntry> apps = Arrays.asList(app("com.alpha", "Alpha"), app("com.beta", "Beta"));
         List<AppEntry> ordered = AppOrdering.order(apps, "", Collections.emptySet(),
@@ -101,5 +112,25 @@ public class AppOrderingTest {
                 Arrays.asList("com.beta"));
         assertEquals(1, ordered.size());
         assertEquals("com.alpha", ordered.get(0).packageName);
+    }
+
+    @Test
+    public void arrangingStaysOnItsOwnSideOfThePins() {
+        // Two pins lead the grid.
+        assertTrue(AppOrdering.canMove(0, 1, 2));
+        assertTrue(AppOrdering.canMove(3, 2, 2));
+        assertFalse(AppOrdering.canMove(1, 2, 2));
+        assertFalse(AppOrdering.canMove(2, 1, 2));
+        // No pins: everything is one block.
+        assertTrue(AppOrdering.canMove(0, 1, 0));
+    }
+
+    @Test
+    public void thePinnedBlockIsCountedAndItsOrderRead() {
+        List<AppEntry> grid = Arrays.asList(app("com.b", "B"), app("com.a", "A"),
+                app("com.c", "C"));
+        List<String> pins = Arrays.asList("com.a", "com.b");
+        assertEquals(2, AppOrdering.pinnedCount(grid, pins));
+        assertEquals(Arrays.asList("com.b", "com.a"), AppOrdering.pinOrder(grid, 2));
     }
 }

@@ -15,11 +15,9 @@ import android.widget.TextView;
 
 import com.mitun.sonora.Prefs;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Control Center, laid out from tvOS 26: one large tile, four pills and a row of
@@ -180,9 +178,9 @@ public final class ControlCenter extends FrameLayout {
                 ? (seconds ? "HH:mm:ss" : "HH:mm")
                 : (seconds ? "h:mm:ss a" : "h:mm a");
         Date now = new Date();
-        String text = new SimpleDateFormat(pattern, Locale.getDefault()).format(now);
+        String text = ClockText.format(pattern, now);
         return prefs.showDate()
-                ? new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(now) + "  " + text
+                ? ClockText.format("EEE, d MMM", now) + "  " + text
                 : text;
     }
 

@@ -105,4 +105,12 @@ public class AppSearchTest {
             Locale.setDefault(original);
         }
     }
+
+    @Test
+    public void accentsDoNotGetInTheWay() {
+        List<AppEntry> apps = Arrays.asList(app("com.cafe", "Café"), app("com.tele", "Télé Plus"));
+        assertEquals("com.cafe", AppSearch.filter(apps, "cafe").get(0).packageName);
+        assertEquals("com.tele", AppSearch.filter(apps, "tele").get(0).packageName);
+        assertEquals("com.cafe", AppSearch.filter(apps, "CAFÉ").get(0).packageName);
+    }
 }

@@ -12,9 +12,7 @@ import android.widget.TextView;
 
 import com.mitun.sonora.Prefs;
 
-import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Locale;
 
 /** The tvOS-style top-right time / profile pill. Here the profile opens Settings. */
 public final class GlassPillView extends FrameLayout {
@@ -158,8 +156,9 @@ public final class GlassPillView extends FrameLayout {
         String pattern = h24
                 ? (seconds ? "HH:mm:ss" : "HH:mm")
                 : (seconds ? "h:mm:ss a" : "h:mm a");
-        time.setText(new SimpleDateFormat(pattern, Locale.getDefault()).format(new Date()));
-        date.setText(new SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(new Date()));
+        Date now = new Date();
+        time.setText(ClockText.format(pattern, now));
+        date.setText(ClockText.format("EEE, d MMM", now));
         updateDateVisibility();
         // Screen readers should hear the clock and what opening it does, not
         // just the word "Settings".

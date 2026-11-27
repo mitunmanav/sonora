@@ -186,8 +186,7 @@ public final class ScreensaverView extends FrameLayout {
             float density = getResources().getDisplayMetrics().density;
             // The clock sits above the place, as it does over Apple's aerials.
             String pattern = prefs.clock24() ? "HH:mm" : "h:mm a";
-            canvas.drawText(new java.text.SimpleDateFormat(pattern,
-                    java.util.Locale.getDefault()).format(new java.util.Date()),
+            canvas.drawText(ClockText.format(pattern, new java.util.Date()),
                     48 * density, h - 102 * density, clockPaint);
             canvas.drawText(scene.name, 48 * density, h - 56 * density, titlePaint);
             if (scene.credit != null) {

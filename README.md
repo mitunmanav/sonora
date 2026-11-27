@@ -1,87 +1,94 @@
+<div align="center">
+
+<img src="site/img/mark.svg" alt="" width="72">
+
 # Sonora
 
-A home screen for Android TV, built the way tvOS works — a glass dock,
-Control Center, an app switcher and an aerial screensaver — in plain Java
-with **zero third-party dependencies**. No ads, no analytics, no outbound
-connections. GPL-3.0.
+**A fast, private home screen for Android TV.**
 
-![Sonora on the test TV](site/img/control-center.webp)
+[![CI](https://github.com/mitunmanav/sonora/actions/workflows/ci.yml/badge.svg)](https://github.com/mitunmanav/sonora/actions/workflows/ci.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+![Android 6.0+](https://img.shields.io/badge/Android-6.0%2B-3ddc84.svg)
+![Dependencies: none](https://img.shields.io/badge/dependencies-none-success.svg)
 
-The project page is at <https://mitunmanav.github.io/sonora>.
+[Website](https://mitunmanav.github.io/sonora) · [Setup guide](docs/SETUP-GUIDE.md) · [Architecture](docs/ARCHITECTURE.md)
 
-## Measured on the same TV
+<img src="site/img/control-center.webp" alt="Sonora's Control Center on a TV" width="860">
 
-One Mi TV Stick, Android 11, 2 GB RAM, same debloated system, same
-12-key walk across the home screen — only the launcher changed
-(`docs/perf/`):
+</div>
 
-| | Sonora | Google TV |
-|---|---|---|
-| Launcher memory at idle | ~41 MB | ~181 MB |
-| Launcher memory after the walk | ~37 MB | ~275–288 MB |
+Sonora replaces the stock Android TV launcher with a glass dock, Control
+Center, an app switcher and an aerial screensaver. It is written in plain
+Java against platform APIs only, and is built for low-memory TV sticks first.
+
+- **Lightweight.** Uses about a fifth of the memory of the stock Google TV launcher on the same device.
+- **Private.** No ads, no analytics and no outbound connections.
+- **Dependency-free.** No AndroidX, Compose or Kotlin runtime; JUnit is the only test dependency.
+- **A real home app.** Registers as the home activity. It needs no accessibility service and runs no background services or receivers.
+
+## Screenshots
+
+| Home | App grid | Settings | Files |
+|:---:|:---:|:---:|:---:|
+| ![Home](site/img/home-thumb.webp) | ![App grid](site/img/grid-thumb.webp) | ![Settings](site/img/settings-thumb.webp) | ![Files](site/img/files-thumb.webp) |
+
+## Performance
+
+Measured on a Mi TV Stick (Android 11, 2 GB RAM) with the same debloated
+system and the same 12-key walk across the home screen. Only the launcher
+changed between runs.
+
+| Metric | Sonora | Google TV |
+|---|---:|---:|
+| Memory at idle | ~41 MB | ~181 MB |
+| Memory after the walk | ~37 MB | ~275–288 MB |
 | Frames missing their deadline | ~0.9% | ~6–8% |
 | Slowest 1% of frames | ~23 ms | ~105–200 ms |
 | Memory left free for apps | ~900 MiB | ~810 MiB |
 
-Google TV's process also hosts its recommendation rows and channel
-logos; Sonora does none of that work. Numbers are from
-[`docs/perf/2026-11-05.md`](docs/perf/2026-11-05.md), which records the
-method, the caveats and the raw `dumpsys` output. One honest note: the
-1 GB tier is tuned and forced-LOW tested on a 2 GB TV; no real 1 GB
-hardware has been through it yet.
+Google TV's process also hosts recommendation rows and channel logos, which
+Sonora does not provide. The method, caveats and raw `dumpsys` output are in
+[`docs/perf/2026-11-05.md`](docs/perf/2026-11-05.md).
 
-## Why it is different
+## Features
 
-- **It is the home app.** It does not need an accessibility service —
-  the mechanism most alternative launchers use to catch the Home button.
-  There is no accessibility service, no receiver, and no background
-  service except the screensaver's dream service.
-- **No libraries, Android 6.0+.** No AndroidX, Compose, Flutter or Kotlin
-  runtime — only platform APIs. The springs behind focus are solved by
-  hand in `ui/Spring.java`.
-- **Every effect has a low-memory answer.** `DeviceTier` reads the RAM
-  and picks LOW / MID / HIGH; a 1 GB stick gets half-size wallpaper,
-  frosted glass and no card shadows, and still looks like itself.
-- **A file manager in the box.** `files-core` is a Finder-style file
-  manager, bundled into the launcher and shipped standalone as `files/`
-  (a 48 KB APK). The Share screen serves files to your phone over LAN
-  and dies with the screen.
-- **It says what a device cannot do.** Permission-denied features are
-  stated in the UI; nothing is faked.
-
-Honest limits: no Watch Next or HDMI-input rows, no signed release yet
-(build and install over adb), and on Google TV the stock launcher may
-re-enable itself after a reboot. CleanYourTV is the other heavyweight in
-the field: its centre of gravity is per-brand debloat scripts plus a
-deliberately minimal 572 KB launcher with 31 languages and themes.
-Sonora is the launcher product itself — Control Center, switcher,
-search, settings, screensaver and Files — with a lighter debloat screen.
-
-## Modules
-
-| Path | What it is |
+| Feature | Description |
 |---|---|
-| `app/` | The launcher (`com.mitun.sonora`): home grid, dock, search, settings, screensaver, app manager, file server. |
-| `files-core/` | Android library: the whole Files file manager, shared by both apps. |
-| `files/` | Standalone Files app (`com.mitun.files`) — a thin shell around `files-core`. |
-| `site/` | The GitHub Pages site, served from `master`. |
+| **Home screen** | Hero wallpaper, glass dock, app tiles and a top shelf with clock and search. The dock opens into a full-screen app grid. |
+| **Control Center** | Screen Saver, Wi-Fi, Bluetooth, Sound and Display controls, plus shortcuts to Search, Apps and Settings. |
+| **App switcher** | Double-press Home to see recent apps as cards. OK switches; long OK removes a card from the list. |
+| **Search** | Offline app search with an on-screen keyboard. A voice key appears only when an assistant is installed. |
+| **Settings** | Home Screen, Clock, Screen Saver, Apps, Tools, System and Mode pages in a split layout. |
+| **Tools** | Device info, setup guide, app manager, a debloat screen and a first-run setup wizard. |
+| **Screensaver** | Five bundled aerial photographs with an optional clock. Can also be set as the system screensaver. |
+| **Files** | A Finder-style file manager with sidebar, icon and list views, Quick Look and USB drives. Its Share screen serves files to a phone over the local network while it is open. Also ships as a standalone 48 KB app. |
 
-## Build and test
+### Adaptive quality
 
-Linux/WSL only. Gradle 8.13 via the wrapper; no third-party dependencies
-(the only test dependency is JUnit):
+`DeviceTier` reads the device's RAM and selects a LOW, MID or HIGH profile.
+Every costly effect has a LOW variant: on a 1 GB device Sonora uses a
+half-size wallpaper, frosted rather than live glass, and no card shadows.
+
+## Getting started
+
+### Requirements
+
+- An Android TV device running Android 6.0 (API 23) or later
+- [`adb`](https://developer.android.com/tools/adb) with network debugging enabled on the TV
+- JDK 17 and a Linux or WSL shell to build from source
+
+### Build
 
 ```bash
-./gradlew :app:testDebugUnitTest :files-core:testDebugUnitTest
-./gradlew :app:assembleRelease :files:assembleRelease
+./gradlew :app:testDebugUnitTest :files-core:testDebugUnitTest   # unit tests
+./gradlew :app:assembleRelease :files:assembleRelease            # release builds
+./gradlew :app:assemblePerf                                      # installable build for devices
 ```
 
-The `perf` build type is the release build signed with the debug key, so
-it installs over a debug build without a keystore — and it is the build
-to measure on a device (`scripts/perf.sh` for a quick read,
-`scripts/bench.py` + `scripts/perf-ab.md` for the full A/B protocol).
+The `perf` build is the release build signed with the debug key. It installs
+without a keystore and is the build to use for on-device measurements.
 
-### Install on a TV
+### Install
 
 ```bash
 adb connect <tv-ip>:5555
@@ -89,64 +96,70 @@ adb install -r app/build/outputs/apk/perf/app-perf.apk
 adb shell cmd package set-home-activity com.mitun.sonora/.HomeActivity
 ```
 
-On Google TV the stock launcher can be turned off with
-`adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx`
-(`pm enable` brings it back). Setup details and permission notes are in
-[`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md).
+On Google TV, disable the stock launcher so it does not take Home back:
 
-## What is in the app
+```bash
+adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx   # pm enable restores it
+```
 
-- **Home screen** — hero wallpaper, glass dock, app tiles, top shelf with
-  clock and search pill; the grid opens from the dock into a full-screen
-  scroll, one scroll value driving dock, rows, wallpaper and glass.
-- **Control Center** — tvOS 26 panel: large Screen Saver tile, Wi-Fi /
-  Bluetooth / Sound / Display pills, round Search / Apps / Quick
-  settings / Settings buttons. Every tile does something the TV can do.
-- **App switcher** — glass cards of recent apps, double-press Home; OK
-  switches, long OK closes.
-- **Search** — local app-name search with its own one-line keyboard; no
-  network. The voice key exists only when an assistant answers
-  `ACTION_ASSIST`.
-- **Settings** — index of pages in the tvOS split layout: Quick
-  settings, Home Screen, Clock, Screen Saver, Apps, Tools, System, Mode.
-- **Tools** — Device info, Setup guide, Files, Debloat, Setup wizard
-  (first run), App manager. All navigate through one `ScreenStack`;
-  BACK is always one step.
-- **Screensaver** — five bundled aerial stills (CC BY-SA, credited in
-  Settings), optional clock, also selectable as the TV's system dream.
-- **Files** — Finder-style file manager (sidebar, icon/list views, quick
-  look, USB drives) plus a Share screen that serves files over LAN.
+See the [setup guide](docs/SETUP-GUIDE.md) for permissions and device-specific notes.
 
-## Rules the code keeps
+## Project structure
 
-- **Zero dependencies.** Platform APIs only; `ui/Spring` solves springs by hand.
-- **No background work.** No Service except the DreamService, no receivers, no alarms.
-- **No network** unless the LAN share is switched on. No analytics, ever.
-- **`minSdk 23`.** Pure logic lives outside the Activity and is unit-tested.
-- **Say what a device cannot do** in the UI. Never ship a fake feature.
-- **No Apple assets.** Measure and imitate behaviour; draw every mark ourselves.
+| Path | Contents |
+|---|---|
+| [`app/`](app) | The launcher (`com.mitun.sonora`): home, dock, search, settings, screensaver, tools. |
+| [`files-core/`](files-core) | The file manager as an Android library, shared by both apps. |
+| [`files/`](files) | The standalone Files app (`com.mitun.files`). |
+| [`scripts/`](scripts) | Deployment, profiling and benchmark scripts. |
+| [`docs/`](docs) | Architecture, research notes, plans and performance records. |
+| [`site/`](site) | The project website, deployed to GitHub Pages. |
+
+## Design principles
+
+- **Platform APIs only.** Animation springs are solved by hand in `ui/Spring.java`.
+- **No background work.** The screensaver's dream service is the only service.
+- **No network by default.** The only listener is the LAN share, and only while its screen is open.
+- **Testable logic.** Logic lives outside the Activity and is covered by unit tests.
+- **No fake features.** When a device does not allow something, the UI says so.
+- **Original artwork.** Behaviour is modelled on tvOS; every icon and mark is drawn for this project.
+
+## Known limitations
+
+- No Watch Next or HDMI-input rows.
+- No signed release yet; build from source and install with `adb`.
+- On Google TV, the stock launcher may re-enable itself after a reboot.
+- The 1 GB profile has been tested by forcing LOW on a 2 GB device, not yet on 1 GB hardware.
 
 ## Documentation
 
-- [`AGENTS.md`](AGENTS.md) — working rules for agents (`CLAUDE.md` is a symlink).
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — what the system is: modules, every screen, the rules.
-- [`docs/plans/PLAN.md`](docs/plans/PLAN.md) — running project log; append a session section, never rewrite history.
-- [`docs/plans/REQUIREMENTS-*.md`](docs/plans/) — dated owner requirements with status.
-- [`docs/perf/`](docs/perf/) — measured numbers with method and device.
-- [`docs/research/`](docs/research/) — tvOS design and performance research notes.
-- [`GLOSSARY.md`](GLOSSARY.md) — the project's domain vocabulary.
-
-## Credits
-
-Written by [Mitun Manav](https://github.com/mitunmanav). Screensaver
-photographs under CC BY-SA 4.0: Dietmar Rabich (Dülmen), Tasha~visual
-(Ngorongoro), Syrio (Vigo di Fassa), Medoffer (Zhuravlyne Lake),
-Bhullargraphic (Punjab). The launcher is not affiliated with Apple or
-Google; every mark is drawn for this project.
+| Document | Contents |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Modules, screens and the rules the code follows. |
+| [Setup guide](docs/SETUP-GUIDE.md) | Installation and permissions. |
+| [Performance](docs/perf/) | Measurements with method and device. |
+| [Research](docs/research/) | Design and performance research notes. |
+| [Project log](docs/plans/PLAN.md) | Session history and dated requirements. |
+| [Glossary](GLOSSARY.md) | Domain vocabulary. |
+| [Agent rules](AGENTS.md) | Working rules for coding agents. |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md): issues and device reports are
-welcome; pull requests are not merged — a change arrives as a commit of
-the maintainer's own. Security reports go through
-[SECURITY.md](SECURITY.md).
+Bug reports and device reports are welcome. Pull requests are not merged
+directly: accepted changes are re-applied by the maintainer. See
+[CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately as
+described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Sonora is released under the [GNU General Public License v3.0](LICENSE).
+
+Screensaver photographs are licensed under CC BY-SA 4.0 and credited to
+Dietmar Rabich (Dülmen), Tasha~visual (Ngorongoro), Syrio (Vigo di Fassa),
+Medoffer (Zhuravlyne Lake) and Bhullargraphic (Punjab).
+
+Sonora is not affiliated with Apple or Google.
+
+---
+
+<sub>Created by [Mitun Manav](https://github.com/mitunmanav).</sub>

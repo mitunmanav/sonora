@@ -122,7 +122,9 @@ public class GridTest {
         assertEquals(5, Grid.moveTarget(6, 6, 8, 21));
         assertEquals(7, Grid.moveTarget(1, 6, 8, 20));
         assertEquals(-1, Grid.moveTarget(7, 6, 8, 22));
-        assertEquals(-1, Grid.moveTarget(2, 6, 8, 20));
+        // DOWN onto a shorter row lands on its last tile.
+        assertEquals(7, Grid.moveTarget(2, 6, 8, 20));
+        assertEquals(7, Grid.moveTarget(5, 6, 8, 20));
     }
 
     @Test

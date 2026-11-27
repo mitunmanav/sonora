@@ -35,6 +35,8 @@ public final class RecentApps {
 
     /** package name to when Sonora last opened it, oldest first. */
     private static final LinkedHashMap<String, Long> session = new LinkedHashMap<>();
+    /** package name to when the user took it off the switcher. */
+    private static final Map<String, Long> dismissed = new java.util.HashMap<>();
 
     private RecentApps() {
     }
@@ -45,11 +47,33 @@ public final class RecentApps {
         }
         session.remove(packageName);
         session.put(packageName, System.currentTimeMillis());
+        dismissed.remove(packageName);
         while (session.size() > SESSION_LIMIT) {
             Iterator<String> it = session.keySet().iterator();
             it.next();
             it.remove();
         }
+    }
+
+    /**
+     * Takes an app off the switcher until it is used again.
+     *
+     * Android does not let a launcher close another app, so this is what a
+     * long OK on a card really does, and the switcher says so.
+     */
+    public static synchronized void dismiss(String packageName) {
+        if (packageName != null) {
+            dismissed.put(packageName, System.currentTimeMillis());
+        }
+    }
+
+    /** Pure: an app the user took off comes back once it is used after that. */
+    static boolean shown(long lastUsed, Long dismissedAt) {
+        return dismissedAt == null || lastUsed > dismissedAt;
+    }
+
+    private static synchronized Map<String, Long> dismissedSnapshot() {
+        return new java.util.HashMap<>(dismissed);
     }
 
     /** True when the user has let Sonora read usage history. */
@@ -86,12 +110,18 @@ public final class RecentApps {
         });
 
         PackageManager pm = context.getPackageManager();
+        Map<String, Long> off = dismissedSnapshot();
+        // The switcher icons are small; the lightest tier keeps them at half.
+        int iconSize = DeviceTier.get(context) == DeviceTier.LOW ? 96 : 192;
         List<AppEntry> out = new ArrayList<>();
         for (Map.Entry<String, Long> entry : ordered) {
             if (out.size() >= LIMIT) {
                 break;
             }
-            AppEntry app = describe(context, pm, entry.getKey());
+            if (!shown(entry.getValue(), off.get(entry.getKey()))) {
+                continue;
+            }
+            AppEntry app = describe(context, pm, entry.getKey(), iconSize);
             if (app != null) {
                 out.add(app);
             }
@@ -142,7 +172,8 @@ public final class RecentApps {
     }
 
     /** Label and icon for one package, or null when it cannot be launched. */
-    private static AppEntry describe(Context context, PackageManager pm, String pkg) {
+    private static AppEntry describe(Context context, PackageManager pm, String pkg,
+                                     int iconSize) {
         try {
             if (context.getPackageName().equals(pkg)
                     || pm.getLeanbackLaunchIntentForPackage(pkg) == null
@@ -152,7 +183,7 @@ public final class RecentApps {
             ApplicationInfo info = pm.getApplicationInfo(pkg, 0);
             CharSequence label = info.loadLabel(pm);
             Drawable drawable = info.loadIcon(pm);
-            Bitmap icon = Ui.drawableToBitmap(drawable, 192, 192, true);
+            Bitmap icon = Ui.drawableToBitmap(drawable, iconSize, iconSize, true);
             return new AppEntry(label == null || label.length() == 0 ? pkg
                     : label.toString(), pkg, null, icon, null, 0, false);
         } catch (RuntimeException | android.content.pm.PackageManager.NameNotFoundException e) {
