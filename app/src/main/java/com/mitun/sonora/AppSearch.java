@@ -29,7 +29,7 @@ public final class AppSearch {
         if (apps == null) {
             return out;
         }
-        String needle = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        String needle = fold(query == null ? "" : query.trim());
         if (needle.isEmpty()) {
             out.addAll(apps);
             return out;
@@ -42,10 +42,10 @@ public final class AppSearch {
             if (entry == null || entry.label == null) {
                 continue;
             }
-            String label = entry.label.toLowerCase(Locale.ROOT);
+            String label = fold(entry.label);
             if (label.startsWith(needle)) {
                 out.add(entry);
-            } else if (initials(entry.label).startsWith(needle)) {
+            } else if (fold(initials(entry.label)).startsWith(needle)) {
                 initials.add(entry);
             } else if (wordStartsWith(label, needle)) {
                 words.add(entry);
@@ -79,6 +79,16 @@ public final class AppSearch {
             }
         }
         return -1;
+    }
+
+    /**
+     * Lower case with the accents taken off, so "cafe" finds "Café". Both the
+     * query and the name go through it.
+     */
+    static String fold(String text) {
+        String plain = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        return plain.toLowerCase(Locale.ROOT);
     }
 
     /** True when the needle starts a word inside the label. */

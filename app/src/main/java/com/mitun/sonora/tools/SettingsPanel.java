@@ -6,6 +6,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.mitun.sonora.AppEntry;
+import com.mitun.sonora.AppOrdering;
 import com.mitun.sonora.AppRepository;
 import com.mitun.sonora.DeviceTier;
 import com.mitun.sonora.PackageActions;
@@ -21,6 +22,7 @@ import com.mitun.sonora.ui.Ui;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The settings.
@@ -35,6 +37,8 @@ import java.util.List;
  */
 public final class SettingsPanel {
     private static final String TITLE = "Settings";
+    /** Reordered favourite reads must not land after the newer one. */
+    private static final AtomicLong FAVOURITES_RELOAD = new AtomicLong();
 
     /** One screen of the settings. */
     private static final class Page {
@@ -456,6 +460,7 @@ public final class SettingsPanel {
 
     /** Rebuilds the check rows the way the screen first loads: off the main thread. */
     private static void reloadFavourites(ToolActivity host) {
+        final long generation = FAVOURITES_RELOAD.incrementAndGet();
         new Thread(() -> {
             List<SettingRow> built;
             try {
@@ -469,8 +474,9 @@ public final class SettingsPanel {
                 if (host.isFinishing() || host.isDestroyed()) {
                     return;
                 }
-                if (!"Favourites".equals(host.stack().topTitle())) {
-                    // The user left the screen while the list was being read.
+                if (generation != FAVOURITES_RELOAD.get()
+                        || !"Favourites".equals(host.stack().topTitle())) {
+                    // The user left the screen, or a newer read already owns it.
                     return;
                 }
                 host.stack().refreshSettings("Favourites", rows);
@@ -494,13 +500,7 @@ public final class SettingsPanel {
             }
             boolean pinned = host.prefs().isFavourite(pkg);
             rows.add(SettingRow.check(entry.label, pinned, () -> {
-                List<String> pinned2 = new ArrayList<>(host.prefs().favourites());
-                if (pinned2.contains(pkg)) {
-                    pinned2.remove(pkg);
-                } else {
-                    pinned2.add(0, pkg);
-                }
-                host.prefs().setFavourites(pinned2);
+                host.prefs().setFavourites(AppOrdering.toggleFavourite(host.prefs().favourites(), pkg));
                 // A cold app list would put the package scan on the key
                 // handler's thread, which is the main one.
                 reloadFavourites(host);

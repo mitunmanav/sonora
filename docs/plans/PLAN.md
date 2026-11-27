@@ -1516,3 +1516,41 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: whole-repo audit — spec, tickets, fixes, one branch
+
+An audit of `master` (`7bdbbbf`), its 11 remote branches and 9 pull
+requests, and a web survey of the launchers people use:
+`.scratch/audit-2026-11-27/spec.md`, then one ticket per item in
+`issues/`, then the fixes. The owner asked for no AI co-authors and a
+history of 30 commits, so the publication record was folded into the
+README/CI commit and this session is commit 30.
+
+- Repo: PRs #6, #8 and #9 closed. The three fixes in #9 and the Files fix
+  in #7 are redone here. Deleting the other branches and moving this
+  history onto `master` (a force push) were refused to this session; the
+  owner does both (tickets 01, 02).
+- Apps installed, removed or updated outside Sonora now reach the grid:
+  `AppChanges` asks `getChangedPackages` on resume (API 26+) or holds a
+  `LauncherApps.Callback` (23–25). No receiver.
+- Two fake features made honest: Force stop no longer reads a process list
+  that only ever showed Sonora, and long OK in the switcher takes the card
+  off the list instead of claiming to close the app.
+- Arranging respects the pinned block; a new pin goes last; DOWN onto a
+  shorter row lands on its last tile; any key but the arrows, OK and volume
+  wakes both savers (`SaverKeys`); BACK only acts on a press the window saw
+  start (`BackPress`); search folds accents.
+- Share: ports 8080–8089 first, byte ranges for phone video players, a cap
+  on header lines. Clock formatters are built once (`ui/ClockText`; the
+  saver used to build one per frame). A pin reorders tiles instead of
+  rebuilding them; the cold app load drops two package calls per app;
+  recents icons are halved on LOW.
+- Docs: `docs-sync` moved to `.agents/skills/`; the codegraph and
+  `.scratch/` paths in the docs exist; `docs/research/COMPETITORS-2026-11-27.md`.
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
+(170 tests, was 149) and `:app:assembleRelease`, `:files:assembleRelease`,
+`:app:assemblePerf` green in this container. Not verified: nothing ran on
+the TV. Ticket 08 (an adb install while another app is open), the saver
+keys, arranging among pins and Share with a phone video player need a TV
+walk. Ticket 15 is won't-fix: a disable may not move the change count.

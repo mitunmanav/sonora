@@ -103,7 +103,8 @@ On Google TV the stock launcher can be turned off with
   Bluetooth / Sound / Display pills, round Search / Apps / Quick
   settings / Settings buttons. Every tile does something the TV can do.
 - **App switcher** — glass cards of recent apps, double-press Home; OK
-  switches, long OK closes.
+  switches, long OK takes a card off the list (Android does not let a
+  launcher close another app).
 - **Search** — local app-name search with its own one-line keyboard; no
   network. The voice key exists only when an assistant answers
   `ACTION_ASSIST`.

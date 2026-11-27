@@ -110,7 +110,12 @@ public final class Grid {
             case 19:
                 return row > 0 ? index - columns : -1;
             case 20:
-                return index + columns < count ? index + columns : -1;
+                if (index + columns < count) {
+                    return index + columns;
+                }
+                // A shorter row below still takes the focus, on its last
+                // tile, the way tvOS does: no column is a dead end.
+                return (row + 1) * columns < count ? count - 1 : -1;
             default:
                 return -1;
         }
