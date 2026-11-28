@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds, tests, installs and relaunches on the TV.
-#   scripts/deploy.sh                the launcher
+#   SONORA_TV=<address>:5555 scripts/deploy.sh   the launcher
 #   scripts/deploy.sh files          the Files app
 #   scripts/deploy.sh all            both
 # BUILD=debug uses the debug build. The default "perf" build is the release build

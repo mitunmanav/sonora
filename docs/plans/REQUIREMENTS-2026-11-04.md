@@ -2,7 +2,7 @@
 
 Written down as asked ("please note all of these requirements").
 
-## Status (updated 2026-11-05, commits through `4d903cf`)
+## Status (updated 2026-11-28)
 
 | # | Requirement | Status |
 |---|---|---|
@@ -11,7 +11,7 @@ Written down as asked ("please note all of these requirements").
 | 3 | Focus animation | Done — lean, parallax and sheen removed; every card behaves the same. This is also the biggest perf win. |
 | 4 | Dark and light mode | Done — `ui/Theme`, Appearance page with Dark/Light. The rest of the look is unchanged. |
 | 5 | Edge cases | Done — seventh pass (2026-11-06): two parallel audits over `HomeActivity`, `ui/` and `tools/`; fixed the dead "On tap" saver clock, ghost tiles after system-side uninstall, a blind unhide, HOME-isn't-interaction, pending-switcher cancel, `suppressIdle` ordering, retail-dead Hide toggle, ~15 items; 156 tests green; PLAN.md session 32. TV walk still owed. |
-| 6 | Performance | Done and measured — `DeviceTier` LOW/MID/HIGH, tier-gated effects, `docs/perf/2026-11-04.md`. No real 1 GB TV has been available; LOW was forced on a 2 GB TV. |
+| 6 | Performance | `DeviceTier` and tier-gated effects are in place. The [updated benchmark](../perf/2026-11-28.md#follow-up-on-the-mi-tv) supports paired runs and loaded workloads. Wallpaper thumbnail blur is pixel-identical and 5.4× faster in the Mi TV kernel test. The dock transition, full loaded profile and physical 1 GB coverage remain open. |
 | 7 | Apple-styled file manager | Done — `files-core`, Finder-style grid/list, sheets, quick look. Rename/New Folder, USB drives and real thumbnails are built but not all seen on the TV. |
 | 8 | Separate app, also bundled | Done — `com.mitun.files` ships standalone and inside Sonora's Tools. |
 | 9 | Reorganize the folder | Done — `docs/`, `files/`, `files-core/`, `scripts/`; dead code removed 2026-11-05 (`SonoraProvider`, unused drawables and strings). |

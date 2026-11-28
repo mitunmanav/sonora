@@ -11,7 +11,7 @@ what was done session by session.
 | `app/` | The launcher (`com.mitun.sonora`). Pure logic at the package root, views in `ui/`, screens in `tools/`, screensaver in `dream/`. |
 | `files-core/` | Android library: the whole Files file manager, shared by both apps. |
 | `files/` | Standalone Files app (`com.mitun.files`) — a thin shell around `files-core`. |
-| `scripts/` | `deploy.sh`, `perf.sh`, `tv.sh`. Linux and WSL only. |
+| `scripts/` | `deploy.sh`, `perf.sh`, `tv.sh`, `bench.py`, `perf-ab.md`. Linux and WSL only. |
 | `docs/` | `plans/` (log + requirements), `perf/` (measured numbers), `research/` (design/perf notes), `agents/` (tracker/domain conventions), this file. |
 | `.scratch/` | Tracked efforts: one directory per feature, `spec.md` + `issues/`. |
 | `reference/` | Vendor APKs kept for study. Git-ignored. |
@@ -26,7 +26,8 @@ what was done session by session.
   Saver tile, Wi-Fi/Bluetooth/Sound/Display pills, round Search/Apps/Quick
   settings/Settings buttons. Every tile does something the TV can really do.
 - **App switcher** (`ui/AppSwitcherView`): glass cards of recent apps,
-  double-press Home; OK switches, long OK closes.
+  double-press Home; OK switches, long OK takes the card off the list
+  until the app is used again (a launcher cannot close another app).
 - **Search** (`ui/SearchOverlay` + `SearchKeyboard`): local app-name search,
   own one-line keyboard, no network. Voice key only exists when an
   assistant answers `ACTION_ASSIST`.
@@ -74,5 +75,6 @@ what was done session by session.
 - `docs/perf/` — measured numbers with method and device.
 - `docs/research/` — tvOS design research, platform performance research.
 - `docs/agents/` — issue-tracker and domain-doc conventions.
-- `.devin/skills/docs-sync/` — the doc-upkeep checklist every session ends with.
-- `.scratch/` — `benchmark-scripts/`, `files-pass/`, `browser-pass/` specs.
+- `.agents/skills/docs-sync/` — the doc-upkeep checklist every session ends with.
+- `.scratch/` — one directory per effort: the edge-case passes, `files-pass/`,
+  `browser-pass/` and `audit-2026-11-27/` (spec plus one ticket per issue).

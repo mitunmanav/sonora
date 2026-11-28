@@ -10,7 +10,6 @@ import android.net.Uri;
 import android.provider.Settings;
 
 import java.io.File;
-import java.util.List;
 
 /**
  * The actions the app manager offers, and the honest limits of each one.
@@ -255,11 +254,12 @@ public final class PackageActions {
     }
 
     /**
-     * Stops a running app.
+     * Asks Android to stop an app.
      *
-     * Only a background app can be stopped this way. An app in the foreground
-     * belongs to the user, and saying it was stopped when it was not would be
-     * a lie, so the message says what happened.
+     * Android only lets a launcher stop an app's background processes, and it
+     * does not say whether anything was running: since Android 5.1 the list of
+     * running processes shows a normal app only its own. So the message says
+     * what was asked, not what happened.
      */
     public static Result forceStop(Context context, String packageName) {
         try {
@@ -268,47 +268,12 @@ public final class PackageActions {
             if (am == null) {
                 return new Result(false, "No activity manager");
             }
-            if (!isRunning(context, packageName)) {
-                // Nothing was asked to stop, so "Stopped" would be a lie.
-                return new Result(true, "Not running");
-            }
             am.killBackgroundProcesses(packageName);
-            if (isRunning(context, packageName)) {
-                return new Result(false, "Still running: only background apps can be stopped");
-            }
-            return new Result(true, "Stopped");
+            return new Result(true,
+                    "Asked Android to stop it. An app on screen or playing keeps running.");
         } catch (RuntimeException e) {
             return new Result(false, "Could not stop this app");
         }
-    }
-
-    /** True when the package still has a process alive. */
-    private static boolean isRunning(Context context, String packageName) {
-        try {
-            android.app.ActivityManager am =
-                    (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am == null) {
-                return false;
-            }
-            List<android.app.ActivityManager.RunningAppProcessInfo> running =
-                    am.getRunningAppProcesses();
-            if (running == null) {
-                return false;
-            }
-            for (android.app.ActivityManager.RunningAppProcessInfo info : running) {
-                // pkgList names every package inside the process, which a
-                // "pkg:remote" style processName comparison would miss.
-                if (info != null && info.pkgList != null) {
-                    for (String pkg : info.pkgList) {
-                        if (packageName.equals(pkg)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        } catch (RuntimeException ignored) {
-        }
-        return false;
     }
 
     /** Opens the system app-info page for a package. */

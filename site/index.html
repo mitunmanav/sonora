@@ -76,6 +76,22 @@
 
 <section id="measured" class="section">
   <h2>Measured on the same stick</h2>
+  <h3>Sonora vs Clean Your TV 3.6</h3>
+  <p class="intro">On the 2&nbsp;GB Mi TV Stick, Sonora used less memory and drew its first cold Android frame sooner. Clean Your TV was smoother during mixed and vertical navigation.</p>
+  <div class="table-wrap">
+    <table class="numbers">
+      <thead><tr><th scope="col">Metric</th><th scope="col">Sonora</th><th scope="col">Clean Your TV</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Launcher PSS after mixed navigation</th><td>39.4 MiB</td><td>53.5 MiB</td></tr>
+        <tr><th scope="row">Cold first Android frame</th><td>273 ms</td><td>511 ms</td></tr>
+        <tr><th scope="row">Mixed navigation deadline misses</th><td>17/1,076 (1.58%)</td><td>0/1,040</td></tr>
+        <tr><th scope="row">Mixed navigation frame p99</th><td>28 ms</td><td>11 ms</td></tr>
+        <tr><th scope="row">Vertical navigation frame p99</th><td>27 ms</td><td>11 ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fine">Both cleared every horizontal deadline. HOME reached window focus in about 1.04 seconds on either launcher. Each kept its own layout, Sonora ran first, and each navigation workload had three trials per launcher. Usable-grid time and remote-to-screen latency still need measurement. <a href="https://github.com/mitunmanav/sonora/blob/master/docs/perf/2026-11-28.md">Full comparison, method and evidence</a>.</p>
+  <h3>Sonora vs Google TV</h3>
   <p class="intro">One Mi TV Stick, Android 11, 2&nbsp;GB of RAM. Same debloated system for every run, cold boot, a minute to settle, then the same twelve-key walk across the home screen. Only the launcher changed. The raw <code>dumpsys</code> output is in the repository.</p>
 
   <div class="meter" role="img" aria-label="Launcher memory after the key walk: Sonora 36 megabytes, Google TV 275 to 288 megabytes.">
@@ -169,12 +185,12 @@
       <tr><th scope="row"><a href="https://github.com/Klevico/Monet-Launcher">Monet</a></th><td>Closed</td><td>Not stated</td><td>8.0</td><td>Not stated</td><td>No</td></tr>
       <tr><th scope="row"><a href="https://github.com/QBH21/vitrine">Vitrine</a></th><td>Open</td><td>Kotlin, Compose</td><td>11</td><td>Optional accessibility service</td><td>No</td></tr>
       <tr><th scope="row"><a href="https://github.com/conreo/couchy-launcher">Couchy</a></th><td>Open, GPL-3.0</td><td>Kotlin</td><td>5.0</td><td>Not stated</td><td>No</td></tr>
-      <tr><th scope="row"><a href="https://github.com/Gathin23/cleanyourtv">CleanYourTV</a></th><td>Open, MIT</td><td>Java, no libraries</td><td>8.0</td><td>Home app; optional accessibility for the Input key</td><td>No</td></tr>
+      <tr><th scope="row"><a href="https://github.com/Gathin23/cleanyourtv">Clean Your TV</a></th><td>Open, MIT</td><td>Java, AndroidX</td><td>8.0</td><td>Home app; optional accessibility for the Input key</td><td>No</td></tr>
       <tr><th scope="row"><a href="https://gitlab.com/flauncher/flauncher">FLauncher</a></th><td>Open, GPL-3.0</td><td>Flutter</td><td>Not stated</td><td>A button remapper, or adb</td><td>No</td></tr>
     </tbody>
   </table>
   </div>
-  <p class="fine">Some are lighter than Sonora: Vitrine reports about 27&nbsp;MB and just-a-launcher about 35&nbsp;MB, each on its own TV. They get there by showing less. Couchy reaches back to Android 5. CleanYourTV takes the other road: a 572&nbsp;KB launcher built around deep per-brand debloat tooling, 31 languages and themes — its launcher deliberately has no blur, no video and no network permission, while Sonora is the whole product: Control Center, app switcher, search, settings, screensaver and Files. Projectivy has Watch Next rows, HDMI inputs and a phone remote, which Sonora does not. Pick the one that fits your TV.</p>
+  <p class="fine">Vitrine reports about 27&nbsp;MB and just-a-launcher about 35&nbsp;MB on their own hardware. Use the same-stick results above for direct comparisons. Clean Your TV offers per-brand debloat tooling, themes and multiple languages. Sonora bundles Control Center, search, an app switcher, a screensaver and Files. Projectivy offers Watch Next rows, HDMI inputs and a phone remote.</p>
 </section>
 
 <section id="limits" class="section">

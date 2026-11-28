@@ -1,0 +1,11 @@
+device,profile,block,order,workload,metric,A_n,A_median,A_min,A_max,B_n,B_median,B_min,B_max,B_minus_A_slot_median
+mi-tv-stick,default,grid-pilot,ABBA,vertical,available_kib,4,881432.0,877740,886100,4,884916.0,879924,891984,3759.0
+mi-tv-stick,default,grid-pilot,ABBA,vertical,deadline_misses,4,3.5,2,4,4,3.0,3,6,0.5
+mi-tv-stick,default,grid-pilot,ABBA,vertical,deadline_rate_pct,4,0.7721482057765243,0.43859649122807015,0.8849557522123894,4,0.6593406593406593,0.6578947368421053,1.3303769401330376,0.10977608516573834
+mi-tv-stick,default,grid-pilot,ABBA,vertical,frames,4,453.5,452,456,4,455.0,451,456,0.5
+mi-tv-stick,default,grid-pilot,ABBA,vertical,gpu_p90_ms,4,19.5,19,20,4,20.0,19,20,0.25
+mi-tv-stick,default,grid-pilot,ABBA,vertical,launcher_after_kib,4,40287.5,40127,40456,4,40780.0,40403,41117,480.5
+mi-tv-stick,default,grid-pilot,ABBA,vertical,launcher_before_kib,4,39299.0,38421,40176,4,40426.5,38579,40833,767.5
+mi-tv-stick,default,grid-pilot,ABBA,vertical,p50_ms,4,7.0,6,7,4,6.5,6,7,-0.25
+mi-tv-stick,default,grid-pilot,ABBA,vertical,p95_ms,4,17.0,17,17,4,17.0,17,17,0.0
+mi-tv-stick,default,grid-pilot,ABBA,vertical,p99_ms,4,25.5,19,30,4,27.0,22,44,5.0

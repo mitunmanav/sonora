@@ -46,11 +46,10 @@ jobs:
 
       - name: Check authors and trailers
         env:
-          OWNER_EMAILS: 238927830+mitunmanav@users.noreply.github.com 238927830+mitunmanav@users.noreply.github.com
-          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before && format('{0}..{1}', github.event.before, github.sha)) || 'HEAD' }}
+          OWNER_EMAIL: 238927830+mitunmanav@users.noreply.github.com
         run: |
-          bad=$(git log --format='%h %ae %an' "$RANGE" | awk -v ok=" $OWNER_EMAILS " 'index(ok, " " $2 " ") == 0')
-          trailers=$(git log --format='%h %(trailers:key=Co-authored-by,valueonly,separator=%x2C)' "$RANGE" | awk 'NF > 1')
+          bad=$(git log --format='%h %ae %an' HEAD | awk -v ok=" $OWNER_EMAIL " 'index(ok, " " $2 " ") == 0')
+          trailers=$(git log --format='%h %(trailers:key=Co-authored-by,valueonly,separator=%x2C)' HEAD | awk 'NF > 1')
           if [ -n "$bad$trailers" ]; then
             [ -n "$bad" ] && echo "::error::Commits not authored by the owner:" && echo "$bad"
             [ -n "$trailers" ] && echo "::error::Commits with co-author trailers:" && echo "$trailers"

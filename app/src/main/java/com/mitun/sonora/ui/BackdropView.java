@@ -99,32 +99,9 @@ public final class BackdropView extends View {
         int h = HEIGHT;
         Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Ui.drawCenterCrop(new Canvas(bitmap), decoded, new RectF(0f, 0f, w, h), 1f, 0f, 0f);
-        int[] in = new int[w * h];
-        int[] out = new int[w * h];
-        bitmap.getPixels(in, 0, w, 0, 0, w, h);
-        for (int pass = 0; pass < 3; pass++) {
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    int r = 0;
-                    int g = 0;
-                    int b = 0;
-                    for (int dy = -2; dy <= 2; dy++) {
-                        int row = Math.max(0, Math.min(h - 1, y + dy)) * w;
-                        for (int dx = -2; dx <= 2; dx++) {
-                            int p = in[row + Math.max(0, Math.min(w - 1, x + dx))];
-                            r += (p >> 16) & 0xFF;
-                            g += (p >> 8) & 0xFF;
-                            b += p & 0xFF;
-                        }
-                    }
-                    out[y * w + x] = 0xFF000000 | (r / 25) << 16 | (g / 25) << 8 | b / 25;
-                }
-            }
-            int[] swap = in;
-            in = out;
-            out = swap;
-        }
-        bitmap.setPixels(in, 0, w, 0, 0, w, h);
+        int[] pixels = new int[w * h];
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h);
+        bitmap.setPixels(BackdropBlur.soften(pixels, w, h), 0, w, 0, 0, w, h);
         return bitmap;
     }
 

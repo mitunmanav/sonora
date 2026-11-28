@@ -2,7 +2,6 @@ package com.mitun.sonora;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -140,6 +139,10 @@ public class HomeActivity extends Activity {
     private boolean editing;
 
     private long lastInteraction;
+    /** Only a BACK this window saw go down counts when it comes up. */
+    private final BackPress backPress = new BackPress();
+    /** Notices apps installed, removed or updated outside Sonora. */
+    private AppChanges appChanges;
     private boolean suppressIdle;
     private boolean initialFocusDone;
 
@@ -228,6 +231,8 @@ public class HomeActivity extends Activity {
         // Seeded here so the first resume does not read the grid as changed
         // and rebuild it a second time.
         gridKey = prefs.gridKey();
+        appChanges = new AppChanges(this);
+        appChanges.start();
         loadApps();
         if (!prefs.welcomeSeen()) {
             // The setup runs once, on the first launch. It is marked as seen
@@ -418,6 +423,8 @@ public class HomeActivity extends Activity {
 
     private void loadApps() {
         final long gen = ++appsLoadGeneration;
+        // Before the read: a change that lands while it runs still counts.
+        appChanges.markRead();
         // Stored at the size the focused card draws at, so it stays sharp.
         final int tileWidthPx = DeviceTier.artworkWidth(DeviceTier.get(this),
                 Ui.dp(this, gridMetrics().tileWidthDp), AppTileView.FOCUS_SCALE);
@@ -466,12 +473,59 @@ public class HomeActivity extends Activity {
             favourites.addAll(prefs.favourites());
             appEntries = AppOrdering.order(Arrays.asList(appEntries), prefs.order(),
                     prefs.hidden(), favourites).toArray(new AppEntry[0]);
-            buildGrid();
+            if (!reorderTiles()) {
+                buildGrid();
+            }
         } catch (RuntimeException | OutOfMemoryError e) {
             // A pin is a nicety: on a full heap the grid keeps what it had
             // rather than the whole launcher dying for it. The stored
             // favourite is still written, so the next load honours it.
         }
+    }
+
+    /**
+     * Puts the existing tiles in the order of {@link #appEntries}, so a pin
+     * does not throw every card's artwork away and build it again.
+     *
+     * @return false when a tile is missing and the grid has to be built
+     */
+    private boolean reorderTiles() {
+        if (tiles.size() != appEntries.length + 1) {
+            return false;
+        }
+        java.util.Map<String, AppTileView> byPackage = new java.util.HashMap<>();
+        AppTileView settingsTile = null;
+        for (AppTileView tile : tiles) {
+            AppEntry entry = tile.entry();
+            if (entry == null) {
+                return false;
+            }
+            if (entry.settings) {
+                settingsTile = tile;
+            } else {
+                byPackage.put(entry.packageName, tile);
+            }
+        }
+        List<AppTileView> ordered = new ArrayList<>();
+        for (AppEntry entry : appEntries) {
+            AppTileView tile = byPackage.get(entry.packageName);
+            if (tile == null) {
+                return false;
+            }
+            tile.setFavourite(isFavourite(entry));
+            ordered.add(tile);
+        }
+        if (settingsTile == null) {
+            return false;
+        }
+        ordered.add(settingsTile);
+        tiles.clear();
+        tiles.addAll(ordered);
+        layoutRows();
+        restoreFocus();
+        gridKey = prefs.gridKey();
+        updateShelf(focusedEntry());
+        return true;
     }
 
     private void buildGrid() {
@@ -1050,11 +1104,10 @@ public class HomeActivity extends Activity {
 
                             @Override
                             public void onCloseApp(String packageName) {
-                                try {
-                                    ((android.app.ActivityManager) getSystemService(
-                                            Context.ACTIVITY_SERVICE)).killBackgroundProcesses(packageName);
-                                } catch (RuntimeException ignored) {
-                                }
+                                // Android does not let a launcher close the app the
+                                // user just left, so the card is taken off the list.
+                                RecentApps.dismiss(packageName);
+                                Ui.toast(HomeActivity.this, "Removed from the list");
                             }
 
                             @Override
@@ -1275,6 +1328,8 @@ public class HomeActivity extends Activity {
                         startActivity(info);
                         // The user can uninstall or disable the app on that
                         // screen; the tile may be a ghost when we come back.
+                        // The package check in onResume sees an uninstall, but
+                        // a disable may not move its count, so the list goes.
                         AppRepository.invalidate();
                         prefs.bumpAppsEpoch();
                     } catch (ActivityNotFoundException e) {
@@ -1322,13 +1377,7 @@ public class HomeActivity extends Activity {
     /** Pins an app to the top of the home screen, or unpins it. */
     private void toggleFavourite(AppEntry entry) {
         boolean was = isFavourite(entry);
-        List<String> list = new ArrayList<>(prefs.favourites());
-        if (was) {
-            list.remove(entry.packageName);
-        } else {
-            list.add(0, entry.packageName);
-        }
-        prefs.setFavourites(list);
+        prefs.setFavourites(AppOrdering.toggleFavourite(prefs.favourites(), entry.packageName));
         applyOrder();
         Ui.toast(this, was ? entry.label + " unpinned" : entry.label + " pinned to the top");
     }
@@ -1391,10 +1440,18 @@ public class HomeActivity extends Activity {
                 target = row > 0 ? index - columns : -1;
                 break;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                target = (index + columns < appEntries.length) ? index + columns : -1;
+                // A shorter row below takes the app at its end, as focus does.
+                target = index + columns < appEntries.length ? index + columns
+                        : (row + 1) * columns < appEntries.length ? appEntries.length - 1 : -1;
                 break;
             default:
                 return false;
+        }
+        if (target >= 0 && !AppOrdering.canMove(index, target,
+                AppOrdering.pinnedCount(Arrays.asList(appEntries), favourites))) {
+            // The pins lead the grid in their own order; crossing that edge
+            // would snap back at the next rebuild.
+            target = -1;
         }
         if (target < 0) {
             // At the edge of the grid: the key is used, nothing moves.
@@ -1420,6 +1477,14 @@ public class HomeActivity extends Activity {
         AppTileView tile = tiles.remove(from);
         tiles.add(to, tile);
 
+        int pinned = AppOrdering.pinnedCount(list, favourites);
+        if (to < pinned) {
+            // A move among the pins is a new pin order.
+            List<String> pins = AppOrdering.pinOrder(list, pinned);
+            prefs.setFavourites(pins);
+            favourites.clear();
+            favourites.addAll(pins);
+        }
         prefs.setOrder(AppOrdering.saveOrder(list));
         // The order is part of the grid fingerprint; without the refresh the
         // next resume would rebuild the grid the move just built.
@@ -1714,29 +1779,26 @@ public class HomeActivity extends Activity {
             if (event.getAction() != KeyEvent.ACTION_DOWN) {
                 return false;
             }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                screensaver.previousScene();
-                return true;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                screensaver.nextScene();
-                return true;
-            }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-                // "On tap" mode shows its clock the first time OK lands, the
-                // way the dream does; a second OK wakes the TV.
-                if (prefs.screensaverClock() == 0 && !screensaver.infoOverlayShown()) {
+            // The same table as the dream: the arrows change the scene, OK
+            // shows the clock once in "On tap" mode, any other key wakes.
+            switch (SaverKeys.action(keyCode, prefs.screensaverClock(),
+                    screensaver.infoOverlayShown())) {
+                case SaverKeys.PREVIOUS:
+                    screensaver.previousScene();
+                    return true;
+                case SaverKeys.NEXT:
+                    screensaver.nextScene();
+                    return true;
+                case SaverKeys.SHOW_CLOCK:
                     screensaver.showInfoOverlay();
-                } else {
+                    return true;
+                case SaverKeys.PASS:
+                    return false;
+                case SaverKeys.WAKE:
+                default:
                     hideScreensaver();
-                }
-                return true;
+                    return true;
             }
-            if (keyCode == KeyEvent.KEYCODE_BACK) {
-                hideScreensaver();
-                return true;
-            }
-            return false;
         });
     }
 
@@ -1782,7 +1844,10 @@ public class HomeActivity extends Activity {
             // The remote's search key opens Sonora's own search: the names of
             // the apps on this TV, with nothing sent anywhere.
             if (prefs.searchKey() && isSearchKey(event.getKeyCode())) {
-                if (searchOverlay == null && screensaver == null) {
+                if (screensaver != null) {
+                    // Any key wakes the saver, this one too.
+                    hideScreensaver();
+                } else if (searchOverlay == null) {
                     if (editing) {
                         endEditing();
                     }
@@ -1800,9 +1865,11 @@ public class HomeActivity extends Activity {
             }
         }
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            // BACK is a breadcrumb, never a toggle and never a dialog.
-            if (event.getAction() == KeyEvent.ACTION_UP && handleBack()) {
-                return true;
+            // BACK is a breadcrumb, never a toggle and never a dialog. It acts
+            // on the release of a press this window saw start.
+            if (backPress.released(event.getAction() == KeyEvent.ACTION_UP,
+                    event.getRepeatCount(), event.isCanceled())) {
+                handleBack();
             }
             return true;
         }
@@ -2004,6 +2071,13 @@ public class HomeActivity extends Activity {
         // only seen when the launcher comes back. The grid is rebuilt when
         // something that changes it has changed; the wallpaper has its own
         // key, so it is checked every time.
+        if (appChanges.changed()) {
+            // An app was installed, removed or updated while Sonora was out
+            // of sight: the cached list is stale, artwork and all.
+            AppRepository.invalidate();
+            AppManager.invalidate();
+            artworkDropped = true;
+        }
         if (gridChanged() || artworkDropped) {
             // The artwork was dropped to free memory, so the list has to be
             // read again even when nothing about the grid has changed.
@@ -2103,6 +2177,7 @@ public class HomeActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         glassBaker.shutdownNow();
+        appChanges.stop();
     }
 
     @Override

@@ -47,6 +47,7 @@ public final class ToolActivity extends Activity {
     private int markKind;
     private ScreenStack stack;
     private Prefs prefs;
+    private final com.mitun.sonora.BackPress backPress = new com.mitun.sonora.BackPress();
     private View choiceOverlay;
     /** The row that had the focus before a picker took it. */
     private View stackFocus;
@@ -381,7 +382,10 @@ public final class ToolActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            if (event.getAction() == KeyEvent.ACTION_UP) {
+            // Only the release of a press this window saw start: a cancelled
+            // or orphan up must not pop a screen.
+            if (backPress.released(event.getAction() == KeyEvent.ACTION_UP,
+                    event.getRepeatCount(), event.isCanceled())) {
                 if (choiceOverlay != null) {
                     dismissChoice();
                     return true;

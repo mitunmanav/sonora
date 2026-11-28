@@ -1516,3 +1516,111 @@ Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
 (149 tests) and both release builds green locally; CI green on the push;
 Pages deployed. Contributors API lists only `mitunmanav`. Not verified:
 the site on a real TV browser, and Dependabot's weekly cadence.
+
+## 36. Session: whole-repo audit — spec, tickets, fixes, one branch
+
+An audit of `master` (`7bdbbbf`), its 11 remote branches and 9 pull
+requests, and a web survey of the launchers people use:
+`.scratch/audit-2026-11-27/spec.md`, then one ticket per item in
+`issues/`, then the fixes. The owner asked for no AI co-authors and a
+history of 30 commits, so the publication record was folded into the
+README/CI commit and this session is commit 30.
+
+- Repo: PRs #6, #8 and #9 closed. The three fixes in #9 and the Files fix
+  in #7 are redone here. Deleting the other branches and moving this
+  history onto `master` (a force push) were refused to this session; the
+  owner does both (tickets 01, 02).
+- Apps installed, removed or updated outside Sonora now reach the grid:
+  `AppChanges` asks `getChangedPackages` on resume (API 26+) or holds a
+  `LauncherApps.Callback` (23–25). No receiver.
+- Two fake features made honest: Force stop no longer reads a process list
+  that only ever showed Sonora, and long OK in the switcher takes the card
+  off the list instead of claiming to close the app.
+- Arranging respects the pinned block; a new pin goes last; DOWN onto a
+  shorter row lands on its last tile; any key but the arrows, OK and volume
+  wakes both savers (`SaverKeys`); BACK only acts on a press the window saw
+  start (`BackPress`); search folds accents.
+- Share: ports 8080–8089 first, byte ranges for phone video players, a cap
+  on header lines. Clock formatters are built once (`ui/ClockText`; the
+  saver used to build one per frame). A pin reorders tiles instead of
+  rebuilding them; the cold app load drops two package calls per app;
+  recents icons are halved on LOW.
+- Docs: `docs-sync` moved to `.agents/skills/`; the codegraph and
+  `.scratch/` paths in the docs exist; `docs/research/COMPETITORS-2026-11-27.md`.
+
+Verified: `:app:testDebugUnitTest` + `:files-core:testDebugUnitTest`
+(170 tests, was 149) and `:app:assembleRelease`, `:files:assembleRelease`,
+`:app:assemblePerf` green in this container. Not verified: nothing ran on
+the TV. Ticket 08 (an adb install while another app is open), the saver
+keys, arranging among pins and Share with a phone video player need a TV
+walk. Ticket 15 is won't-fix: a disable may not move the change count.
+
+## 37. Session: agent rules load on Windows
+
+- `CLAUDE.md` was a symlink to `AGENTS.md`. Windows checks symlinks out as
+  plain text here (`core.symlinks` is off), so Claude Code on Windows read
+  only the word `AGENTS.md` and none of the rules. It is now a regular file
+  holding `@AGENTS.md`, which Claude Code imports on every system.
+- `AGENTS.md`: the CodeGraph section named a dead path and told WSL agents
+  to run a tool they do not have; it is now a short "check every caller of
+  a shared symbol" rule. Added where build and test run (WSL only, commands
+  in `ci.yml`). Removed the "Behavioural guidelines" block: Claude gets it
+  from the owner's global rules and the WSL builders from their own
+  `AGENTS.md`, so both read it twice.
+- Verified: a WSL debug build and the unit tests passed from a clean clone
+  the same day (Android SDK now installed in WSL). Not verified: that a
+  fresh Windows chat loads the rules (next chat in this folder shows it).
+
+## 38. Session: launcher benchmark on the Mi TV
+
+Recorded the benchmark protocol, runners, raw evidence and results in
+[`docs/perf/2026-11-28.md`](../perf/2026-11-28.md). Compared the installed
+Sonora perf build at `debaa31` with Clean Your TV 3.6 at `be60870`. On the
+mixed D-pad walk, median launcher PSS afterward was 39.4 MiB vs 53.5 MiB.
+Sonora missed 17 of 1,076 deadlines vs 0 of 1,040 and both launchers cleared
+every deadline on the horizontal walk. The report also covers verified
+cold launches, steady idle and real app returns.
+
+Rebuilt Clean Your TV in WSL and ran its release unit tests (328 passed).
+The rebuilt APK had the same 69 ZIP entries as the installed APK. Rechecked
+all five Sonora transition prototypes against the saved Nov 27 captures.
+The multi-device release benchmark, loaded playback and long-run soak, and
+the transition prototype’s visual A/B are still open.
+
+## 39. Session: benchmark handoff
+
+Recorded benchmark results and reproduction commands in [the Mi TV report](../perf/2026-11-28.md).
+
+## 40. Session: benchmark runner and blur optimization
+
+Specified each change before implementation. The
+[benchmark tickets](../../.scratch/release-benchmark/spec.md) cover guarded
+captures, paired comparisons and loaded journeys. The runner saves APK
+identity, device state and per-trial evidence, including aborted runs.
+Checks against the Mi TV exercised exact focus, verified cold starts,
+navigation, hot app entry, HOME returns and the idle sample. Added seven
+Python regression tests and reviewed the pinned Clean Your TV source.
+The playback smoke run confirmed real VLC frames from the Mi TV's hardware
+video surface. Files fixture browsing needs a test device with storage
+access already granted.
+
+Built and tested the [grid backdrop candidate](../../.scratch/grid-backdrop/spec.md)
+on the Mi TV. Four trials per side in ABBA order showed no improvement.
+The candidate lives in a standalone patch and the original Home APK was
+restored and checked against its checksum.
+
+The [thumbnail blur change](../../.scratch/wallpaper-blur/spec.md) keeps the
+same pixels and reduces the median kernel time from 7.87 ms to 1.46 ms on the
+Mi TV. WSL ran 150 Android unit tests and built the release APKs and Sonora
+perf APK. The [performance report](../perf/2026-11-28.md#follow-up-on-the-mi-tv)
+records both experiments and their scope. Physical 1 GB and newer Android
+TV coverage, the full loaded profile and optical latency remain open.
+
+## 41. Session: publication and benchmark comparison
+
+Combined the audit and local benchmark work on the 30-commit publication
+branch. The README and website show both the memory and first-frame wins
+for Sonora and the navigation win for Clean Your TV. The publication uses
+the GitHub no-reply identity. Local handoffs, device addresses and
+inventories stay in the backup. The public evidence keeps the measurements
+needed to reproduce the comparison.

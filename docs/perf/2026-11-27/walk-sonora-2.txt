@@ -1,0 +1,24 @@
+== frames
+Total frames rendered: 358
+Janky frames: 33 (9.22%)
+50th percentile: 6ms
+90th percentile: 15ms
+95th percentile: 17ms
+99th percentile: 27ms
+Number Slow UI thread: 1
+Number Slow bitmap uploads: 0
+Number Slow issue draw commands: 5
+Number Frame deadline missed: 5
+50th gpu percentile: 11ms
+90th gpu percentile: 4950ms
+95th gpu percentile: 4950ms
+99th gpu percentile: 4950ms
+== memory
+           Java Heap:     1384                          12788
+         Native Heap:    12904                          13532
+                Code:     1720                          71712
+            Graphics:    14900                          14900
+           TOTAL PSS:    37792            TOTAL RSS:   115832       TOTAL SWAP PSS:      218
+               Views:       58         ViewRootImpl:        1
+         AppContexts:        5           Activities:        1
+            WebViews:        0

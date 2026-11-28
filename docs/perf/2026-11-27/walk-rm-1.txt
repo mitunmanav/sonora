@@ -1,0 +1,8 @@
+Total frames rendered: 12
+50th percentile: 5ms
+90th percentile: 9ms
+95th percentile: 12ms
+99th percentile: 12ms
+Number Slow issue draw commands: 0
+Number Frame deadline missed: 0
+           TOTAL PSS:    34814            TOTAL RSS:   112788       TOTAL SWAP PSS:      214

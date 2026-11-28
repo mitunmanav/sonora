@@ -101,18 +101,9 @@ public final class AppRepository {
                 continue;
             }
             ApplicationInfo app = ai.applicationInfo;
-            boolean launchable;
-            try {
-                launchable = pm.getLeanbackLaunchIntentForPackage(pkg) != null
-                        || pm.getLaunchIntentForPackage(pkg) != null;
-            } catch (RuntimeException e) {
-                // One package the system will not answer for must not cost
-                // the user the whole list.
-                continue;
-            }
-            if (!launchable) {
-                continue;
-            }
+            // The launcher query above only answers with enabled, launchable
+            // activities, so asking the package manager again per app would
+            // be two more calls each for an answer already in hand.
             CharSequence loadedLabel = null;
             try {
                 loadedLabel = ai.loadLabel(pm);

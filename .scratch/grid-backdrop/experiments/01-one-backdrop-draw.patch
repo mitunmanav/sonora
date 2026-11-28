@@ -1,0 +1,144 @@
+diff --git a/app/src/main/java/com/mitun/sonora/HomeActivity.java b/app/src/main/java/com/mitun/sonora/HomeActivity.java
+index cc453fa..21e06da 100644
+--- a/app/src/main/java/com/mitun/sonora/HomeActivity.java
++++ b/app/src/main/java/com/mitun/sonora/HomeActivity.java
+@@ -725,7 +725,7 @@ public class HomeActivity extends Activity {
+         // The top row is gone by the time the dock has come halfway up to it.
+         shelf.setAlpha(Math.max(0f, 1f - open * 2f));
+         chevron.setTranslationY(value);
+-        gridBackdrop.setAlpha(open);
++        gridBackdrop.setGridProgress(open);
+         if (screensaver == null) {
+             // Under the saver everything stays GONE; a scroll spring still in
+             // flight must not bring the wallpaper back over it.
+diff --git a/app/src/main/java/com/mitun/sonora/ui/BackdropView.java b/app/src/main/java/com/mitun/sonora/ui/BackdropView.java
+index fa740c5..28f8fbf 100644
+--- a/app/src/main/java/com/mitun/sonora/ui/BackdropView.java
++++ b/app/src/main/java/com/mitun/sonora/ui/BackdropView.java
+@@ -5,6 +5,8 @@ import android.graphics.Bitmap;
+ import android.graphics.Canvas;
+ import android.graphics.Color;
+ import android.graphics.Paint;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffColorFilter;
+ import android.graphics.RectF;
+ import android.view.View;
+
+@@ -31,6 +33,9 @@ public final class BackdropView extends View {
+     private Bitmap bitmap;
+     private final Paint scrim = new Paint();
+     private final RectF destination = new RectF();
++    private Paint gridPaint;
++    private PorterDuffColorFilter[] gridTints;
++    private int gridProgress = -1;
+
+     /**
+      * Cheap: it only looks in the shared blur. A miss draws the scrim over
+@@ -76,6 +81,28 @@ public final class BackdropView extends View {
+         invalidate();
+     }
+
++    /** The Home grid is the only backdrop that fades over a full wallpaper. */
++    public void setGridProgress(float progress) {
++        int step = Math.round(progress * 255f);
++        if (gridProgress == step) {
++            return;
++        }
++        if (gridPaint == null) {
++            gridPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
++            gridTints = new PorterDuffColorFilter[256];
++        }
++        gridProgress = step;
++        int color = scrim.getColor();
++        int shade = GridBackdropBlend.tint(step, Color.alpha(color));
++        if (shade != 0 && gridTints[shade] == null) {
++            int tint = (shade << 24) | (color & 0x00ffffff);
++            gridTints[shade] = new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_ATOP);
++        }
++        gridPaint.setColorFilter(gridTints[shade]);
++        gridPaint.setAlpha(GridBackdropBlend.opacity(step, Color.alpha(color)));
++        invalidate();
++    }
++
+     /**
+      * Its two draws never overlap in a way alpha could show, and without this a
+      * fade costs an offscreen buffer the size of the screen on every frame.
+@@ -132,6 +159,19 @@ public final class BackdropView extends View {
+     protected void onDraw(Canvas canvas) {
+         int width = getWidth();
+         int height = getHeight();
++        if (gridPaint != null) {
++            if (bitmap == null || bitmap.isRecycled()) {
++                canvas.drawRect(0f, 0f, width, height, gridPaint);
++            } else {
++                float scale = Math.max(width / (float) bitmap.getWidth(),
++                        height / (float) bitmap.getHeight());
++                float left = (width - bitmap.getWidth() * scale) / 2f;
++                float top = (height - bitmap.getHeight() * scale) / 2f;
++                destination.set(left, top, width - left, height - top);
++                canvas.drawBitmap(bitmap, null, destination, gridPaint);
++            }
++            return;
++        }
+         if (bitmap != null && !bitmap.isRecycled()) {
+             destination.set(0f, 0f, width, height);
+             Ui.drawCenterCrop(canvas, bitmap, destination, 1f, 0f, 0f);
+diff --git a/app/src/main/java/com/mitun/sonora/ui/GridBackdropBlend.java b/app/src/main/java/com/mitun/sonora/ui/GridBackdropBlend.java
+new file mode 100755
+index 0000000..efe93db
+--- /dev/null
++++ b/app/src/main/java/com/mitun/sonora/ui/GridBackdropBlend.java
+@@ -0,0 +1,19 @@
++package com.mitun.sonora.ui;
++
++/** Folds the faded blur and the faded scrim above it into one source-over draw. */
++final class GridBackdropBlend {
++    private GridBackdropBlend() {}
++
++    private static float combined(int progress, int scrim) {
++        float fade = progress / 255f;
++        return progress + scrim * fade * (1f - fade);
++    }
++
++    static int opacity(int progress, int scrim) {
++        return Math.round(combined(progress, scrim));
++    }
++
++    static int tint(int progress, int scrim) {
++        return progress == 0 ? 0 : Math.round(scrim * progress / combined(progress, scrim));
++    }
++}
+diff --git a/app/src/test/java/com/mitun/sonora/ui/GridBackdropBlendTest.java b/app/src/test/java/com/mitun/sonora/ui/GridBackdropBlendTest.java
+new file mode 100755
+index 0000000..c9522c2
+--- /dev/null
++++ b/app/src/test/java/com/mitun/sonora/ui/GridBackdropBlendTest.java
+@@ -0,0 +1,28 @@
++package com.mitun.sonora.ui;
++
++import static org.junit.Assert.assertEquals;
++
++import org.junit.Test;
++
++public class GridBackdropBlendTest {
++    @Test
++    public void fusedBlendMatchesTwoDrawsToWithinTwoColorLevels() {
++        int[][] themes = {{179, 0}, {209, 247}};
++        for (int[] theme : themes) {
++            for (int progress = 0; progress <= 255; progress++) {
++                float fade = progress / 255f;
++                float oldScrim = theme[0] / 255f * fade;
++                int opacity = GridBackdropBlend.opacity(progress, theme[0]);
++                float newAlpha = opacity / 255f;
++                float tint = GridBackdropBlend.tint(progress, theme[0]) / 255f;
++                for (int blur : new int[]{0, 63, 160, 255}) {
++                    float twoDraws = (blur * fade + 140 * (1f - fade)) * (1f - oldScrim)
++                            + theme[1] * oldScrim;
++                    float oneDraw = (blur * (1f - tint) + theme[1] * tint) * newAlpha
++                            + 140 * (1f - newAlpha);
++                    assertEquals(twoDraws, oneDraw, 2f);
++                }
++            }
++        }
++    }
++}

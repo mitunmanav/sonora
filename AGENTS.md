@@ -1,13 +1,14 @@
 # Sonora: working rules
 
-`CLAUDE.md` is a symlink to this file. Edit this one.
+`CLAUDE.md` only loads this file. Edit this one.
 
 ## Layout
 
 - `app/`: the launcher. Pure logic at the package root, views in `ui/`, screens in `tools/`.
 - `files/`: the standalone Files app. A thin shell around `files-core/`.
 - `files-core/`: the file manager itself, bundled into both apps.
-- `scripts/`: `deploy.sh`, `perf.sh`, `tv.sh`, `bench.py`, `perf-ab.md`. Linux and WSL only.
+- `scripts/`: deploy, TV control and performance tools. `bench.py` runs the
+  paired benchmark in `perf-ab.md`. Linux and WSL only.
 - `docs/`: `ARCHITECTURE.md` (what exists + the rules), `research/` (design and performance notes), `plans/` (running log
   and dated requirements), `perf/` (measured numbers), `agents/` (tracker/domain conventions).
 - `reference/`: vendor APKs for study. Git-ignored.
@@ -15,19 +16,14 @@
 - `.github/`: CI (tests, release build, `Sole author` check), Dependabot config, issue templates.
 - `README.md`: the human-facing overview. `GLOSSARY.md`: the domain vocabulary — use its terms.
 
-## Explore with CodeGraph first
+## Before changing shared code
 
-Before you read, grep or edit in this project, run CodeGraph. It returns the source of the
-symbols you name, the call paths between them, and the blast radius.
+Check every caller of a shared symbol such as `Prefs`, `Motion`, `ScreenStack` or `Theme`
+before changing it (CodeGraph where available, otherwise grep). Grep for string literals and resources.
 
-```bash
-codegraph explore "HomeActivity buildGrid moveFocus"
-codegraph sync ~/aerial   # after each batch of edits, before you read again
-```
+## Build and test
 
-The `codegraph_explore` MCP tool gives the same output. Check the blast radius before
-changing a shared symbol such as `Prefs`, `Motion`, `ScreenStack` or `Theme`. Use grep for what
-CodeGraph does not return: string literals, resources, files with no symbols.
+Build and test in WSL only (Windows has no Java). The commands are in `.github/workflows/ci.yml`.
 
 ## Rules the code keeps
 
@@ -69,65 +65,11 @@ in both. The home screen wallpaper stays as it is in both.
 
 ## Agent skills
 
+- **Subagents**: always set `model` to `gpt-6-luna` and `reasoning_effort` to `high`.
+  If that combination is unavailable, work in the current agent.
 - **Issues and specs**: markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
 - **Triage labels**: the default strings, as `Status:` lines. See `docs/agents/triage-labels.md`.
 - **Domain docs**: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 - **Documentation upkeep**: before finishing a session that changed code, docs or layout, follow
-  `.devin/skills/docs-sync/SKILL.md` — append the `PLAN.md` session entry, update the requirements
+  `.agents/skills/docs-sync/SKILL.md` — append the `PLAN.md` session entry, update the requirements
   status table, and record perf numbers when measured.
-
-## Behavioural guidelines
-
-Caution over speed. For trivial tasks, use judgment.
-
-### Think before coding
-
-Don't assume. Don't hide confusion. Surface tradeoffs.
-
-- State assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them — don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-### Simplicity first
-
-Minimum code that solves the problem. Nothing speculative.
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If 200 lines could be 50, rewrite it.
-
-Ask: would a senior engineer call this overcomplicated? If yes, simplify.
-
-### Surgical changes
-
-Touch only what you must. Clean up only your own mess.
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it — don't delete it.
-- Remove imports/variables/functions that YOUR changes made unused; leave
-  pre-existing dead code alone unless asked.
-
-Test: every changed line traces directly to the user's request.
-
-### Goal-driven execution
-
-Define success criteria. Loop until verified.
-
-Transform tasks into verifiable goals: "add validation" → write tests for invalid
-inputs, then make them pass; "fix the bug" → write a test that reproduces it.
-
-For multi-step tasks, state a brief plan with a verify check per step:
-
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work")
-require constant clarification.
